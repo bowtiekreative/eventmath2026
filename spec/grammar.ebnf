@@ -1,0 +1,114 @@
+# EventMath — Line-Oriented Grammar (EBNF)
+
+## Design principle
+One idea per line. The leading keyword determines the statement type.
+A stack tracks blocks until `end`. Indentation is cosmetic.
+
+---
+
+## Lexical structure
+
+```
+letter     = "A".."Z" | "a".."z"
+digit      = "0".."9"
+whitespace = (" " | "\t")+
+newline    = "\n" | "\r\n"
+comment    = "#" {character} newline
+name       = ({letter} | {digit} | " " | "-" | "_")+             (* multi-word names allowed *)
+keyword    = "event" | "matter" | "category" | "cat" | "layer"
+           | "timeline" | "action" | "door" | "open" | "closed"
+           | "mark" | "set" | "run" | "when" | "otherwise"
+           | "split" | "path" | "again" | "walk" | "end"
+           | "is" | "from" | "as" | "to" | "by" | "with"
+           | "into" | "times" | "past" | "present" | "future"
+           | "stop" | "merge" | "break" | "add" | "remove"
+           | "before" | "after"
+number     = digit+ ("." digit+)?
+bool       = "true" | "false"
+literal    = {character} (* everything after "is" on the line *)
+```
+
+## Grammar (block-level)
+
+```
+program    = { statement | comment }
+
+(* Events *)
+statement  = "event" name newline
+             ["category" name newline | "cat" name newline]
+             ["matter" newline {matter_line} "end" newline]
+             "end" newline
+
+matter_line = name "is" text newline      (* literal *)
+           | name "from" name newline     (* reference *)
+
+(* Layers *)
+statement  = "layer" name newline
+             {name newline}               (* event references *)
+             "end" newline
+
+(* Timelines *)
+statement  = "timeline" name newline
+             ["past" newline {layer_ref} "end" newline]
+             ["present" newline {layer_ref} "end" newline]
+             ["future" newline {layer_ref} "end" newline]
+             "end" newline
+
+layer_ref  = name newline
+
+(* Actions *)
+statement  = "action" name newline
+             ["door" "open" {name} newline]
+             {statement}
+             ["door" "closed" [name] newline]
+             "end" newline
+
+(* Marks *)
+statement  = "mark" name "as" (text | number | bool) newline
+statement  = "set" name "to" (text | number | bool | name) newline
+
+(* Run / show *)
+statement  = "run" ("event" | "layer" | "timeline")? name newline
+
+(* Action calls *)
+statement  = name "with" name "is" text {"and" name "is" text} newline
+
+(* Conditionals *)
+statement  = "when" condition newline
+             {statement}
+             ["otherwise" newline
+             {statement}]
+             "end" newline
+
+condition  = name "is" (text | number | bool | name)
+
+statement  = "split" name "into" newline
+             {"path" name newline
+             {statement}
+             "end" newline}
+             "end" newline
+
+(* Loops *)
+statement  = "again" (number "times" | "until" condition) newline
+             {statement}
+             "end" newline
+
+statement  = "walk" name "as" name newline
+             {statement}
+             "end" newline
+
+(* Time *)
+statement  = "rewind" name "by" number newline
+statement  = "rewind" name "to" name newline
+statement  = "forward" name "by" number newline
+statement  = "forward" name "to" name newline
+statement  = "stop" newline
+
+(* Layer operations *)
+statement  = "add" "layer" name newline
+statement  = "remove" "layer" name newline
+statement  = "add" "event" name ("before" | "after") name newline
+statement  = "break" name "into" name newline
+
+(* Merge *)
+statement  = "merge" name "into" name newline

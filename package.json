@@ -1,0 +1,11 @@
+{
+  "name": "eventmath",
+  "version": "0.1.0",
+  "description": "EventMath — a programming language where time is a first-class construct",
+  "main": "src/tokenizer.js",
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "build": "node -e 'console.log(\"EventMath compiler v0.1\")'"
+  },
+  "license": "MIT"
+}
