@@ -154,7 +154,7 @@ class EventMathParser {
           this.errors.push(`Line ${t.line}: After "${key}" I expected "is" (literal) or "from" (reference), not "${delim ? delim.value : 'nothing'}".`);
           this.advance();
         }
-      } else if (t.type === 'KEYWORD' && t.value === 'category' || t.value === 'cat') {
+      } else if (t.type === 'KEYWORD' && (t.value === 'category' || t.value === 'cat')) {
         // Category inside matter? Skip
         this.advance();
       } else {

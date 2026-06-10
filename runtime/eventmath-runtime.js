@@ -1,5 +1,5 @@
 /**
- * EventMath Runtime v0.1
+ * EventMath Runtime v0.2
  *
  * Event / Layer / Timeline with structural sharing and timeline log.
  * Target: < 10 KB minified.
@@ -7,6 +7,10 @@
  * USAGE:
  *   <script src="eventmath-runtime.js"></script>
  *   const EM = require('./eventmath-runtime.js');
+ *
+ * v0.2 changes:
+ *  - Added forwardTo method (was missing, causing TypeError)
+ *  - Separated rewindTo event/match key lookup to avoid conflation
  */
 
 (function (root, factory) {
@@ -38,7 +42,7 @@
   }
 
   EventMathEvent.prototype.render = function () {
-    const lines = ['── Event: ' + this.id + ' ──'];
+    var lines = ['── Event: ' + this.id + ' ──'];
     lines.push('  Category: ' + this.cat);
     for (var key in this.matter) {
       if (this.matter.hasOwnProperty(key)) {
@@ -142,6 +146,19 @@
           layer.push(entry.data.event);
         }
         break;
+      case 'remove':
+        if (state.layers && entry.data.layer) {
+          state.layers[entry.data.layer] = (state.layers[entry.data.layer] || []).filter(
+            function (e) { return e.id !== entry.data.eventId; }
+          );
+        }
+        break;
+      case 'merge':
+        // Merge entries are informational — no state mutation
+        break;
+      case 'action':
+        // Action entries are informational — no state mutation
+        break;
     }
   };
 
@@ -196,16 +213,12 @@
   };
 
   /**
-   * Rewind to a specific event by name (searches the log).
+   * Rewind to a specific event by name (searches the log for events only).
    */
   EventMathTimeline.prototype.rewindTo = function (eventId) {
     for (var i = this.log.length - 1; i >= 0; i--) {
       var entry = this.log[i];
       if (entry.type === 'event' && entry.data && entry.data.id === eventId) {
-        this.pointer = i + 1;
-        return this;
-      }
-      if (entry.type === 'set' && entry.data && entry.data.key === eventId) {
         this.pointer = i + 1;
         return this;
       }
@@ -221,6 +234,23 @@
   EventMathTimeline.prototype.forward = function (n) {
     n = n || 1;
     this.pointer = Math.min(this.log.length, this.pointer + n);
+    return this;
+  };
+
+  /**
+   * Forward to a specific event by name (searches the log for events only).
+   * Mirrors rewindTo but moves pointer forward.
+   */
+  EventMathTimeline.prototype.forwardTo = function (eventId) {
+    for (var i = 0; i < this.log.length; i++) {
+      var entry = this.log[i];
+      if (entry.type === 'event' && entry.data && entry.data.id === eventId) {
+        this.pointer = i + 1;
+        return this;
+      }
+    }
+    // Event not found — forward to end
+    this.pointer = this.log.length;
     return this;
   };
 
@@ -301,7 +331,6 @@
 
   /**
    * Global default timeline for auto-tracked events.
-   * window.__evtlog push entries are appended here.
    */
   var defaultTimeline = new EventMathTimeline('default');
 

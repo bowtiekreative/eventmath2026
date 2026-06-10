@@ -79,8 +79,13 @@ class EventMathTokenizer {
     }
 
     // category, cat → consume category name
+    // But if the next word is "is" or "from", this is a matter field key, not a declaration
     if (lead === 'category' || lead === 'cat') {
-      return this._keywordName(lead, words.slice(1), lineNum);
+      if (words.length >= 2 && (words[1] === 'is' || words[1] === 'from')) {
+        // Fall through to matter line / matter ref line handling below
+      } else {
+        return this._keywordName(lead, words.slice(1), lineNum);
+      }
     }
 
     // mark → mark <name> as <literal>
