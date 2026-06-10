@@ -48,9 +48,9 @@ class EventMathCodeGen {
     this._line('');
 
     // Import/find runtime — assume available globally or require
-    this._line('const EM = typeof EventMathRuntime !== "undefined"');
-    this._line('  ? EventMathRuntime');
-    this._line('  : require("eventmath-runtime");');
+    this._line("const EM = typeof EventMathRuntime !== 'undefined'");
+    this._line("  ? EventMathRuntime");
+    this._line("  : require('../runtime/eventmath-runtime.js');");
     this._line('');
 
     // First pass: register all declaration names
@@ -201,7 +201,7 @@ class EventMathCodeGen {
     }
     this.indent--;
     this._line(`);`);
-    this._line(`window.__evtlog.push(${varName}); // Append to timeline`);
+    this._line(`EM.getDefaultTimeline().append(new EM.TimelineEntry("event", ${varName}));`);
   }
 
   // ── Layers ──────────────────────────────────────────────────────
