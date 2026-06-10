@@ -1,0 +1,293 @@
+#!/usr/bin/env node
+/**
+ * EventMath CLI v0.2
+ *
+ * Usage:
+ *   em <command> [options] <file>
+ *
+ * Commands:
+ *   compile <file>     Compile .em → .em.js
+ *   format  <file>     Format .em in place
+ *   run     <file>     Compile + execute
+ *   debug   <file>     Launch Mender debugger
+ *   check   <file>     Parse only, report errors
+ *   help               Show this help
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const { EventMathTokenizer } = require(path.join(ROOT, 'src/tokenizer.js'));
+const { EventMathParser } = require(path.join(ROOT, 'src/parser.js'));
+const { EventMathCodeGen } = require(path.join(ROOT, 'src/codegen.js'));
+const { EventMathFormatter } = require(path.join(ROOT, 'src/formatter.js'));
+
+function die(msg) {
+  console.error(msg);
+  process.exit(1);
+}
+
+function readFileOrStdin(file) {
+  const src = file && file !== '-'
+    ? fs.readFileSync(path.resolve(file), 'utf-8')
+    : fs.readFileSync(0, 'utf-8');
+  return src;
+}
+
+function parseEM(src, file) {
+  const tokenizer = new EventMathTokenizer();
+  const tokens = tokenizer.tokenize(src);
+  const parser = new EventMathParser(tokens);
+  const ast = parser.parse();
+
+  if (ast.errors && ast.errors.length > 0) {
+    for (const err of ast.errors) {
+      const msg = typeof err === 'string' ? err : (err.message || JSON.stringify(err));
+      console.error(file ? `${file}: ${msg}` : msg);
+    }
+    return null;
+  }
+  return ast;
+}
+
+// ── Commands ─────────────────────────────────────────────
+
+function cmdHelp() {
+  console.log(`
+EventMath v0.2 — CLI
+
+  em compile [options] <file>    Compile .em → .em.js
+    -o, --output <path>           Output path (default: <file>.js)
+    -w, --watch                   Watch for changes (NYI)
+
+  em format <file>               Format .em in place
+    -c, --check                   Only check format (exit 1 if not canonical)
+    -d, --diff                    Show diff instead of rewriting
+
+  em run <file>                  Compile + execute
+    --no-runtime                  Skip runtime import (standalone JS)
+
+  em debug <file>                Launch Mender debugger
+
+  em check <file>                Parse only, report syntax errors
+    -v, --verbose                 Show token + AST info
+
+  em help                        Show this help
+`);
+}
+
+// ── compile ───────────────────────────────────────────────
+
+function cmdCompile(file, opts) {
+  const src = readFileOrStdin(file);
+  const ast = parseEM(src, file);
+  if (!ast) process.exit(1);
+
+  const codegen = new EventMathCodeGen();
+  const js = codegen.generate(ast);
+
+  const output = opts.output || (file && file !== '-'
+    ? file.replace(/\.em$/, '') + '.em.js'
+    : null);
+
+  if (output) {
+    fs.writeFileSync(path.resolve(output), js, 'utf-8');
+    console.log(`✅ Wrote ${output} (${js.split('\n').length} lines)`);
+  } else {
+    process.stdout.write(js);
+  }
+}
+
+// ── format ───────────────────────────────────────────────
+
+function cmdFormat(file, opts) {
+  const resolved = path.resolve(file);
+  const src = fs.readFileSync(resolved, 'utf-8');
+
+  const tokenizer = new EventMathTokenizer();
+  const tokens = tokenizer.tokenize(src);
+  const parser = new EventMathParser(tokens);
+  const ast = parser.parse();
+
+  if (ast.errors && ast.errors.length > 0) {
+    for (const err of ast.errors) {
+      const msg = typeof err === 'string' ? err : (err.message || JSON.stringify(err));
+      console.error(`${file}: ${msg}`);
+    }
+    process.exit(1);
+  }
+
+  const formatter = new EventMathFormatter();
+  const formatted = formatter.format(ast) + '\n';
+
+  if (opts.check) {
+    if (src === formatted) {
+      console.log(`✅ ${file} — canonical`);
+      process.exit(0);
+    } else {
+      console.log(`❌ ${file} — needs formatting`);
+      // Show diff context
+      const srcLines = src.split('\n');
+      const fmtLines = formatted.trimEnd().split('\n');
+      for (let i = 0; i < Math.min(srcLines.length, fmtLines.length); i++) {
+        if (srcLines[i] !== fmtLines[i]) {
+          console.log(`  Line ${i + 1}:`);
+          console.log(`  - ${srcLines[i]}`);
+          console.log(`  + ${fmtLines[i]}`);
+        }
+      }
+      process.exit(1);
+    }
+  } else if (opts.diff) {
+    // Show unified diff
+    const srcLines = src.split('\n');
+    const fmtLines = formatted.trimEnd().split('\n');
+    for (let i = 0; i < Math.max(srcLines.length, fmtLines.length); i++) {
+      const a = srcLines[i] || '';
+      const b = fmtLines[i] || '';
+      if (a !== b) {
+        process.stdout.write(`@@ ${i + 1} @@\n`);
+        process.stdout.write(`-${a}\n`);
+        process.stdout.write(`+${b}\n`);
+      }
+    }
+  } else {
+    fs.writeFileSync(resolved, formatted, 'utf-8');
+    console.log(`✅ Formatted ${file}`);
+  }
+}
+
+// ── run ──────────────────────────────────────────────────
+
+function cmdRun(file, opts) {
+  // Compile to temp
+  const src = readFileOrStdin(file);
+  const ast = parseEM(src, file);
+  if (!ast) process.exit(1);
+
+  const codegen = new EventMathCodeGen();
+  let js = codegen.generate(ast);
+
+  // Write to temp and run
+  const tmpFile = path.join('/tmp', 'em-run-' + Date.now() + '.js');
+  js = js.replace(
+    "require('../runtime/eventmath-runtime.js')",
+    `require('${path.join(ROOT, 'runtime/eventmath-runtime.js')}')`
+  );
+  fs.writeFileSync(tmpFile, js, 'utf-8');
+
+  try {
+    require(tmpFile);
+    process.exit(0);
+  } catch (e) {
+    console.error(`Runtime error: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+// ── check ────────────────────────────────────────────────
+
+function cmdCheck(file, opts) {
+  const src = readFileOrStdin(file);
+  const tokenizer = new EventMathTokenizer();
+  const tokens = tokenizer.tokenize(src);
+  const parser = new EventMathParser(tokens);
+  const ast = parser.parse();
+
+  if (opts.verbose) {
+    console.log(`Tokens: ${tokens.length}`);
+    for (const t of tokens) {
+      console.log(`  ${t.type}: ${t.value} (line ${t.line})`);
+    }
+    console.log('');
+  }
+
+  if (ast.errors && ast.errors.length > 0) {
+    for (const err of ast.errors) {
+      const msg = typeof err === 'string' ? err : (err.message || JSON.stringify(err));
+      console.error(file ? `${file}: ${msg}` : msg);
+    }
+    process.exit(1);
+  }
+
+  if (opts.verbose) {
+    console.log(`Statements: ${ast.statements.length}`);
+    for (const s of ast.statements) {
+      console.log(`  ${s.type}: ${s.name || s.target || '(unnamed)'}`);
+    }
+  } else {
+    console.log(`✅ ${file || 'stdin'} — valid`);
+  }
+}
+
+// ── debug (alias for Mender) ─────────────────────────────
+
+function cmdDebug(file) {
+  const resolved = path.resolve(file);
+  const menderPath = path.join(ROOT, 'mender/mender.js');
+  // Spawn as child process so Mender can use readline interactively
+  const { spawn } = require('child_process');
+  const child = spawn(process.execPath, [menderPath, resolved], {
+    stdio: 'inherit',
+    cwd: ROOT,
+  });
+  child.on('exit', (code) => process.exit(code || 0));
+}
+
+// ── Main dispatch ────────────────────────────────────────
+
+function main() {
+  const args = process.argv.slice(2);
+
+  if (args.length === 0 || args[0] === 'help' || args[0] === '--help' || args[0] === '-h') {
+    cmdHelp();
+    return;
+  }
+
+  const command = args[0];
+  const rest = args.slice(1);
+
+  const opts = {};
+  const files = [];
+
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '-o' || a === '--output') {
+      opts.output = rest[++i];
+    } else if (a === '-c' || a === '--check') {
+      opts.check = true;
+    } else if (a === '-d' || a === '--diff') {
+      opts.diff = true;
+    } else if (a === '-v' || a === '--verbose') {
+      opts.verbose = true;
+    } else if (a === '-w' || a === '--watch') {
+      opts.watch = true;
+    } else if (a === '--no-runtime') {
+      opts.noRuntime = true;
+    } else if (a.startsWith('-')) {
+      die(`Unknown option: ${a}`);
+    } else {
+      files.push(a);
+    }
+  }
+
+  const file = files[0] || '-';
+
+  switch (command) {
+    case 'compile':
+      return cmdCompile(file, opts);
+    case 'format':
+      return cmdFormat(file, opts);
+    case 'run':
+      return cmdRun(file, opts);
+    case 'check':
+      return cmdCheck(file, opts);
+    case 'debug':
+      return cmdDebug(file);
+    default:
+      die(`Unknown command: ${command}\nRun 'em help' for usage.`);
+  }
+}
+
+main();

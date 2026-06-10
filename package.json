@@ -1,0 +1,17 @@
+{
+  "name": "eventmath",
+  "version": "0.2.0",
+  "description": "EventMath programming language — time-native, readable, compiles to JS",
+  "bin": {
+    "em": "./bin/em"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "runtime/",
+    "mender/",
+    "spec/"
+  ],
+  "license": "MIT",
+  "private": true
+}
