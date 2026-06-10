@@ -21,7 +21,7 @@ const task_2 = new EM.EventMathEvent(
   "task",
   {
     name: "Build API",
-    status: "in progress",
+    status: "done",
   }
 );
 
@@ -31,7 +31,7 @@ const task_3 = new EM.EventMathEvent(
   "task",
   {
     name: "Write tests",
-    status: "todo",
+    status: "done",
   }
 );
 
@@ -41,7 +41,7 @@ const task_4 = new EM.EventMathEvent(
   "task",
   {
     name: "Deploy",
-    status: "todo",
+    status: "done",
   }
 );
 
@@ -57,7 +57,7 @@ let all_done = false;
 while (!(all_done === true)) {
   all_done = true;
   for (const current_task of project_tasks.events) {
-    if (current_task.status !== "done") {
+    if (current_task.matter.status !== "done") {
       all_done = false;
     }
   }

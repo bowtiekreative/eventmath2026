@@ -14,7 +14,7 @@ event task 2
 category task
 matter
   name is Build API
-  status is in progress
+  status is done
 end
 end
 
@@ -22,7 +22,7 @@ event task 3
 category task
 matter
   name is Write tests
-  status is todo
+  status is done
 end
 end
 
@@ -30,7 +30,7 @@ event task 4
 category task
 matter
   name is Deploy
-  status is todo
+  status is done
 end
 end
 

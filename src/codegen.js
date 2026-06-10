@@ -390,18 +390,13 @@ class EventMathCodeGen {
    */
   _walkRef(name) {
     if (!this._walkVar || !name) return this._safeRef(name);
-    const walkWords = this._walkVar.split(/\s+/);
-    const nameWords = name.split(/\s+/);
-    // Check if condition starts with walk variable name
     const walkVarSafe = this._safeName(this._walkVar);
-    if (name === this._walkVar) return walkVarSafe; // bare variable ref
-    // Property access: "current task status" where walkVar = "current task"
-    // → current_task.status
-    const prefix = walkWords.join(' ');
-    if (name.startsWith(prefix + ' ') || name === prefix) {
+    if (name === this._walkVar) return walkVarSafe;
+    const prefix = this._walkVar;
+    if (name.startsWith(prefix + ' ')) {
       const rest = name.slice(prefix.length).trim();
       if (rest) {
-        return `${walkVarSafe}.${this._safeName(rest)}`;
+        return `${walkVarSafe}.matter.${this._safeName(rest)}`;
       }
       return walkVarSafe;
     }

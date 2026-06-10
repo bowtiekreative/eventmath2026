@@ -13,10 +13,10 @@ const TEST_DIR = __dirname;
 const safeTests = [
   { name: 'Requirements Tracker', file: 'requirements-tracker.em.js' },
   { name: 'Story Timeline',       file: 'story-timeline.em.js' },
+  { name: 'Workflow Automation',  file: 'workflow-automation.em.js' },
 ];
 
 const staticTests = [
-  { name: 'Workflow Automation',  file: 'workflow-automation.em.js' },
 ];
 
 let passed = 0;
