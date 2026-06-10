@@ -44,7 +44,7 @@ end
 mark all done as false
 
 again until all done is true
-  mark all done as true
+  set all done to true
   walk project tasks as current task
     when current task status is not done
       set all done to false

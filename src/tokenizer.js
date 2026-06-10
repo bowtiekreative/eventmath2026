@@ -317,8 +317,16 @@ class EventMathTokenizer {
     // door open|closed [name ...]
     if (words.length >= 2 && (words[1] === 'open' || words[1] === 'closed')) {
       tokens.push(new Token('KEYWORD', words[1], lineNum));
-      if (words.length > 2) {
-        tokens.push(new Token('NAME', words.slice(2).join(' '), lineNum));
+      if (words[1] === 'open') {
+        // "door open title priority" — each is a separate input name
+        for (let i = 2; i < words.length; i++) {
+          tokens.push(new Token('NAME', words[i], lineNum));
+        }
+      } else {
+        // "door closed made requirement" — one multi-word return name
+        if (words.length > 2) {
+          tokens.push(new Token('NAME', words.slice(2).join(' '), lineNum));
+        }
       }
     }
     return tokens;
