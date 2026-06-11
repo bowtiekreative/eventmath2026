@@ -4,6 +4,9 @@
  * Tests all major error classes. Runs each case through the
  * tokenizer + parser + validator and verifies expected errors/warnings
  * appear (or don't appear for valid programs).
+ *
+ * v0.5 additions:
+ *  - expectCompiles / compiledContains: tokenize + parse + codegen check
  */
 
 const fs = require('fs');
@@ -11,6 +14,7 @@ const path = require('path');
 const { EventMathTokenizer } = require('../src/tokenizer.js');
 const { EventMathParser } = require('../src/parser.js');
 const { EventMathValidator } = require('../src/validator.js');
+const { EventMathCodeGen } = require('../src/codegen.js');
 
 const TEST_DIR = __dirname;
 
@@ -69,6 +73,18 @@ const cases = [
     name: 'Valid — No errors on workflow automation',
     sourceFile: 'workflow-automation.em',
     expectNoErrors: true,
+  },
+  {
+    name: 'check statement compiles correctly',
+    source: 'mark count as 5\ncheck count is greater than 3',
+    expectCompiles: true,
+    compiledContains: 'if (!(count > 3))',
+  },
+  {
+    name: 'arithmetic chaining compiles correctly',
+    source: 'mark a as 2\nmark b as 3\nmark c as 4\nmark total as a plus b plus c',
+    expectCompiles: true,
+    compiledContains: 'a + b',
   },
 ];
 
@@ -156,6 +172,27 @@ function runCase(tc) {
       if (!found) {
         ok = false;
         reason = `Expected validator warning containing "${tc.warningContains}", got: ${validatorWarnings.join('; ')}`;
+      }
+    }
+  }
+
+  // ── expectCompiles / compiledContains ───────────────────────
+  if (tc.expectCompiles) {
+    if (parseErrors.length > 0) {
+      ok = false;
+      reason = `Expected clean compile, got parse errors: ${parseErrors[0]}`;
+    } else {
+      let compiled = '';
+      try {
+        const codegen = new EventMathCodeGen();
+        compiled = codegen.generate(ast);
+      } catch (err) {
+        ok = false;
+        reason = `Codegen threw: ${err.message}`;
+      }
+      if (ok && tc.compiledContains && !compiled.includes(tc.compiledContains)) {
+        ok = false;
+        reason = `Expected compiled output to contain "${tc.compiledContains}"`;
       }
     }
   }

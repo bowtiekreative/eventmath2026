@@ -24,7 +24,7 @@ const KEYWORDS = new Set([
   'split', 'path', 'again', 'walk', 'end', 'is', 'from', 'as', 'to',
   'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
-  'and', 'not', 'until', 'overlap', 'note', 'broken',
+  'and', 'not', 'until', 'overlap', 'note', 'broken', 'check',
 ]);
 
 class Token {
@@ -96,6 +96,11 @@ class EventMathTokenizer {
     // broken event → broken event <name>
     if (lead === 'broken') {
       return this._brokenEvent(words, lineNum);
+    }
+
+    // check → check <condition>
+    if (lead === 'check') {
+      return this._check(words, lineNum);
     }
 
     // mark → mark <name> as <literal>
@@ -241,48 +246,49 @@ class EventMathTokenizer {
   }
 
   /**
-   * Tokenize a value, detecting arithmetic expressions.
+   * Tokenize a value, detecting arithmetic expressions with chaining.
    * Operators (priority): 'divided by' (2 words), 'plus', 'minus', 'times'
-   * If arithmetic found: emit (NAME|NUMBER) KEYWORD(op) (NAME|NUMBER)
+   * Supports chains: a plus b minus c → NAME KEYWORD NAME KEYWORD NAME
    * Otherwise: emit LITERAL/NUMBER/BOOL as appropriate.
    *
    * Note: 'plus', 'minus', 'times', 'divided' are NOT added to KEYWORDS —
    * they are only recognized here in value position.
    */
   _tokenizeValue(words, lineNum) {
+    if (!words || words.length === 0) return [];
+
+    const segments = [];
+    const operators = [];
+    let current = [];
+
+    for (let i = 0; i < words.length; i++) {
+      if (words[i] === 'divided' && i + 1 < words.length && words[i + 1] === 'by') {
+        segments.push(current); operators.push('divided by'); current = []; i++;
+      } else if (['plus', 'minus', 'times'].includes(words[i])) {
+        segments.push(current); operators.push(words[i]); current = [];
+      } else {
+        current.push(words[i]);
+      }
+    }
+    segments.push(current);
+
+    if (operators.length === 0) {
+      // single value — existing behavior
+      const raw = segments[0].join(' ');
+      if (!raw) return [];
+      if (/^\d+(\.\d+)?$/.test(raw)) return [new Token('NUMBER', raw, lineNum)];
+      if (raw === 'true' || raw === 'false') return [new Token('BOOL', raw, lineNum)];
+      return [new Token('NAME', raw, lineNum)];
+    }
+
+    // chain: NAME/NUMBER KEYWORD(op) NAME/NUMBER KEYWORD(op) ...
     const tokens = [];
-
-    if (!words || words.length === 0) return tokens;
-
-    // Check for 'divided by' (two-word operator) first
-    for (let i = 0; i < words.length - 1; i++) {
-      if (words[i].toLowerCase() === 'divided' && words[i + 1].toLowerCase() === 'by') {
-        const left = words.slice(0, i).join(' ');
-        const right = words.slice(i + 2).join(' ');
-        tokens.push(...this._tokenizeSingleValue(left, lineNum));
-        tokens.push(new Token('KEYWORD', 'divided by', lineNum));
-        tokens.push(...this._tokenizeSingleValue(right, lineNum));
-        return tokens;
-      }
+    for (let i = 0; i < segments.length; i++) {
+      const raw = segments[i].join(' ');
+      if (/^\d+(\.\d+)?$/.test(raw)) tokens.push(new Token('NUMBER', raw, lineNum));
+      else tokens.push(new Token('NAME', raw, lineNum));
+      if (i < operators.length) tokens.push(new Token('KEYWORD', operators[i], lineNum));
     }
-
-    // Check for single-word operators: plus, minus, times
-    const singleOps = ['plus', 'minus', 'times'];
-    for (const op of singleOps) {
-      const idx = words.findIndex(w => w.toLowerCase() === op);
-      if (idx > 0 && idx < words.length - 1) {
-        const left = words.slice(0, idx).join(' ');
-        const right = words.slice(idx + 1).join(' ');
-        tokens.push(...this._tokenizeSingleValue(left, lineNum));
-        tokens.push(new Token('KEYWORD', op, lineNum));
-        tokens.push(...this._tokenizeSingleValue(right, lineNum));
-        return tokens;
-      }
-    }
-
-    // No arithmetic found — emit single value
-    const val = words.join(' ');
-    tokens.push(...this._tokenizeSingleValue(val, lineNum));
     return tokens;
   }
 
@@ -478,6 +484,25 @@ class EventMathTokenizer {
       if (words.length > 2) {
         tokens.push(new Token('NAME', words.slice(2).join(' '), lineNum));
       }
+    }
+    return tokens;
+  }
+
+  /**
+   * Check assertion: check <name> is [op] <value>
+   * Same tokenization as a when condition.
+   */
+  _check(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'check', lineNum)];
+    // words[0] = 'check', rest is the condition
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx > 0) {
+      tokens.push(new Token('NAME', words.slice(1, isIdx).join(' '), lineNum));
+      tokens.push(new Token('KEYWORD', 'is', lineNum));
+      tokens.push(...this._tokenizeCondition(words.slice(isIdx + 1), lineNum));
+    } else {
+      // fallback: bare name after check
+      tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
     }
     return tokens;
   }

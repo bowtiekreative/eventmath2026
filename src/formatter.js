@@ -71,6 +71,7 @@ class EventMathFormatter {
       case 'Overlap':      return this._formatOverlap(stmt);
       case 'Note':         return this._formatNote(stmt);
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
+      case 'Check':        return this._formatCheck(stmt);
     }
   }
 
@@ -171,21 +172,29 @@ class EventMathFormatter {
 
   // ── Mark & Set ────────────────────────────────────────────
 
+  _formatExpr(node) {
+    if (!node) return '';
+    if (node.kind === 'expr') {
+      const l = node.left.kind  === 'expr' ? `(${this._formatExpr(node.left)})`  : node.left.value;
+      const r = node.right.kind === 'expr' ? `(${this._formatExpr(node.right)})` : node.right.value;
+      return `${l} ${node.op} ${r}`;
+    }
+    return node.value || '';
+  }
+
   _formatMark(stmt) {
-    if (stmt.expr) {
-      const { left, op, right } = stmt.expr;
-      this._line(`mark ${stmt.name} as ${left.value} ${op} ${right.value}`);
+    if (stmt.expr !== undefined && stmt.expr !== null) {
+      this._line(`mark ${stmt.name} as ${this._formatExpr(stmt.expr)}`);
     } else {
       this._line(`mark ${stmt.name} as ${stmt.value}`);
     }
   }
 
   _formatSet(stmt) {
-    if (stmt.expr) {
-      const { left, op, right } = stmt.expr;
-      this._line(`set ${stmt.name} to ${left.value} ${op} ${right.value}`);
+    if (stmt.expr !== undefined && stmt.expr !== null) {
+      this._line(`set ${stmt.name} to ${this._formatExpr(stmt.expr)}`);
     } else if (stmt.value) {
-      this._line(`set ${stmt.name} to ${stmt.value.value}`);
+      this._line(`set ${stmt.name} to ${stmt.value.value !== undefined ? stmt.value.value : stmt.value}`);
     } else {
       this._line(`set ${stmt.name} to`);
     }
@@ -382,6 +391,14 @@ class EventMathFormatter {
 
   _formatNote(stmt) {
     this._line(`note ${stmt.text}`);
+  }
+
+  // ── Check ─────────────────────────────────────────────────
+
+  _formatCheck(stmt) {
+    if (!stmt.condition) return;
+    const cond = this._formatCondition(stmt.condition);
+    this._line(`check ${cond}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

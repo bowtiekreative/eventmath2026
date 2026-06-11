@@ -114,6 +114,7 @@ class EventMathParser {
       case 'overlap':  return this._parseOverlap();
       case 'note':     return this._parseNote();
       case 'broken':   return this._parseBrokenEvent();
+      case 'check':    return this._parseCheck();
       default:         return this._parseBodyName();
     }
   }
@@ -280,51 +281,51 @@ class EventMathParser {
 
   /**
    * _parseExprOrValue: After consuming the keyword (as/to), peek at the
-   * token stream and detect arithmetic.
-   * Pattern: (NAME|NUMBER) KEYWORD('plus'|'minus'|'times'|'divided by') (NAME|NUMBER)
-   * Returns { expr } or { value } object to spread into the AST node.
+   * token stream and detect arithmetic, including chained operations.
+   * Returns { expr: node } or { value } object for the AST node.
    */
   _parseExprOrValue() {
-    const arithmeticOps = new Set(['plus', 'minus', 'times', 'divided by']);
-    const t0 = this.peek();
+    const firstTok = this.peek();
+    if (!firstTok) return { value: '' };
 
-    if (!t0) return { value: '' };
+    const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by']);
 
-    // Look ahead for arithmetic operator
-    // t0 must be NAME or NUMBER, then a KEYWORD that is an arithmetic op, then NAME or NUMBER
-    if ((t0.type === 'NAME' || t0.type === 'NUMBER') ) {
-      // Check position pos+1
-      const t1 = this.tokens[this.pos + 1];
-      if (t1 && t1.type === 'KEYWORD' && arithmeticOps.has(t1.value)) {
-        const t2 = this.tokens[this.pos + 2];
-        if (t2 && (t2.type === 'NAME' || t2.type === 'NUMBER')) {
-          // It's arithmetic
-          const leftTok = this.advance();
-          const opTok = this.advance();
-          const rightTok = this.advance();
-          const leftKind = leftTok.type === 'NUMBER' ? 'number' : 'name';
-          const rightKind = rightTok.type === 'NUMBER' ? 'number' : 'name';
-          return {
-            value: null,
-            expr: {
-              left: { kind: leftKind, value: leftTok.value },
-              op: opTok.value,
-              right: { kind: rightKind, value: rightTok.value },
-            },
-          };
-        }
-      }
+    // Check if next token (after current) is an arithmetic operator
+    const isArith = () => {
+      const t = this.peek();
+      return t && t.type === 'KEYWORD' && ARITH_OPS.has(t.value);
+    };
+
+    // Parse one operand
+    const parseOperand = () => {
+      const t = this.peek();
+      if (!t) return null;
+      if (t.type === 'NUMBER') { this.advance(); return { kind: 'number', value: t.value }; }
+      if (t.type === 'BOOL')   { this.advance(); return { kind: 'bool',   value: t.value }; }
+      if (t.type === 'NAME')   { this.advance(); return { kind: 'name',   value: t.value }; }
+      if (t.type === 'LITERAL'){ this.advance(); return { kind: 'literal',value: t.value }; }
+      return null;
+    };
+
+    const firstOp = parseOperand();
+    if (!firstOp) return { value: '' };
+
+    if (!isArith()) {
+      // No arithmetic — return as plain value
+      if (firstOp.kind === 'number') return { value: firstOp.value };
+      if (firstOp.kind === 'bool')   return { value: firstOp.value };
+      return { value: firstOp.value };
     }
 
-    // No arithmetic — parse single value
-    const t = this.peek();
-    let value;
-    if (t && t.type === 'NUMBER') value = { kind: 'number', value: this.advance().value };
-    else if (t && t.type === 'BOOL') value = { kind: 'bool', value: this.advance().value === 'true' };
-    else if (t && t.type === 'LITERAL') value = { kind: 'literal', value: this.advance().value };
-    else if (t && t.type === 'NAME') value = { kind: 'name', value: this.advance().value };
-    else value = { kind: 'literal', value: '' };
-    return { value };
+    // Build left-associative expression tree
+    let node = firstOp;
+    while (isArith()) {
+      const op = this.advance().value; // consume operator keyword
+      const right = parseOperand();
+      if (!right) break;
+      node = { kind: 'expr', left: node, op, right };
+    }
+    return { expr: node };
   }
 
   _parseMark() {
@@ -334,11 +335,11 @@ class EventMathParser {
     this.expect('KEYWORD', 'as');
 
     const parsed = this._parseExprOrValue();
-    if (parsed.expr) {
+    if (parsed.expr !== undefined) {
       return ast('Mark', { name: nameToken.value, value: null, expr: parsed.expr });
     }
-    // Legacy: value is a simple object — extract string for backward compatibility
-    const valStr = parsed.value ? (parsed.value.value !== undefined ? String(parsed.value.value) : '') : '';
+    // value is a plain scalar string
+    const valStr = parsed.value !== undefined ? String(parsed.value) : '';
     return ast('Mark', { name: nameToken.value, value: valStr });
   }
 
@@ -349,10 +350,12 @@ class EventMathParser {
     this.expect('KEYWORD', 'to');
 
     const parsed = this._parseExprOrValue();
-    if (parsed.expr) {
+    if (parsed.expr !== undefined) {
       return ast('Set', { name: nameToken.value, value: null, expr: parsed.expr });
     }
-    return ast('Set', { name: nameToken.value, value: parsed.value });
+    // Wrap scalar in a value object for _typedValue compatibility
+    const raw = parsed.value !== undefined ? String(parsed.value) : '';
+    return ast('Set', { name: nameToken.value, value: { kind: 'literal', value: raw } });
   }
 
   // ── Run ──────────────────────────────────────────────────────────
@@ -637,6 +640,14 @@ class EventMathParser {
     }
     this.expect('KEYWORD', 'end');
     return result;
+  }
+
+  // ── Check ────────────────────────────────────────────────────────
+
+  _parseCheck() {
+    this.expect('KEYWORD', 'check');
+    const condition = this._parseCondition();
+    return ast('Check', { condition });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

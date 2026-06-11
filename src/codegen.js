@@ -217,6 +217,7 @@ class EventMathCodeGen {
       case 'Overlap':        return this._genOverlap(stmt);
       case 'Note':           return this._genNote(stmt);
       case 'BrokenEvent':    return this._genBrokenEvent(stmt);
+      case 'Check':          return this._genCheck(stmt);
       case 'NameRef':        return null; // standalone names are no-ops
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
@@ -398,19 +399,23 @@ class EventMathCodeGen {
 
   // ── Arithmetic expressions ───────────────────────────────────────
 
-  _genExpr(expr) {
-    const ops = { plus: '+', minus: '-', times: '*', 'divided by': '/' };
-    const jsOp = ops[expr.op] || '+';
-    const left = this._exprOperand(expr.left);
-    const right = this._exprOperand(expr.right);
-    return `${left} ${jsOp} ${right}`;
+  _genExpr(node) {
+    if (!node) return '0';
+    if (node.kind === 'expr') {
+      const ops = { plus: '+', minus: '-', times: '*', 'divided by': '/' };
+      const jsOp = ops[node.op] || '+';
+      const left  = node.left.kind  === 'expr' ? `(${this._genExpr(node.left)})`  : this._exprOperand(node.left);
+      const right = node.right.kind === 'expr' ? `(${this._genExpr(node.right)})` : this._exprOperand(node.right);
+      return `${left} ${jsOp} ${right}`;
+    }
+    return this._exprOperand(node);
   }
 
   _exprOperand(operand) {
     if (!operand) return '0';
     if (operand.kind === 'number') return operand.value;
     if (operand.kind === 'name') return this._safeRef(operand.value);
-    return `"${this._escape(operand.value)}"`;
+    return `"${this._escape(operand.value || '')}"`;
   }
 
   // ── Run ─────────────────────────────────────────────────────────
@@ -474,13 +479,14 @@ class EventMathCodeGen {
     const left = this._walkRef(cond.left);
     const rightVal = cond.right || '';
 
-    // For numeric operators, emit the right-hand side as a number if it looks numeric
+    // For numeric operators, treat as a variable reference if not a literal number/bool
     const numericOps = new Set(['greater than', 'less than', 'at least', 'at most']);
     let right;
     if (rightVal === 'true') right = 'true';
     else if (rightVal === 'false') right = 'false';
     else if (/^\d+(\.\d+)?$/.test(rightVal)) right = rightVal;
-    else if (numericOps.has(cond.op) && /^\d+(\.\d+)?$/.test(rightVal)) right = rightVal;
+    else if (numericOps.has(cond.op)) right = this._walkRef(rightVal); // variable reference
+    else if (rightVal === 'empty') right = '""'; // special: "is not empty" → !== ""
     else right = `"${this._escape(rightVal)}"`;
 
     const ops = {
@@ -680,6 +686,24 @@ class EventMathCodeGen {
     this._line(`);`);
     this._line(`console.error(${varName}.render());`);
     this._line('');
+  }
+
+  // ── Check assertion ────────────────────────────────────────────
+
+  _genCheck(stmt) {
+    if (!stmt.condition) return;
+    const cond = this._genCondition(stmt.condition);
+    const desc = `${stmt.condition.left} ${stmt.condition.op} ${stmt.condition.right}`;
+    this._line(`if (!(${cond})) {`);
+    this.indent++;
+    this._line(`console.error(new EM.EventMathEvent("check failed", "broken", {`);
+    this.indent++;
+    this._line(`condition: "${this._escape(desc)}",`);
+    this._line(`hint: "This condition was expected to be true.",`);
+    this.indent--;
+    this._line(`}).render());`);
+    this.indent--;
+    this._line(`}`);
   }
 
   // ── Overlap & Note ─────────────────────────────────────────────
