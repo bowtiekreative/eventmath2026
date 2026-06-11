@@ -163,6 +163,19 @@ class EventMathCodeGen {
             this._varDecls.push({ name: stmt.name, value: undefined });
           }
           break;
+        // Recurse into blocks so nested marks/sets are hoisted
+        case 'When':
+          this._firstPass(stmt.body || []);
+          this._firstPass(stmt.otherwise || []);
+          break;
+        case 'AgainCount':
+        case 'AgainUntil':
+        case 'Walk':
+          this._firstPass(stmt.body || []);
+          break;
+        case 'Overlap':
+          for (const track of (stmt.tracks || [])) this._firstPass(track);
+          break;
       }
     }
   }
