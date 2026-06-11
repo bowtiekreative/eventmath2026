@@ -1,11 +1,13 @@
 /**
- * The Mender — EventMath debugging engine (v0.1 Fast Path)
+ * The Mender — EventMath debugging engine (v0.4 Phase 1+2)
  *
  * Built-in conversational debugger. Finds and fixes broken events
  * using plain, friendly language, one step at a time.
  *
  * v0.1 ships the Fast Path (Phase 0): when an error matches a known
  * pattern in the friendly-error catalog, recommend the fix directly.
+ *
+ * v0.4 adds Phase 1 (context gathering) and Phase 2 (why chain).
  *
  * Standing rules (per spec):
  * 1. Walk phases in order. Never skip (except via Fast Path).
@@ -122,6 +124,96 @@ const FAST_PATH_TABLE = [
   },
 ];
 
+// ── Shared ask helper (module-level, uses rl from Mender instance) ──
+
+function _ask(rl, question) {
+  return new Promise(resolve => {
+    rl.question('  ' + question + '\n  > ', answer => {
+      resolve(answer.trim());
+    });
+  });
+}
+
+// ── Phase 1: Context gathering ─────────────────────────────────────
+
+async function phase1(rl, errors, source) {
+  console.log('\n── Understanding your program ──\n');
+  console.log('Let me ask you a couple of questions to understand what\'s happening.\n');
+
+  const purpose = await _ask(rl, 'What should this part of your program do when it works?');
+  const recent = await _ask(rl, 'Did you change anything recently? (or type "no" if not)');
+
+  return { purpose, recent };
+}
+
+// ── Phase 2: Why chain ─────────────────────────────────────────────
+
+async function phase2(rl, errors, context, source) {
+  console.log('\n── Tracing the cause ──\n');
+
+  // Build why chain from the first error
+  const firstError = errors[0];
+  console.log(`I can see: ${firstError}`);
+  console.log('');
+
+  // Walk backwards asking why
+  const chain = [];
+  let current = firstError;
+
+  for (let i = 0; i < 3; i++) {
+    const why = await _ask(rl, `Why might this be happening? (or type "skip" to move on)`);
+    if (why.toLowerCase() === 'skip') break;
+    chain.push({ step: i + 1, cause: why, evidence: 'TOLD' });
+    current = why;
+
+    if (why.toLowerCase().includes('typo') || why.toLowerCase().includes('spelling')) {
+      chain.push({ step: i + 2, cause: 'A word in your program might be misspelled', evidence: 'GUESSED' });
+      break;
+    }
+  }
+
+  return chain;
+}
+
+// ── Phase 5: Fix recommendation ────────────────────────────────────
+
+async function phase5(rl, whyChain, errors) {
+  console.log('\n── Here is what to try ──\n');
+
+  const firstError = errors[0];
+  const rootCause = whyChain.length > 0 ? whyChain[whyChain.length - 1] : null;
+
+  if (rootCause) {
+    console.log(`Try this: Check the part of your program related to "${rootCause.cause}"`);
+    console.log(`This should fix: ${firstError}`);
+    console.log(`Because: ${rootCause.cause} (${rootCause.evidence})`);
+  } else {
+    console.log(`Try this: Look at the error on line ${firstError}`);
+    console.log(`Start by reading the message carefully — it describes exactly what was expected.`);
+  }
+
+  console.log('');
+  console.log('When you have tried this, tell me what happened and I will help you from there.');
+
+  const feedback = await _feedbackGateRl(rl);
+  return feedback;
+}
+
+async function _feedbackGateRl(rl) {
+  const answer = await _ask(rl, 'Did that fix it? (yes / no / partially)');
+  const normalized = answer.toLowerCase();
+
+  if (normalized === 'yes') {
+    console.log('\nGreat, glad that worked! Is there anything else that looks off?');
+  } else if (normalized === 'partially') {
+    console.log('\nThat\'s progress. A partial fix often means there are two issues. Let me look at this differently.');
+  } else {
+    console.log('\nThat didn\'t work, which actually tells us something useful. Let me look at this differently.');
+  }
+
+  return normalized;
+}
+
 // ── Mender ────────────────────────────────────────────────────────
 
 class Mender {
@@ -145,7 +237,7 @@ class Mender {
    * @param {string} filePath - Path to .em file
    */
   async diagnose(filePath) {
-    console.log('\n🔧  The Mender — EventMath Debugger');
+    console.log('\nThe Mender — EventMath Debugger');
     console.log('━'.repeat(50));
 
     // Read and parse the program
@@ -159,23 +251,53 @@ class Mender {
 
     if (ast.errors && ast.errors.length > 0) {
       this.session.errors = ast.errors;
-      await this._fastPath(ast.errors);
+      const fastPathHandled = await this._fastPath(ast.errors);
+
+      if (!fastPathHandled) {
+        // Fall through to Phase 1 + 2 + 5
+        const context = await phase1(this._getRL(), ast.errors, source);
+        const whyChain = await phase2(this._getRL(), ast.errors, context, source);
+        const feedback = await phase5(this._getRL(), whyChain, ast.errors);
+
+        if (feedback === 'no') {
+          // Confidence decay — try again with different framing
+          console.log('\nLet me approach this from a different angle.');
+          const context2 = await phase1(this._getRL(), ast.errors, source);
+          const whyChain2 = await phase2(this._getRL(), ast.errors, context2, source);
+          await phase5(this._getRL(), whyChain2, ast.errors);
+        } else if (feedback === 'partially') {
+          // Treat as new problem, re-run from phase 2
+          console.log('\nLet\'s look at what\'s still not working.');
+          const whyChain2 = await phase2(this._getRL(), ast.errors, context, source);
+          await phase5(this._getRL(), whyChain2, ast.errors);
+        }
+      }
     } else {
-      console.log(`\n✅ "${this.session.program}" compiles without errors.`);
+      console.log(`\n"${this.session.program}" compiles without errors.`);
       console.log(`Tell me what's not working and I'll help you find it.`);
-      // TODO: Phase 1+ in v0.2
-      console.log('\n(Full conversational debugging coming in v0.2)');
     }
+  }
+
+  _getRL() {
+    if (!this.rl) {
+      this.rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+    }
+    return this.rl;
   }
 
   /**
    * Phase 0 — Fast Path.
    * Matches errors against the catalog; if match is > 85% confident,
    * skip directly to recommending the fix.
+   * Returns true if fast path handled at least one error.
    */
   async _fastPath(errors) {
     console.log(`\nFound ${errors.length} issue${errors.length > 1 ? 's' : ''}:`);
 
+    let anyMatched = false;
     for (const err of errors) {
       const msg = typeof err === 'string' ? err : (err.message || '');
       console.log(`\n  ${msg}`);
@@ -186,7 +308,8 @@ class Mender {
         const m = msg.match(entry.matcher);
         if (m) {
           matched = true;
-          console.log('\n🔧  I think I know this one.');
+          anyMatched = true;
+          console.log('\nI think I know this one.');
 
           // Phase 5: Recommend exactly one fix
           const fix = typeof entry.fix === 'function' ? entry.fix.call(entry, m) : entry.fix;
@@ -202,9 +325,10 @@ class Mender {
       if (!matched) {
         console.log('\n  I don\'t have a quick fix for this one yet.');
         console.log('  Can you tell me more about what you were trying to do?');
-        // TODO: Fall through to Phase 1+ in v0.2
       }
     }
+
+    return anyMatched;
   }
 
   /**
@@ -214,7 +338,7 @@ class Mender {
     const answer = await this._ask('Did that fix it? (yes / no / partially)');
 
     if (answer === 'yes') {
-      console.log('\n✅ Great, glad that worked! Is there anything else that looks off?');
+      console.log('\nGreat, glad that worked! Is there anything else that looks off?');
     } else if (answer === 'partially') {
       console.log('\nThat\'s progress. A partial fix often means there are two issues. Let me look at this differently.');
     } else {
@@ -226,14 +350,9 @@ class Mender {
    * Ask the user a question (CLI prompt).
    */
   _ask(question) {
-    if (!this.rl) {
-      this.rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-    }
+    const rl = this._getRL();
     return new Promise((resolve) => {
-      this.rl.question(`\n❓ ${question}\n> `, (answer) => {
+      rl.question(`\n  ${question}\n  > `, (answer) => {
         resolve(answer.trim().toLowerCase());
       });
     });

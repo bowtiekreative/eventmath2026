@@ -1,5 +1,5 @@
 /**
- * EventMath Formatter v0.1
+ * EventMath Formatter v0.4
  *
  * Rewrites EventMath source into canonical form:
  *  - cat → category
@@ -10,6 +10,10 @@
  *
  * Uses the parser to build an AST, then walks the AST
  * to emit well-formatted EventMath source code.
+ *
+ * v0.4 additions:
+ *  - Mark/Set with expr format arithmetic expressions
+ *  - BrokenEvent formatting
  */
 
 class EventMathFormatter {
@@ -42,30 +46,31 @@ class EventMathFormatter {
     if (!stmt) return;
 
     switch (stmt.type) {
-      case 'Event':       return this._formatEvent(stmt);
-      case 'Layer':       return this._formatLayer(stmt);
-      case 'Timeline':    return this._formatTimeline(stmt);
-      case 'Action':      return this._formatAction(stmt);
-      case 'Mark':        return this._formatMark(stmt);
-      case 'Set':         return this._formatSet(stmt);
-      case 'Run':         return this._formatRun(stmt);
-      case 'When':        return this._formatWhen(stmt);
-      case 'Split':       return this._formatSplit(stmt);
-      case 'AgainCount':  return this._formatAgainCount(stmt);
-      case 'AgainUntil':  return this._formatAgainUntil(stmt);
-      case 'Walk':        return this._formatWalk(stmt);
-      case 'ActionCall':  return this._formatActionCall(stmt);
-      case 'Rewind':      return this._formatRewind(stmt);
-      case 'Forward':     return this._formatForward(stmt);
-      case 'Stop':        return this._formatStop(stmt);
-      case 'AddEvent':    return this._formatAddEvent(stmt);
-      case 'AddLayer':    return this._formatAddLayer(stmt);
-      case 'RemoveLayer': return this._formatRemoveLayer(stmt);
-      case 'RemoveEvent': return this._formatRemoveEvent(stmt);
-      case 'Merge':       return this._formatMerge(stmt);
-      case 'NameRef':     return this._formatNameRef(stmt);
-      case 'Overlap':     return this._formatOverlap(stmt);
-      case 'Note':        return this._formatNote(stmt);
+      case 'Event':        return this._formatEvent(stmt);
+      case 'Layer':        return this._formatLayer(stmt);
+      case 'Timeline':     return this._formatTimeline(stmt);
+      case 'Action':       return this._formatAction(stmt);
+      case 'Mark':         return this._formatMark(stmt);
+      case 'Set':          return this._formatSet(stmt);
+      case 'Run':          return this._formatRun(stmt);
+      case 'When':         return this._formatWhen(stmt);
+      case 'Split':        return this._formatSplit(stmt);
+      case 'AgainCount':   return this._formatAgainCount(stmt);
+      case 'AgainUntil':   return this._formatAgainUntil(stmt);
+      case 'Walk':         return this._formatWalk(stmt);
+      case 'ActionCall':   return this._formatActionCall(stmt);
+      case 'Rewind':       return this._formatRewind(stmt);
+      case 'Forward':      return this._formatForward(stmt);
+      case 'Stop':         return this._formatStop(stmt);
+      case 'AddEvent':     return this._formatAddEvent(stmt);
+      case 'AddLayer':     return this._formatAddLayer(stmt);
+      case 'RemoveLayer':  return this._formatRemoveLayer(stmt);
+      case 'RemoveEvent':  return this._formatRemoveEvent(stmt);
+      case 'Merge':        return this._formatMerge(stmt);
+      case 'NameRef':      return this._formatNameRef(stmt);
+      case 'Overlap':      return this._formatOverlap(stmt);
+      case 'Note':         return this._formatNote(stmt);
+      case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
     }
   }
 
@@ -167,11 +172,19 @@ class EventMathFormatter {
   // ── Mark & Set ────────────────────────────────────────────
 
   _formatMark(stmt) {
-    this._line(`mark ${stmt.name} as ${stmt.value}`);
+    if (stmt.expr) {
+      const { left, op, right } = stmt.expr;
+      this._line(`mark ${stmt.name} as ${left.value} ${op} ${right.value}`);
+    } else {
+      this._line(`mark ${stmt.name} as ${stmt.value}`);
+    }
   }
 
   _formatSet(stmt) {
-    if (stmt.value) {
+    if (stmt.expr) {
+      const { left, op, right } = stmt.expr;
+      this._line(`set ${stmt.name} to ${left.value} ${op} ${right.value}`);
+    } else if (stmt.value) {
       this._line(`set ${stmt.name} to ${stmt.value.value}`);
     } else {
       this._line(`set ${stmt.name} to`);
@@ -369,6 +382,28 @@ class EventMathFormatter {
 
   _formatNote(stmt) {
     this._line(`note ${stmt.text}`);
+  }
+
+  // ── Broken Event ──────────────────────────────────────────
+
+  _formatBrokenEvent(stmt) {
+    this._line(`broken event ${stmt.name}`);
+    if (stmt.matter && stmt.matter.fields && stmt.matter.fields.length > 0) {
+      this.indent++;
+      this._line('matter');
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${field.key} is ${field.value}`);
+        } else {
+          this._line(`${field.key} from ${field.value}`);
+        }
+      }
+      this.indent--;
+      this._line('end');
+      this.indent--;
+    }
+    this._line('end');
   }
 }
 

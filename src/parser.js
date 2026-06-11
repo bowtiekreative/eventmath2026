@@ -1,9 +1,14 @@
 /**
- * EventMath Parser v0.2
+ * EventMath Parser v0.4
  *
  * Consumes tokens from the EventMathTokenizer and builds an AST.
  * Stack-based block tracking until "end" (Law 4).
  * All while loops have safety limits to prevent hangs.
+ *
+ * v0.4 additions:
+ *  - _parseMark() detects arithmetic expr (NAME|NUMBER op NAME|NUMBER)
+ *  - _parseSet() detects arithmetic expr
+ *  - _parseBrokenEvent() for broken event statement
  */
 
 const { Token } = require('./tokenizer.js');
@@ -29,7 +34,7 @@ class EventMathParser {
   }
 
   peek() { return this.tokens[this.pos] || null; }
-  
+
   advance() {
     this._checkIter();
     const t = this.tokens[this.pos];
@@ -108,6 +113,7 @@ class EventMathParser {
       case 'merge':    return this._parseMerge();
       case 'overlap':  return this._parseOverlap();
       case 'note':     return this._parseNote();
+      case 'broken':   return this._parseBrokenEvent();
       default:         return this._parseBodyName();
     }
   }
@@ -272,13 +278,68 @@ class EventMathParser {
 
   // ── Mark & Set ───────────────────────────────────────────────────
 
+  /**
+   * _parseExprOrValue: After consuming the keyword (as/to), peek at the
+   * token stream and detect arithmetic.
+   * Pattern: (NAME|NUMBER) KEYWORD('plus'|'minus'|'times'|'divided by') (NAME|NUMBER)
+   * Returns { expr } or { value } object to spread into the AST node.
+   */
+  _parseExprOrValue() {
+    const arithmeticOps = new Set(['plus', 'minus', 'times', 'divided by']);
+    const t0 = this.peek();
+
+    if (!t0) return { value: '' };
+
+    // Look ahead for arithmetic operator
+    // t0 must be NAME or NUMBER, then a KEYWORD that is an arithmetic op, then NAME or NUMBER
+    if ((t0.type === 'NAME' || t0.type === 'NUMBER') ) {
+      // Check position pos+1
+      const t1 = this.tokens[this.pos + 1];
+      if (t1 && t1.type === 'KEYWORD' && arithmeticOps.has(t1.value)) {
+        const t2 = this.tokens[this.pos + 2];
+        if (t2 && (t2.type === 'NAME' || t2.type === 'NUMBER')) {
+          // It's arithmetic
+          const leftTok = this.advance();
+          const opTok = this.advance();
+          const rightTok = this.advance();
+          const leftKind = leftTok.type === 'NUMBER' ? 'number' : 'name';
+          const rightKind = rightTok.type === 'NUMBER' ? 'number' : 'name';
+          return {
+            value: null,
+            expr: {
+              left: { kind: leftKind, value: leftTok.value },
+              op: opTok.value,
+              right: { kind: rightKind, value: rightTok.value },
+            },
+          };
+        }
+      }
+    }
+
+    // No arithmetic — parse single value
+    const t = this.peek();
+    let value;
+    if (t && t.type === 'NUMBER') value = { kind: 'number', value: this.advance().value };
+    else if (t && t.type === 'BOOL') value = { kind: 'bool', value: this.advance().value === 'true' };
+    else if (t && t.type === 'LITERAL') value = { kind: 'literal', value: this.advance().value };
+    else if (t && t.type === 'NAME') value = { kind: 'name', value: this.advance().value };
+    else value = { kind: 'literal', value: '' };
+    return { value };
+  }
+
   _parseMark() {
     this.expect('KEYWORD', 'mark');
     const nameToken = this.expect('NAME');
     if (!nameToken) return null;
     this.expect('KEYWORD', 'as');
-    const valTok = this.expect('LITERAL');
-    return ast('Mark', { name: nameToken.value, value: valTok ? valTok.value : '' });
+
+    const parsed = this._parseExprOrValue();
+    if (parsed.expr) {
+      return ast('Mark', { name: nameToken.value, value: null, expr: parsed.expr });
+    }
+    // Legacy: value is a simple object — extract string for backward compatibility
+    const valStr = parsed.value ? (parsed.value.value !== undefined ? String(parsed.value.value) : '') : '';
+    return ast('Mark', { name: nameToken.value, value: valStr });
   }
 
   _parseSet() {
@@ -286,12 +347,12 @@ class EventMathParser {
     const nameToken = this.expect('NAME');
     if (!nameToken) return null;
     this.expect('KEYWORD', 'to');
-    const t = this.peek();
-    let value;
-    if (t && t.type === 'NUMBER') value = { kind: 'number', value: this.advance().value };
-    else if (t && t.type === 'BOOL') value = { kind: 'bool', value: this.advance().value === 'true' };
-    else if (t) value = { kind: 'literal', value: this.advance().value };
-    return ast('Set', { name: nameToken.value, value });
+
+    const parsed = this._parseExprOrValue();
+    if (parsed.expr) {
+      return ast('Set', { name: nameToken.value, value: null, expr: parsed.expr });
+    }
+    return ast('Set', { name: nameToken.value, value: parsed.value });
   }
 
   // ── Run ──────────────────────────────────────────────────────────
@@ -560,6 +621,22 @@ class EventMathParser {
     this.expect('KEYWORD', 'note');
     const textTok = this.expect('LITERAL');
     return ast('Note', { text: textTok ? textTok.value : '' });
+  }
+
+  // ── Broken Event ─────────────────────────────────────────────────
+
+  _parseBrokenEvent() {
+    this.expect('KEYWORD', 'broken');
+    this.expect('KEYWORD', 'event');
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock('broken event');
+    const result = ast('BrokenEvent', { name: nameToken.value, matter: null });
+    if (this.isKeyword('matter')) {
+      this.advance();
+      result.matter = this._parseMatterBlock();
+    }
+    this.expect('KEYWORD', 'end');
+    return result;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

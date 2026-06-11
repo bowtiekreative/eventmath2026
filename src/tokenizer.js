@@ -1,5 +1,5 @@
 /**
- * EventMath Tokenizer v0.2
+ * EventMath Tokenizer v0.4
  *
  * Line-oriented tokenizer. One idea per line.
  * The FIRST token on each line determines the statement type.
@@ -11,6 +11,11 @@
  *
  * Law 4 — Blocks end with `end`. Indentation is cosmetic.
  * Law 5 — No silent autocorrect. Friendly precision instead.
+ *
+ * v0.4 additions:
+ *  - _tokenizeValue() helper for arithmetic in set/mark
+ *  - _brokenEvent() for broken event statement
+ *  - 'broken' added to KEYWORDS
  */
 
 const KEYWORDS = new Set([
@@ -19,7 +24,7 @@ const KEYWORDS = new Set([
   'split', 'path', 'again', 'walk', 'end', 'is', 'from', 'as', 'to',
   'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
-  'and', 'not', 'until', 'overlap', 'note',
+  'and', 'not', 'until', 'overlap', 'note', 'broken',
 ]);
 
 class Token {
@@ -86,6 +91,11 @@ class EventMathTokenizer {
       } else {
         return this._keywordName(lead, words.slice(1), lineNum);
       }
+    }
+
+    // broken event → broken event <name>
+    if (lead === 'broken') {
+      return this._brokenEvent(words, lineNum);
     }
 
     // mark → mark <name> as <literal>
@@ -230,14 +240,77 @@ class EventMathTokenizer {
     return tokens;
   }
 
+  /**
+   * Tokenize a value, detecting arithmetic expressions.
+   * Operators (priority): 'divided by' (2 words), 'plus', 'minus', 'times'
+   * If arithmetic found: emit (NAME|NUMBER) KEYWORD(op) (NAME|NUMBER)
+   * Otherwise: emit LITERAL/NUMBER/BOOL as appropriate.
+   *
+   * Note: 'plus', 'minus', 'times', 'divided' are NOT added to KEYWORDS —
+   * they are only recognized here in value position.
+   */
+  _tokenizeValue(words, lineNum) {
+    const tokens = [];
+
+    if (!words || words.length === 0) return tokens;
+
+    // Check for 'divided by' (two-word operator) first
+    for (let i = 0; i < words.length - 1; i++) {
+      if (words[i].toLowerCase() === 'divided' && words[i + 1].toLowerCase() === 'by') {
+        const left = words.slice(0, i).join(' ');
+        const right = words.slice(i + 2).join(' ');
+        tokens.push(...this._tokenizeSingleValue(left, lineNum));
+        tokens.push(new Token('KEYWORD', 'divided by', lineNum));
+        tokens.push(...this._tokenizeSingleValue(right, lineNum));
+        return tokens;
+      }
+    }
+
+    // Check for single-word operators: plus, minus, times
+    const singleOps = ['plus', 'minus', 'times'];
+    for (const op of singleOps) {
+      const idx = words.findIndex(w => w.toLowerCase() === op);
+      if (idx > 0 && idx < words.length - 1) {
+        const left = words.slice(0, idx).join(' ');
+        const right = words.slice(idx + 1).join(' ');
+        tokens.push(...this._tokenizeSingleValue(left, lineNum));
+        tokens.push(new Token('KEYWORD', op, lineNum));
+        tokens.push(...this._tokenizeSingleValue(right, lineNum));
+        return tokens;
+      }
+    }
+
+    // No arithmetic found — emit single value
+    const val = words.join(' ');
+    tokens.push(...this._tokenizeSingleValue(val, lineNum));
+    return tokens;
+  }
+
+  /**
+   * Emit a single value token (NUMBER, BOOL, NAME, or LITERAL).
+   */
+  _tokenizeSingleValue(val, lineNum) {
+    if (!val) return [];
+    if (/^\d+(\.\d+)?$/.test(val)) {
+      return [new Token('NUMBER', val, lineNum)];
+    }
+    if (val === 'true' || val === 'false') {
+      return [new Token('BOOL', val, lineNum)];
+    }
+    // If it looks like a simple name reference (no spaces), use NAME
+    // If it has spaces and isn't a number/bool, it's ambiguous — use NAME for references
+    // The parser will handle the distinction
+    return [new Token('NAME', val, lineNum)];
+  }
+
   _mark(words, lineNum) {
-    // mark <name> as <literal>
+    // mark <name> as <value>
     const tokens = [new Token('KEYWORD', 'mark', lineNum)];
     const asIdx = this._indexOf(words, 'as');
     if (asIdx > 0) {
       tokens.push(new Token('NAME', words.slice(1, asIdx).join(' '), lineNum));
       tokens.push(new Token('KEYWORD', 'as', lineNum));
-      tokens.push(new Token('LITERAL', words.slice(asIdx + 1).join(' '), lineNum));
+      tokens.push(...this._tokenizeValue(words.slice(asIdx + 1), lineNum));
     }
     return tokens;
   }
@@ -249,14 +322,7 @@ class EventMathTokenizer {
     if (toIdx > 0) {
       tokens.push(new Token('NAME', words.slice(1, toIdx).join(' '), lineNum));
       tokens.push(new Token('KEYWORD', 'to', lineNum));
-      const val = words.slice(toIdx + 1).join(' ');
-      if (/^\d+(\.\d+)?$/.test(val)) {
-        tokens.push(new Token('NUMBER', val, lineNum));
-      } else if (val === 'true' || val === 'false') {
-        tokens.push(new Token('BOOL', val, lineNum));
-      } else {
-        tokens.push(new Token('LITERAL', val, lineNum));
-      }
+      tokens.push(...this._tokenizeValue(words.slice(toIdx + 1), lineNum));
     }
     return tokens;
   }
@@ -398,6 +464,20 @@ class EventMathTokenizer {
       tokens.push(new Token('NAME', words.slice(1, intoIdx).join(' '), lineNum));
       tokens.push(new Token('KEYWORD', 'into', lineNum));
       tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * Broken event: broken event <name>
+   */
+  _brokenEvent(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'broken', lineNum)];
+    if (words[1] === 'event') {
+      tokens.push(new Token('KEYWORD', 'event', lineNum));
+      if (words.length > 2) {
+        tokens.push(new Token('NAME', words.slice(2).join(' '), lineNum));
+      }
     }
     return tokens;
   }
