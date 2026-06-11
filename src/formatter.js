@@ -53,6 +53,7 @@ class EventMathFormatter {
       case 'Mark':         return this._formatMark(stmt);
       case 'Set':          return this._formatSet(stmt);
       case 'Run':          return this._formatRun(stmt);
+      case 'Show':         return this._formatShow(stmt);
       case 'When':         return this._formatWhen(stmt);
       case 'Split':        return this._formatSplit(stmt);
       case 'AgainCount':   return this._formatAgainCount(stmt);
@@ -252,6 +253,14 @@ class EventMathFormatter {
       this._line(`run ${stmt.target}`);
     } else {
       this._line('run');
+    }
+  }
+
+  _formatShow(stmt) {
+    if (stmt.target) {
+      this._line(`show ${stmt.target}`);
+    } else {
+      this._line('show');
     }
   }
 

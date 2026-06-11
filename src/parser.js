@@ -105,6 +105,7 @@ class EventMathParser {
       case 'mark':     return this._parseMark();
       case 'set':      return this._parseSet();
       case 'run':      return this._parseRun();
+      case 'show':     return this._parseShow();
       case 'when':     return this._parseWhen();
       case 'split':    return this._parseSplit();
       case 'again':    return this._parseAgain();
@@ -420,6 +421,12 @@ class EventMathParser {
     this.expect('KEYWORD', 'run');
     const t = this.peek();
     return ast('Run', { target: t && t.type === 'NAME' ? this.advance().value : null });
+  }
+
+  _parseShow() {
+    this.expect('KEYWORD', 'show');
+    const t = this.peek();
+    return ast('Show', { target: t && t.type === 'NAME' ? this.advance().value : null });
   }
 
   // ── Use statement ────────────────────────────────────────────────

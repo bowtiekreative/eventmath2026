@@ -268,6 +268,7 @@ class EventMathCodeGen {
       case 'Mark':           return this._genMark(stmt);
       case 'Set':            return this._genSet(stmt);
       case 'Run':            return this._genRun(stmt);
+      case 'Show':           return this._genShow(stmt);
       case 'When':           return this._genWhen(stmt);
       case 'Split':          return this._genSplit(stmt);
       case 'AgainCount':     return this._genAgainCount(stmt);
@@ -909,6 +910,16 @@ class EventMathCodeGen {
         this._line(`console.log(${this._safeName(stmt.target)}.render());`);
       }
     }
+  }
+
+  _genShow(stmt) {
+    if (!stmt.target) {
+      this._line(`console.log('');`);
+      return;
+    }
+    const label = stmt.target;
+    const safeName = this._safeName(label);
+    this._line(`{ const __sv = ${safeName}; if (__sv !== null && __sv !== undefined && typeof __sv.render === 'function') { console.log(__sv.render()); } else { console.log('${label.replace(/'/g, "\\'")}:', __sv); } }`);
   }
 
   // ── Conditionals ────────────────────────────────────────────────

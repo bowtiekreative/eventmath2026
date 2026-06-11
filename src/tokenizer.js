@@ -27,7 +27,7 @@ const KEYWORDS = new Set([
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
   'sort', 'filter', 'find', 'count', 'where', 'descending',
   'predict', 'across', 'resolve',
-  'zoom',
+  'zoom', 'show',
 ]);
 
 class Token {
@@ -124,6 +124,11 @@ class EventMathTokenizer {
     // run → run <target>
     if (lead === 'run') {
       return this._run(words, lineNum);
+    }
+
+    // show → show <markname>
+    if (lead === 'show') {
+      return this._show(words, lineNum);
     }
 
     // when → when <condition>
@@ -443,6 +448,14 @@ class EventMathTokenizer {
 
   _run(words, lineNum) {
     const tokens = [new Token('KEYWORD', 'run', lineNum)];
+    if (words.length > 1) {
+      tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  _show(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'show', lineNum)];
     if (words.length > 1) {
       tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
     }

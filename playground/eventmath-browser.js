@@ -273,6 +273,8 @@
     'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
     'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
     'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
+    'sort', 'filter', 'find', 'count', 'where', 'descending',
+    'predict', 'across', 'resolve', 'zoom', 'show',
   ]);
 
   function Token(type, value, line) {
@@ -330,6 +332,7 @@
     if (lead === 'mark') return this._mark(words, lineNum);
     if (lead === 'set') return this._set(words, lineNum);
     if (lead === 'run') return this._run(words, lineNum);
+    if (lead === 'show') return this._show(words, lineNum);
     if (lead === 'when') return this._when(words, lineNum);
     if (lead === 'again') return this._again(words, lineNum);
     if (lead === 'walk') return this._walk(words, lineNum);
@@ -467,6 +470,12 @@
 
   EventMathTokenizer.prototype._run = function (words, lineNum) {
     var tokens = [new Token('KEYWORD', 'run', lineNum)];
+    if (words.length > 1) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    return tokens;
+  };
+
+  EventMathTokenizer.prototype._show = function (words, lineNum) {
+    var tokens = [new Token('KEYWORD', 'show', lineNum)];
     if (words.length > 1) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
     return tokens;
   };
@@ -822,6 +831,7 @@
       case 'mark':     return this._parseMark();
       case 'set':      return this._parseSet();
       case 'run':      return this._parseRun();
+      case 'show':     return this._parseShow();
       case 'when':     return this._parseWhen();
       case 'split':    return this._parseSplit();
       case 'again':    return this._parseAgain();
@@ -1061,6 +1071,12 @@
     this.expect('KEYWORD', 'run');
     var t = this.peek();
     return astNode('Run', { target: t && t.type === 'NAME' ? this.advance().value : null });
+  };
+
+  EventMathParser.prototype._parseShow = function () {
+    this.expect('KEYWORD', 'show');
+    var t = this.peek();
+    return astNode('Show', { target: t && t.type === 'NAME' ? this.advance().value : null });
   };
 
   EventMathParser.prototype._parseUse = function () {
@@ -1492,6 +1508,7 @@
       case 'Mark':        return; // hoisted
       case 'Set':         return this._genSet(stmt);
       case 'Run':         return this._genRun(stmt);
+      case 'Show':        return this._genShow(stmt);
       case 'When':        return this._genWhen(stmt);
       case 'Split':       return this._genSplit(stmt);
       case 'AgainCount':  return this._genAgainCount(stmt);
@@ -1693,6 +1710,13 @@
         this._line('console.log(' + this._safeName(stmt.target) + '.render());');
       }
     }
+  };
+
+  EventMathCodeGen.prototype._genShow = function (stmt) {
+    if (!stmt.target) { this._line("console.log('');"); return; }
+    var label = stmt.target;
+    var safeName = this._safeName(label);
+    this._line('{ var __sv = ' + safeName + '; if (__sv !== null && __sv !== undefined && typeof __sv.render === "function") { console.log(__sv.render()); } else { console.log(' + JSON.stringify(label) + ' + ":", __sv); } }');
   };
 
   EventMathCodeGen.prototype._genWhen = function (stmt) {
