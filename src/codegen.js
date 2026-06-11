@@ -92,11 +92,17 @@ class EventMathCodeGen {
     }
 
     // Emit hoisted variable declarations (marks/sets discovered during first pass)
+    // Complex expressions (rawExpr) are hoisted as undefined and assigned inline
+    // to avoid referencing variables not yet defined at hoist time.
     if (this._varDecls.length > 0) {
       for (const decl of this._varDecls) {
         const safe = this._safeName(decl.name);
-        const val = decl.rawExpr !== undefined ? decl.rawExpr : decl.value;
-        this._line(`let ${safe} = ${val !== undefined ? val : 'undefined'};`);
+        if (decl.rawExpr !== undefined) {
+          this._line(`let ${safe};`);
+        } else {
+          const val = decl.value;
+          this._line(`let ${safe} = ${val !== undefined ? val : 'undefined'};`);
+        }
       }
       this._line('');
     }
@@ -432,9 +438,17 @@ class EventMathCodeGen {
   // ── Mark & Set ──────────────────────────────────────────────────
 
   _genMark(stmt) {
-    // Declaration was already hoisted during first pass
-    // No need to emit let — just the initial value is inline in the hoist
-    // (builtinExpr, stringOp, expr, and value are all handled in firstPass)
+    const varName = this._safeName(stmt.name);
+    // For complex expressions (builtinExpr, stringOp, expr), the hoist only
+    // emitted `let x;` — assign the value inline here where the mark appears.
+    if (stmt.builtinExpr) {
+      this._line(`${varName} = ${this._genBuiltinExpr(stmt.builtinExpr)};`);
+    } else if (stmt.stringOp) {
+      this._line(`${varName} = ${this._genStringOp(stmt)};`);
+    } else if (stmt.expr) {
+      this._line(`${varName} = ${this._genExpr(stmt.expr)};`);
+    }
+    // Simple value marks: already fully initialized in the hoist, no inline needed
   }
 
   _typedValueFromString(str) {
