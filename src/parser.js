@@ -105,6 +105,7 @@ class EventMathParser {
     if (t.type === 'WEIGHT_STMT')   return this._parseWeightStmt();
     if (t.type === 'EXPLAIN_STMT')  return this._parseExplainStmt();
     if (t.type === 'ANALOGY_STMT')   return this._parseAnalogyStmt();
+    if (t.type === 'BOUND_STMT')    return this._parseBoundStmt();
     if (t.type === 'LANDSCAPE_STMT') return this._parseLandscapeStmt();
     if (t.type === 'FORECAST_STMT')  return this._parseForecastStmt();
 
@@ -311,7 +312,7 @@ class EventMathParser {
     const firstTok = this.peek();
     if (!firstTok) return { value: '' };
 
-    const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by']);
+    const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by', 'take away']);
 
     // Handle BUILTIN token — emitted by _findBuiltinOp in tokenizer
     if (firstTok.type === 'BUILTIN') {
@@ -945,6 +946,16 @@ class EventMathParser {
     const t = this.advance();
     if (!t || !t.value) return null;
     return ast('AnalogyStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseBoundStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('BoundStmt', {
       firstName:  t.value.firstName,
       secondName: t.value.secondName,
       intoName:   t.value.intoName

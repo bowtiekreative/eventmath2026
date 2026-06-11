@@ -93,6 +93,7 @@ class EventMathFormatter {
       case 'AnalogyStmt':   return this._formatAnalogyStmt(stmt);
       case 'LandscapeStmt': return this._formatLandscapeStmt(stmt);
       case 'ForecastStmt':  return this._formatForecastStmt(stmt);
+      case 'BoundStmt':     return this._formatBoundStmt(stmt);
     }
   }
 
@@ -578,6 +579,10 @@ class EventMathFormatter {
 
   _formatForecastStmt(stmt) {
     this._line(`forecast from ${stmt.landscapeName} into ${stmt.intoName}`);
+  }
+
+  _formatBoundStmt(stmt) {
+    this._line(`bound ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

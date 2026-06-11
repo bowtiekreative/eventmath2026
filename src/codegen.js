@@ -282,6 +282,12 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        case 'BoundStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -353,6 +359,7 @@ class EventMathCodeGen {
       case 'AnalogyStmt':    return this._genAnalogyStmt(stmt);
       case 'LandscapeStmt':  return this._genLandscapeStmt(stmt);
       case 'ForecastStmt':   return this._genForecastStmt(stmt);
+      case 'BoundStmt':      return this._genBoundStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -512,7 +519,10 @@ class EventMathCodeGen {
     if (!str) return '""';
     if (str === 'true') return 'true';
     if (str === 'false') return 'false';
-    if (/^\d+(\.\d+)?$/.test(str)) return str;
+    if (str === 'past')    return '-1';
+    if (str === 'present') return '0';
+    if (str === 'future')  return '1';
+    if (/^-?\d+(\.\d+)?$/.test(str)) return str;
     return `"${this._escape(str)}"`;
   }
 
@@ -535,12 +545,21 @@ class EventMathCodeGen {
     if (!value) return '""';
     if (value.kind === 'number') return value.value;
     if (value.kind === 'bool') return value.value ? 'true' : 'false';
-    if (value.kind === 'name') return this._safeRef(value.value);
+    if (value.kind === 'name') {
+      const n = value.value;
+      if (n === 'past')    return '-1';
+      if (n === 'present') return '0';
+      if (n === 'future')  return '1';
+      return this._safeRef(n);
+    }
     // Literal — detect boolean/number strings
     const raw = value.value || '';
     if (raw === 'true') return 'true';
     if (raw === 'false') return 'false';
-    if (/^\d+(\.\d+)?$/.test(raw)) return raw;
+    if (raw === 'past')    return '-1';
+    if (raw === 'present') return '0';
+    if (raw === 'future')  return '1';
+    if (/^-?\d+(\.\d+)?$/.test(raw)) return raw;
     return `"${this._escape(raw)}"`;
   }
 
@@ -650,6 +669,10 @@ class EventMathCodeGen {
     if (kind === 'dimension_of') {
       const targetName = this._safeName(op.target);
       return `(${targetName}.dimension || 2)`;
+    }
+    if (kind === 'sqrt') {
+      const a = this._resolveOperand(op.a);
+      return `Math.sqrt(${a})`;
     }
     if (kind === 'weighted_accuracy_of') {
       const layerName = this._safeName(op.layer.join(' '));
@@ -892,9 +915,13 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     const srcEsc    = this._escape(stmt.sourceName);
 
-    const dim = (stmt.dimension && stmt.dimension >= 2 && stmt.dimension <= 13)
-      ? stmt.dimension : 2;
-    this._line(`// spin ${srcEsc} into ${intoEsc}  [D${dim}]`);
+    // Accept negative dimensions (-13 to -2) as well as positive (2 to 13)
+    const rawDim = typeof stmt.dimension === 'number' ? stmt.dimension : 2;
+    const absD   = Math.abs(rawDim);
+    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 13 ? 13 : absD)
+                              : (absD < 2 ? 2 : absD > 13 ? 13 : absD);
+    const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D' + dim;
+    this._line(`// spin ${srcEsc} into ${intoEsc}  [${dimLabel}]`);
     this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
     this._line(`${torusVar}.spinFrom(${sourceVar}, ${dim});`);
     this._line('');
@@ -1076,6 +1103,22 @@ class EventMathCodeGen {
     this._line('');
   }
 
+  // bound <firstName> and <secondName> into <intoName>
+  // Bridges negative-D and positive-D toruses into the full complex axis structure:
+  //   bridge (i), anti-bridge (-i), meta (ℝ), anti-meta (-ℝ), grand (ℂ)
+  _genBoundStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const firstEsc  = this._escape(stmt.firstName);
+    const secondEsc = this._escape(stmt.secondName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// bound "${firstEsc}" and "${secondEsc}" → "${intoEsc}"`);
+    this._line(`// bridge=i  anti-bridge=-i  meta=R  anti-meta=-R  grand=C`);
+    this._line(`${intoVar} = new EM.EventMathAxis('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
+  }
+
   /**
    * Generate a JS boolean expression checking _p.matter fields from a condition node or string.
    * condStr: raw "field is value and field2 is value2" string  (for accuracy_of)
@@ -1188,7 +1231,7 @@ class EventMathCodeGen {
   _genExpr(node) {
     if (!node) return '0';
     if (node.kind === 'expr') {
-      const ops = { plus: '+', minus: '-', times: '*', 'divided by': '/' };
+      const ops = { plus: '+', minus: '-', times: '*', 'divided by': '/', 'take away': '-' };
       const jsOp = ops[node.op] || '+';
       const left  = node.left.kind  === 'expr' ? `(${this._genExpr(node.left)})`  : this._exprOperand(node.left);
       const right = node.right.kind === 'expr' ? `(${this._genExpr(node.right)})` : this._exprOperand(node.right);
@@ -1200,7 +1243,14 @@ class EventMathCodeGen {
   _exprOperand(operand) {
     if (!operand) return '0';
     if (operand.kind === 'number') return operand.value;
-    if (operand.kind === 'name') return this._safeRef(operand.value);
+    if (operand.kind === 'name') {
+      // past/present/future are the numberless numbers: -1, 0, 1
+      const n = operand.value;
+      if (n === 'past')    return '-1';
+      if (n === 'present') return '0';
+      if (n === 'future')  return '1';
+      return this._safeRef(n);
+    }
     return `"${this._escape(operand.value || '')}"`;
   }
 

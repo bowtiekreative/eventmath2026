@@ -29,7 +29,7 @@ const KEYWORDS = new Set([
   'predict', 'across', 'resolve',
   'zoom', 'show',
   'spin', 'vibrate', 'cycle', 'resonate',
-  'weight', 'explain', 'analogy',
+  'weight', 'explain', 'analogy', 'bound',
   'landscape', 'forecast', 'dimension',
 ]);
 
@@ -167,6 +167,11 @@ class EventMathTokenizer {
     // analogy → analogy <X> and <Y> into <Z>   (analogical)
     if (lead === 'analogy') {
       return this._analogyStmt(words, lineNum);
+    }
+
+    // bound → bound <X> and <Y> into <Z>  (complex axis structure)
+    if (lead === 'bound') {
+      return this._boundStmt(words, lineNum);
     }
 
     // landscape → landscape from <T1> and <T2> ... into <name>
@@ -425,6 +430,8 @@ class EventMathTokenizer {
     for (let i = 0; i < words.length; i++) {
       if (words[i] === 'divided' && i + 1 < words.length && words[i + 1] === 'by') {
         segments.push(current); operators.push('divided by'); current = []; i++;
+      } else if (words[i] === 'take' && i + 1 < words.length && words[i + 1] === 'away') {
+        segments.push(current); operators.push('take away'); current = []; i++;
       } else if (['plus', 'minus', 'times'].includes(words[i])) {
         segments.push(current); operators.push(words[i]); current = [];
       } else {
@@ -529,6 +536,18 @@ class EventMathTokenizer {
       dimension = 2;
     }
     return [new Token('SPIN_STMT', { sourceName, intoName, dimension }, lineNum)];
+  }
+
+  // bound <firstName> and <secondName> into <intoName>
+  // Creates the full dimensional axis: bridge (i), anti-bridge (-i), meta (ℝ), anti-meta (-ℝ), grand (ℂ)
+  _boundStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'bound', lineNum)];
+    const firstName  = words.slice(1, andIdx).join(' ');
+    const secondName = words.slice(andIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('BOUND_STMT', { firstName, secondName, intoName }, lineNum)];
   }
 
   // landscape from <T1> and <T2> [and <TN>] into <name>
@@ -1074,6 +1093,12 @@ class EventMathTokenizer {
     // dimension of <target>
     if (w0 === 'dimension' && w1 === 'of') {
       return { kind: 'dimension_of', target: words.slice(2).join(' ') };
+    }
+
+    // rewind of <X> → square root (√X)  — math identity: rewind = inverse square
+    if (words[0] === 'rewind' && words[1] === 'of') {
+      const a = words.slice(2);
+      if (a.length > 0) return { kind: 'sqrt', a };
     }
 
     return null;

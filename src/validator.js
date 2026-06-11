@@ -119,6 +119,11 @@ class EventMathValidator {
             this.events.set(stmt.intoName, true);
           }
           break;
+        case 'BoundStmt':
+          if (stmt.intoName) {
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
       }
     }
   }

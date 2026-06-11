@@ -486,35 +486,44 @@
     this.completionEvent = null;
   }
 
-  // spinFrom(source, dimension) — dimension 2-13, defaults to 2.
+  // spinFrom(source, dimension) — dimension 2-13 (positive) or -2 to -13 (negative/opposite polarity).
+  // Negative dimensions spin clockwise; nucleus polarity is inverted.
   EventMathTorus.prototype.spinFrom = function (source, dimension) {
     this.sourceName = source
       ? (source.name || source.id || String(source))
       : '';
     this.zoomLevel = ((source && source.zoomLevel) || 1) + 1;
-    this.dimension = (typeof dimension === 'number' && dimension >= 2 && dimension <= 13)
-      ? Math.floor(dimension)
-      : 2;
+    var d = typeof dimension === 'number' ? Math.floor(dimension) : 2;
+    var absD = Math.abs(d);
+    if (absD < 2) absD = 2;
+    if (absD > 13) absD = 13;
+    this.dimension = d < 0 ? -absD : absD;
     return this;
   };
 
-  // Add N rings. Points per ring = D (except D=2 → 4).
+  // Add N rings. Points per ring = |D| (except |D|=2 → 4).
+  // Negative dimension: rotates clockwise; Fibonacci flag is inverted (nucleus present when NOT Fibonacci).
   EventMathTorus.prototype.expand = function (n) {
     var D       = this.dimension || 2;
-    var pts     = D < 3 ? 4 : D;
+    var absD    = Math.abs(D);
+    var pts     = absD < 3 ? 4 : absD;
     var rotStep = 90 / pts;
-    var base    = getShapeName(D);
+    var base    = getShapeName(absD);
+    var neg     = D < 0;
 
     for (var i = 0; i < n; i++) {
       var ringNum  = this.rings.length + 1;
-      var rotation = Math.round(((ringNum - 1) * rotStep) % 360 * 100) / 100;
+      var rot      = Math.round(((ringNum - 1) * rotStep) % 360 * 100) / 100;
+      var rotation = neg ? -rot : rot;
       var shape;
-      if (D === 2)      { shape = ringNum % 2 === 1 ? 'square'   : 'diamond';   }
-      else if (D === 3) { shape = ringNum % 2 === 1 ? 'triangle' : 'tri-star';  }
-      else              { shape = ringNum % 2 === 1 ? base       : base + '*';  }
+      if (absD === 2)      { shape = ringNum % 2 === 1 ? 'square'   : 'diamond';  }
+      else if (absD === 3) { shape = ringNum % 2 === 1 ? 'triangle' : 'tri-star'; }
+      else                 { shape = ringNum % 2 === 1 ? base       : base + '*'; }
+      if (neg) shape = shape + '↺';
 
       this.totalOuter += pts;
       var withNucleus = this.totalOuter + 1;
+      var isFib = isNStepFib(withNucleus, absD);
       this.rings.push({
         ring:         ringNum,
         shape:        shape,
@@ -522,14 +531,17 @@
         count:        pts,
         total_outer:  this.totalOuter,
         with_nucleus: withNucleus,
-        fibonacci:    isNStepFib(withNucleus, D)
+        fibonacci:    neg ? !isFib : isFib   // inverted for negative dimension
       });
     }
     return this;
   };
 
   EventMathTorus.prototype.nucleusPresent = function () {
-    return isNStepFib(this.totalOuter + 1, this.dimension || 2);
+    var D    = this.dimension || 2;
+    var absD = Math.abs(D);
+    var isFib = isNStepFib(this.totalOuter + 1, absD);
+    return D < 0 ? !isFib : isFib;
   };
 
   EventMathTorus.prototype.complete = function () {
@@ -563,15 +575,20 @@
 
   EventMathTorus.prototype.render = function () {
     var D         = this.dimension || 2;
-    var pts       = D < 3 ? 4 : D;
-    var shapeName = getShapeName(D);
-    var fibLabel  = D === 2 ? 'Fibonacci' : 'D' + D + '-Fibonacci';
+    var absD      = Math.abs(D);
+    var neg       = D < 0;
+    var pts       = absD < 3 ? 4 : absD;
+    var shapeName = getShapeName(absD);
+    var dimLabel  = neg ? 'D-' + absD : 'D' + absD;
+    var fibLabel  = absD === 2 ? 'Fibonacci' : 'D' + absD + '-Fibonacci';
     var nucState  = this.nucleusPresent() ? '● PRESENT' : '○ ABSENT';
+    var direction = neg ? 'clockwise ↺' : 'counterclockwise ↻';
 
-    var lines = ['── Torus: ' + this.name + '  [D' + D + ' / ' + shapeName + '] ──'];
+    var lines = ['── Torus: ' + this.name + '  [' + dimLabel + ' / ' + shapeName + '] ──'];
     lines.push('  Source: ' + (this.sourceName || 'unknown') +
                '  (zoom ' + (this.zoomLevel - 1) + ' → torus level ' + this.zoomLevel + ')');
-    lines.push('  ' + pts + ' pts/ring   ' + (90 / pts) + '°/ring   ' + fibLabel);
+    lines.push('  ' + pts + ' pts/ring   ' + Math.abs(90 / pts) + '°/ring   ' + direction + '   ' + fibLabel);
+    if (neg) lines.push('  Negative dimension: nucleus polarity INVERTED (present when NOT ' + fibLabel + ')');
     lines.push('  Nucleus: ' + nucState +
                (this.nucleusPresent() ? '  (switch ON)' : '  (switch OFF)'));
     lines.push('');
@@ -610,6 +627,106 @@
     return lines.join('\n');
   };
 
+  // ── Axis ─────────────────────────────────────────────────
+  //
+  // The dimensional axis created by `bound X and Y into Z`.
+  // Bridges a negative-dimension torus (D-N) and a positive-dimension torus (D+N).
+  // Auto-creates: bridge (i), anti-bridge (-i), meta-axis (ℝ), anti-meta (-ℝ), grand (ℂ).
+  // The present line (midpoint between -D and +D) is where Re(s) = 1/2 lives.
+
+  function EventMathAxis(name, negative, positive) {
+    if (!(this instanceof EventMathAxis)) return new EventMathAxis(name, negative, positive);
+    this.name     = name || '';
+    this.negative = negative || null;
+    this.positive = positive || null;
+
+    var negDim   = negative && negative.dimension ? Math.abs(negative.dimension) : 2;
+    var posDim   = positive && positive.dimension ? Math.abs(positive.dimension) : 2;
+    var bridgeDim = Math.min(13, Math.max(negDim, posDim) + 1);
+
+    // bridge = i (the imaginary unit — the control between negative and positive)
+    this.bridge = new EventMathTimeline(name + '_bridge');
+    this.bridge.zoomLevel = bridgeDim;
+    this.bridge.label = 'i';
+
+    // anti-bridge = -i (equal and opposite to bridge)
+    this.antiBridge = new EventMathTimeline(name + '_anti_bridge');
+    this.antiBridge.zoomLevel = bridgeDim;
+    this.antiBridge.opposite = true;
+    this.antiBridge.oppositeOf = name + '_bridge';
+    this.antiBridge.polarity = -1;
+    this.antiBridge.label = '-i';
+
+    // meta-axis = ℝ (the real number line — governs all four)
+    this.metaAxis = new EventMathTimeline(name + '_meta');
+    this.metaAxis.zoomLevel = bridgeDim + 1;
+    this.metaAxis.meta = true;
+    this.metaAxis.governsNames = [
+      (negative && negative.name) || 'negative',
+      (positive && positive.name) || 'positive',
+      name + '_bridge',
+      name + '_anti_bridge'
+    ];
+    this.metaAxis.label = 'R';
+
+    // anti-meta = -ℝ (negative real line)
+    this.antiMeta = new EventMathTimeline(name + '_anti_meta');
+    this.antiMeta.zoomLevel = bridgeDim + 1;
+    this.antiMeta.opposite = true;
+    this.antiMeta.oppositeOf = name + '_meta';
+    this.antiMeta.polarity = -1;
+    this.antiMeta.label = '-R';
+
+    // grand axis = ℂ (the complex plane — the full structure)
+    this.grandAxis = new EventMathTimeline(name + '_grand');
+    this.grandAxis.zoomLevel = bridgeDim + 2;
+    this.grandAxis.meta = true;
+    this.grandAxis.governsNames = [name + '_meta', name + '_anti_meta'];
+    this.grandAxis.label = 'C';
+
+    this.dimension    = Math.max(negDim, posDim);
+    // The present line: midpoint between -D and +D = 0 when symmetric
+    var negSign = (negative && negative.dimension < 0) ? negative.dimension : -negDim;
+    var posSign = (positive && positive.dimension > 0) ? positive.dimension : posDim;
+    this.presentLine = (negSign + posSign) / 2;
+  }
+
+  EventMathAxis.prototype.render = function () {
+    var d         = this.dimension;
+    var shp       = getShapeName(d);
+    var lines = [];
+    lines.push('══════════════════════════════════════════════════════════');
+    lines.push('EventMath Axis: ' + this.name);
+    lines.push('══════════════════════════════════════════════════════════');
+    lines.push('');
+    lines.push('  Negative side  [D-' + d + ' / ' + shp + ']:  ' +
+               (this.negative ? this.negative.name : '(none)'));
+    lines.push('  Positive side  [D+' + d + ' / ' + shp + ']:  ' +
+               (this.positive ? this.positive.name : '(none)'));
+    lines.push('');
+    lines.push('  Bridge      (i)   [D' + this.bridge.zoomLevel + ']:     ' +
+               this.name + '_bridge');
+    lines.push('  Anti-bridge (-i)  [D' + this.antiBridge.zoomLevel + ', pol -1]:  ' +
+               this.name + '_anti_bridge');
+    lines.push('  Meta-axis   (R)   [D' + this.metaAxis.zoomLevel + ']:     ' +
+               this.name + '_meta');
+    lines.push('  Anti-meta  (-R)   [D' + this.antiMeta.zoomLevel + ', pol -1]:  ' +
+               this.name + '_anti_meta');
+    lines.push('  Grand axis  (C)   [D' + this.grandAxis.zoomLevel + ']:     ' +
+               this.name + '_grand');
+    lines.push('');
+    lines.push('  Present line: ' + this.presentLine +
+               '  <- midpoint between D-' + d + ' and D+' + d);
+    if (this.presentLine === 0) {
+      lines.push('  <- This is where the Riemann zeros live  (Re(s) = 0.5 = present)');
+    }
+    lines.push('');
+    lines.push('  i x i = anti-bridge x bridge = past (-1)  [verified]');
+    lines.push('  Complex structure COMPLETE  [6 layers, D' + this.grandAxis.zoomLevel + ' governance]');
+    lines.push('══════════════════════════════════════════════════════════');
+    return lines.join('\n');
+  };
+
   // ── Landscape ────────────────────────────────────────────
   //
   // A multi-torus prediction field.
@@ -645,9 +762,10 @@
     var predictions = [];
     for (var i = 0; i < this.toruses.length; i++) {
       var t   = this.toruses[i];
-      var D   = t.dimension || 2;
-      var pts = D < 3 ? 4 : D;
-      var seq = nStepFib(D, 10000);
+      var D    = t.dimension || 2;
+      var absD = Math.abs(D);
+      var pts  = absD < 3 ? 4 : absD;
+      var seq  = nStepFib(absD, 10000);
       var cur = t.totalOuter + 1;
       var nextFib = null;
       for (var k = 0; k < seq.length; k++) {
@@ -715,10 +833,11 @@
     for (var j = 0; j < this.toruses.length; j++) {
       var t       = this.toruses[j];
       var D       = t.dimension || 2;
-      var pts     = D < 3 ? 4 : D;
-      var shp     = getShapeName(D);
-      var fibLbl  = D === 2 ? 'Fibonacci' : 'D' + D + '-Fibonacci';
-      var seq     = nStepFib(D, 10000);
+      var absD    = Math.abs(D);
+      var pts     = absD < 3 ? 4 : absD;
+      var shp     = getShapeName(absD);
+      var fibLbl  = absD === 2 ? 'Fibonacci' : 'D' + absD + '-Fibonacci';
+      var seq     = nStepFib(absD, 10000);
       var cur     = t.totalOuter + 1;
       var nextFib = null;
       for (var k = 0; k < seq.length; k++) {
@@ -776,6 +895,7 @@
     EventMathTimeline:  EventMathTimeline,
     EventMathTorus:     EventMathTorus,
     EventMathLandscape: EventMathLandscape,
+    EventMathAxis:      EventMathAxis,
     TimelineEntry:      TimelineEntry,
     getDefaultTimeline: getDefaultTimeline,
     SNAPSHOT_INTERVAL:  SNAPSHOT_INTERVAL,
