@@ -41,8 +41,6 @@ const RESERVED_WORDS = new Set([
   'sort', 'filter', 'find', 'count', 'where', 'descending',
   'predict', 'across', 'resolve',
   'zoom', 'show', 'pulse', 'tick', 'rate', 'amplitude', 'frequency',
-  'lens', 'lenses', 'direction', 'directions', 'quantity', 'quantities',
-  'correct', 'incorrect', 'opposite',
 ]);
 
 class Token {

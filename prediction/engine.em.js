@@ -51,6 +51,11 @@ function scorePredictions(
   total_predictions = "resolved total";
   correct_predictions_tally = "correct total";
   if (resolved_total > 0) {
+    new_accuracy = (function() {
+  const _resolved = all_predictions.events.filter(_p => _p.matter.resolved === true && (_p.matter.resolved === "yes"));
+  const _correct = _resolved.filter(_p => _p.matter.correct === true);
+  return _resolved.length > 0 ? Math.round((_correct.length / _resolved.length) * 100) / 100 : 0;
+})();
     engine_accuracy = "new accuracy";
   }
   return;
