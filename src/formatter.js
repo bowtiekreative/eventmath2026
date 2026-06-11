@@ -182,8 +182,20 @@ class EventMathFormatter {
     return node.value || '';
   }
 
+  _formatStringOp(stmt) {
+    if (stmt.stringOp === 'joined with') {
+      return `${stmt.left ? stmt.left.value : ''} joined with ${stmt.right ? stmt.right.value : ''}`;
+    }
+    if (stmt.stringOp === 'in uppercase') return `${stmt.subject ? stmt.subject.value : ''} in uppercase`;
+    if (stmt.stringOp === 'in lowercase') return `${stmt.subject ? stmt.subject.value : ''} in lowercase`;
+    if (stmt.stringOp === 'length of')    return `length of ${stmt.subject ? stmt.subject.value : ''}`;
+    return '';
+  }
+
   _formatMark(stmt) {
-    if (stmt.expr !== undefined && stmt.expr !== null) {
+    if (stmt.stringOp) {
+      this._line(`mark ${stmt.name} as ${this._formatStringOp(stmt)}`);
+    } else if (stmt.expr !== undefined && stmt.expr !== null) {
       this._line(`mark ${stmt.name} as ${this._formatExpr(stmt.expr)}`);
     } else {
       this._line(`mark ${stmt.name} as ${stmt.value}`);
@@ -191,7 +203,9 @@ class EventMathFormatter {
   }
 
   _formatSet(stmt) {
-    if (stmt.expr !== undefined && stmt.expr !== null) {
+    if (stmt.stringOp) {
+      this._line(`set ${stmt.name} to ${this._formatStringOp(stmt)}`);
+    } else if (stmt.expr !== undefined && stmt.expr !== null) {
       this._line(`set ${stmt.name} to ${this._formatExpr(stmt.expr)}`);
     } else if (stmt.value) {
       this._line(`set ${stmt.name} to ${stmt.value.value !== undefined ? stmt.value.value : stmt.value}`);
@@ -212,15 +226,26 @@ class EventMathFormatter {
 
   _formatCondition(cond) {
     if (!cond) return '';
+    if (cond.type === 'CompoundCondition') {
+      return `${this._formatCondition(cond.left)} ${cond.op} ${this._formatCondition(cond.right)}`;
+    }
     const opMap = {
       'is': 'is',
       'is not': 'is not',
+      'is greater than': 'is greater than',
+      'is less than': 'is less than',
+      'is at least': 'is at least',
+      'is at most': 'is at most',
+      'is starts with': 'is starts with',
+      'is ends with': 'is ends with',
+      'is contains': 'is contains',
+      // Legacy (without 'is' prefix)
       'greater than': 'is greater than',
       'less than': 'is less than',
       'at least': 'is at least',
       'at most': 'is at most',
     };
-    const op = opMap[cond.op] || 'is';
+    const op = opMap[cond.op] || cond.op;
     return `${cond.left} ${op} ${cond.right}`;
   }
 

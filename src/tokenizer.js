@@ -246,8 +246,9 @@ class EventMathTokenizer {
   }
 
   /**
-   * Tokenize a value, detecting arithmetic expressions with chaining.
-   * Operators (priority): 'divided by' (2 words), 'plus', 'minus', 'times'
+   * Tokenize a value, detecting string operations first, then arithmetic.
+   * String ops: 'joined with', 'in uppercase', 'in lowercase', 'length of'
+   * Arithmetic: 'divided by' (2 words), 'plus', 'minus', 'times'
    * Supports chains: a plus b minus c → NAME KEYWORD NAME KEYWORD NAME
    * Otherwise: emit LITERAL/NUMBER/BOOL as appropriate.
    *
@@ -256,6 +257,36 @@ class EventMathTokenizer {
    */
   _tokenizeValue(words, lineNum) {
     if (!words || words.length === 0) return [];
+
+    // Check for string operations first (they don't mix with arithmetic)
+    // 'joined with': NAME('left') KEYWORD('joined with') NAME('right')
+    const joinedIdx = this._findPhrase(words, ['joined', 'with']);
+    if (joinedIdx >= 0) {
+      const left  = words.slice(0, joinedIdx).join(' ');
+      const right = words.slice(joinedIdx + 2).join(' ');
+      return [
+        new Token('NAME', left, lineNum),
+        new Token('KEYWORD', 'joined with', lineNum),
+        new Token('NAME', right, lineNum),
+      ];
+    }
+
+    // 'in uppercase' / 'in lowercase': NAME('subject') KEYWORD('in uppercase'|'in lowercase')
+    const inIdx = this._indexOf(words, 'in');
+    if (inIdx > 0 && words[inIdx + 1] === 'uppercase') {
+      const subject = words.slice(0, inIdx).join(' ');
+      return [new Token('NAME', subject, lineNum), new Token('KEYWORD', 'in uppercase', lineNum)];
+    }
+    if (inIdx > 0 && words[inIdx + 1] === 'lowercase') {
+      const subject = words.slice(0, inIdx).join(' ');
+      return [new Token('NAME', subject, lineNum), new Token('KEYWORD', 'in lowercase', lineNum)];
+    }
+
+    // 'length of': KEYWORD('length of') NAME('subject')
+    if (words[0] === 'length' && words[1] === 'of') {
+      const subject = words.slice(2).join(' ');
+      return [new Token('KEYWORD', 'length of', lineNum), new Token('NAME', subject, lineNum)];
+    }
 
     const segments = [];
     const operators = [];
@@ -342,15 +373,9 @@ class EventMathTokenizer {
   }
 
   _when(words, lineNum) {
-    // when <name> is [not|greater than|less than|at least|at most] <value>
+    // when <condition> [and|or <condition> ...]
     const tokens = [new Token('KEYWORD', 'when', lineNum)];
-    const isIdx = this._indexOf(words, 'is');
-    if (isIdx > 0) {
-      tokens.push(new Token('NAME', words.slice(1, isIdx).join(' '), lineNum));
-      tokens.push(new Token('KEYWORD', 'is', lineNum));
-      const rest = words.slice(isIdx + 1);
-      tokens.push(...this._tokenizeCondition(rest, lineNum));
-    }
+    tokens.push(...this._tokenizeCondition(words.slice(1), lineNum));
     return tokens;
   }
 
@@ -362,17 +387,10 @@ class EventMathTokenizer {
       tokens.push(new Token('NUMBER', rest[0], lineNum));
       tokens.push(new Token('KEYWORD', 'times', lineNum));
     }
-    // again until <condition>
+    // again until <condition> [and|or <condition> ...]
     else if (rest[0] === 'until') {
       tokens.push(new Token('KEYWORD', 'until', lineNum));
-      const isIdx = this._indexOf(rest, 'is');
-      if (isIdx > 0) {
-        tokens.push(new Token('NAME', rest.slice(1, isIdx).join(' '), lineNum));
-        tokens.push(new Token('KEYWORD', 'is', lineNum));
-        tokens.push(...this._tokenizeCondition(rest.slice(isIdx + 1), lineNum));
-      } else {
-        tokens.push(new Token('NAME', rest.slice(1).join(' '), lineNum));
-      }
+      tokens.push(...this._tokenizeCondition(rest.slice(1), lineNum));
     }
     return tokens;
   }
@@ -489,21 +507,13 @@ class EventMathTokenizer {
   }
 
   /**
-   * Check assertion: check <name> is [op] <value>
+   * Check assertion: check <name> is [op] <value> [and|or ...]
    * Same tokenization as a when condition.
    */
   _check(words, lineNum) {
     const tokens = [new Token('KEYWORD', 'check', lineNum)];
-    // words[0] = 'check', rest is the condition
-    const isIdx = this._indexOf(words, 'is');
-    if (isIdx > 0) {
-      tokens.push(new Token('NAME', words.slice(1, isIdx).join(' '), lineNum));
-      tokens.push(new Token('KEYWORD', 'is', lineNum));
-      tokens.push(...this._tokenizeCondition(words.slice(isIdx + 1), lineNum));
-    } else {
-      // fallback: bare name after check
-      tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
-    }
+    // words[0] = 'check', rest is the full condition
+    tokens.push(...this._tokenizeCondition(words.slice(1), lineNum));
     return tokens;
   }
 
@@ -586,32 +596,97 @@ class EventMathTokenizer {
   }
 
   /**
-   * Shared condition tokenizer: handles the part after "is" in when/again until.
-   * Recognizes: not, greater than, less than, at least, at most
+   * Shared condition tokenizer: handles the full condition chain in when/again until.
+   * Supports compound conditions with 'and'/'or' connectors.
+   * Recognizes: not, greater than, less than, at least, at most, starts with, ends with, contains
    */
-  _tokenizeCondition(rest, lineNum) {
+  _tokenizeCondition(words, lineNum) {
     const tokens = [];
-    if (!rest || rest.length === 0) return tokens;
+    let i = 0;
 
-    if (rest[0] === 'not') {
-      tokens.push(new Token('KEYWORD', 'not', lineNum));
-      tokens.push(new Token('NAME', rest.slice(1).join(' '), lineNum));
-    } else if (rest.length >= 2 && rest[0] === 'greater' && rest[1] === 'than') {
-      tokens.push(new Token('KEYWORD', 'greater than', lineNum));
-      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
-    } else if (rest.length >= 2 && rest[0] === 'less' && rest[1] === 'than') {
-      tokens.push(new Token('KEYWORD', 'less than', lineNum));
-      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
-    } else if (rest.length >= 2 && rest[0] === 'at' && rest[1] === 'least') {
-      tokens.push(new Token('KEYWORD', 'at least', lineNum));
-      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
-    } else if (rest.length >= 2 && rest[0] === 'at' && rest[1] === 'most') {
-      tokens.push(new Token('KEYWORD', 'at most', lineNum));
-      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
-    } else {
-      tokens.push(new Token('NAME', rest.join(' '), lineNum));
+    while (i < words.length) {
+      // Skip 'and'/'or' connectors — emit as KEYWORD
+      if (words[i] === 'and' || words[i] === 'or') {
+        tokens.push(new Token('KEYWORD', words[i], lineNum));
+        i++;
+        continue;
+      }
+
+      // Find the next 'is' keyword
+      const isIdx = this._indexOfFrom(words, 'is', i);
+      if (isIdx < 0) {
+        // No 'is' found — emit remaining words as NAME
+        tokens.push(new Token('NAME', words.slice(i).join(' '), lineNum));
+        break;
+      }
+
+      // Emit left side (NAME)
+      const left = words.slice(i, isIdx).join(' ');
+      if (left) tokens.push(new Token('NAME', left, lineNum));
+      tokens.push(new Token('KEYWORD', 'is', lineNum));
+
+      const rest = words.slice(isIdx + 1);
+
+      // Check for multi-word operators and value, stopping before 'and'/'or'
+      const nextConnector = this._findConnector(rest);
+      const opWords = nextConnector >= 0 ? rest.slice(0, nextConnector) : rest;
+
+      if (opWords[0] === 'not') {
+        tokens.push(new Token('KEYWORD', 'not', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(1).join(' '), lineNum));
+      } else if (opWords.length >= 2 && opWords[0] === 'greater' && opWords[1] === 'than') {
+        tokens.push(new Token('KEYWORD', 'greater than', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
+      } else if (opWords.length >= 2 && opWords[0] === 'less' && opWords[1] === 'than') {
+        tokens.push(new Token('KEYWORD', 'less than', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
+      } else if (opWords.length >= 2 && opWords[0] === 'at' && opWords[1] === 'least') {
+        tokens.push(new Token('KEYWORD', 'at least', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
+      } else if (opWords.length >= 2 && opWords[0] === 'at' && opWords[1] === 'most') {
+        tokens.push(new Token('KEYWORD', 'at most', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
+      } else if (opWords.length >= 2 && opWords[0] === 'starts' && opWords[1] === 'with') {
+        tokens.push(new Token('KEYWORD', 'starts with', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
+      } else if (opWords.length >= 2 && opWords[0] === 'ends' && opWords[1] === 'with') {
+        tokens.push(new Token('KEYWORD', 'ends with', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
+      } else if (opWords[0] === 'contains') {
+        tokens.push(new Token('KEYWORD', 'contains', lineNum));
+        tokens.push(new Token('NAME', opWords.slice(1).join(' '), lineNum));
+      } else {
+        tokens.push(new Token('NAME', opWords.join(' '), lineNum));
+      }
+
+      i = isIdx + 1 + (nextConnector >= 0 ? nextConnector : opWords.length);
     }
+
     return tokens;
+  }
+
+  // Find index of next 'and'/'or' in words array starting at 0
+  _findConnector(words) {
+    for (let i = 0; i < words.length; i++) {
+      if (words[i] === 'and' || words[i] === 'or') return i;
+    }
+    return -1;
+  }
+
+  // indexOf starting from a given index
+  _indexOfFrom(words, target, from) {
+    for (let i = from; i < words.length; i++) {
+      if (words[i] === target) return i;
+    }
+    return -1;
+  }
+
+  // Find index of first word of a phrase within words, or -1
+  _findPhrase(words, phrase) {
+    for (let i = 0; i <= words.length - phrase.length; i++) {
+      if (phrase.every((w, j) => words[i + j] === w)) return i;
+    }
+    return -1;
   }
 
   /**

@@ -156,7 +156,9 @@ class EventMathCodeGen {
         case 'Mark':
           if (!this._vars.has(stmt.name)) {
             this._vars.add(stmt.name);
-            if (stmt.expr) {
+            if (stmt.stringOp) {
+              this._varDecls.push({ name: stmt.name, rawExpr: this._genStringOp(stmt) });
+            } else if (stmt.expr) {
               this._varDecls.push({ name: stmt.name, rawExpr: this._genExpr(stmt.expr) });
             } else {
               this._varDecls.push({ name: stmt.name, value: this._typedValueFromString(stmt.value) });
@@ -376,7 +378,9 @@ class EventMathCodeGen {
   _genSet(stmt) {
     const varName = this._safeName(stmt.name);
     // Declaration was already hoisted during first pass
-    if (stmt.expr) {
+    if (stmt.stringOp) {
+      this._line(`${varName} = ${this._genStringOp(stmt)};`);
+    } else if (stmt.expr) {
       this._line(`${varName} = ${this._genExpr(stmt.expr)};`);
     } else {
       const val = this._typedValue(stmt.value);
@@ -395,6 +399,22 @@ class EventMathCodeGen {
     if (raw === 'false') return 'false';
     if (/^\d+(\.\d+)?$/.test(raw)) return raw;
     return `"${this._escape(raw)}"`;
+  }
+
+  // ── String operations ────────────────────────────────────────────
+
+  _genStringOp(stmt) {
+    const { stringOp } = stmt;
+    if (stringOp === 'joined with') {
+      const l = this._safeRef(stmt.left.value);
+      const r = /^\d+$/.test(stmt.right.value) ? stmt.right.value :
+                (this._vars.has(stmt.right.value) ? this._safeRef(stmt.right.value) : `"${this._escape(stmt.right.value)}"`);
+      return `String(${l}) + ${r}`;
+    }
+    if (stringOp === 'in uppercase') return `String(${this._safeRef(stmt.subject.value)}).toUpperCase()`;
+    if (stringOp === 'in lowercase') return `String(${this._safeRef(stmt.subject.value)}).toLowerCase()`;
+    if (stringOp === 'length of')    return `String(${this._safeRef(stmt.subject.value)}).length`;
+    return '""';
   }
 
   // ── Arithmetic expressions ───────────────────────────────────────
@@ -476,29 +496,50 @@ class EventMathCodeGen {
   }
 
   _genCondition(cond) {
+    if (!cond) return 'true';
+
+    // Compound condition (and/or)
+    if (cond.type === 'CompoundCondition') {
+      const left = this._genCondition(cond.left);
+      const right = this._genCondition(cond.right);
+      const op = cond.op === 'and' ? '&&' : '||';
+      return `(${left}) ${op} (${right})`;
+    }
+
+    // Simple condition (Condition node)
     const left = this._walkRef(cond.left);
     const rightVal = cond.right || '';
-
-    // For numeric operators, treat as a variable reference if not a literal number/bool
-    const numericOps = new Set(['greater than', 'less than', 'at least', 'at most']);
     let right;
     if (rightVal === 'true') right = 'true';
     else if (rightVal === 'false') right = 'false';
     else if (/^\d+(\.\d+)?$/.test(rightVal)) right = rightVal;
-    else if (numericOps.has(cond.op)) right = this._walkRef(rightVal); // variable reference
-    else if (rightVal === 'empty') right = '""'; // special: "is not empty" → !== ""
     else right = `"${this._escape(rightVal)}"`;
 
     const ops = {
-      'is': '===',
-      'is not': '!==',
-      'greater than': '>',
-      'less than': '<',
-      'at least': '>=',
-      'at most': '<=',
+      'is':               `${left} === ${right}`,
+      'is not':           `${left} !== ${right}`,
+      'is greater than':  `${left} > ${this._numRef(cond.right)}`,
+      'is less than':     `${left} < ${this._numRef(cond.right)}`,
+      'is at least':      `${left} >= ${this._numRef(cond.right)}`,
+      'is at most':       `${left} <= ${this._numRef(cond.right)}`,
+      'is starts with':   `String(${left}).startsWith(${right})`,
+      'is ends with':     `String(${left}).endsWith(${right})`,
+      'is contains':      `String(${left}).includes(${right})`,
+      // Legacy operator names (without 'is' prefix) for backward compatibility
+      'greater than':     `${left} > ${this._numRef(cond.right)}`,
+      'less than':        `${left} < ${this._numRef(cond.right)}`,
+      'at least':         `${left} >= ${this._numRef(cond.right)}`,
+      'at most':          `${left} <= ${this._numRef(cond.right)}`,
     };
-    const jsOp = ops[cond.op] || '===';
-    return `${left} ${jsOp} ${right}`;
+
+    return ops[cond.op] || `${left} === ${right}`;
+  }
+
+  // For numeric comparisons: emit variable reference or number, not string
+  _numRef(val) {
+    if (!val) return '0';
+    if (/^\d+(\.\d+)?$/.test(val)) return val;
+    return this._safeRef(val);
   }
 
   /**
@@ -693,7 +734,9 @@ class EventMathCodeGen {
   _genCheck(stmt) {
     if (!stmt.condition) return;
     const cond = this._genCondition(stmt.condition);
-    const desc = `${stmt.condition.left} ${stmt.condition.op} ${stmt.condition.right}`;
+    const desc = stmt.condition.type === 'CompoundCondition'
+      ? `compound condition`
+      : `${stmt.condition.left} ${stmt.condition.op} ${stmt.condition.right}`;
     this._line(`if (!(${cond})) {`);
     this.indent++;
     this._line(`console.error(new EM.EventMathEvent("check failed", "broken", {`);

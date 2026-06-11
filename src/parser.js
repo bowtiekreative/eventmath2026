@@ -281,14 +281,22 @@ class EventMathParser {
 
   /**
    * _parseExprOrValue: After consuming the keyword (as/to), peek at the
-   * token stream and detect arithmetic, including chained operations.
-   * Returns { expr: node } or { value } object for the AST node.
+   * token stream and detect string ops, arithmetic, including chained operations.
+   * Returns { expr: node }, { stringOp, ... }, or { value } object for the AST node.
    */
   _parseExprOrValue() {
     const firstTok = this.peek();
     if (!firstTok) return { value: '' };
 
     const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by']);
+
+    // Handle 'length of' — emitted as KEYWORD before the NAME
+    if (firstTok.type === 'KEYWORD' && firstTok.value === 'length of') {
+      this.advance(); // consume 'length of'
+      const subject = this.peek();
+      if (subject) this.advance();
+      return { stringOp: 'length of', subject: { kind: 'name', value: subject ? subject.value : '' } };
+    }
 
     // Check if next token (after current) is an arithmetic operator
     const isArith = () => {
@@ -309,6 +317,25 @@ class EventMathParser {
 
     const firstOp = parseOperand();
     if (!firstOp) return { value: '' };
+
+    // After parsing the first token, check for string operators
+    const t = this.peek();
+    if (t && t.type === 'KEYWORD') {
+      if (t.value === 'joined with') {
+        this.advance();
+        const right = this.peek();
+        if (right) this.advance();
+        return { stringOp: 'joined with', left: firstOp, right: { kind: 'name', value: right ? right.value : '' } };
+      }
+      if (t.value === 'in uppercase') {
+        this.advance();
+        return { stringOp: 'in uppercase', subject: firstOp };
+      }
+      if (t.value === 'in lowercase') {
+        this.advance();
+        return { stringOp: 'in lowercase', subject: firstOp };
+      }
+    }
 
     if (!isArith()) {
       // No arithmetic — return as plain value
@@ -335,6 +362,9 @@ class EventMathParser {
     this.expect('KEYWORD', 'as');
 
     const parsed = this._parseExprOrValue();
+    if (parsed.stringOp !== undefined) {
+      return ast('Mark', { name: nameToken.value, value: null, expr: null, stringOp: parsed.stringOp, left: parsed.left, right: parsed.right, subject: parsed.subject });
+    }
     if (parsed.expr !== undefined) {
       return ast('Mark', { name: nameToken.value, value: null, expr: parsed.expr });
     }
@@ -350,6 +380,9 @@ class EventMathParser {
     this.expect('KEYWORD', 'to');
 
     const parsed = this._parseExprOrValue();
+    if (parsed.stringOp !== undefined) {
+      return ast('Set', { name: nameToken.value, value: null, expr: null, stringOp: parsed.stringOp, left: parsed.left, right: parsed.right, subject: parsed.subject });
+    }
     if (parsed.expr !== undefined) {
       return ast('Set', { name: nameToken.value, value: null, expr: parsed.expr });
     }
@@ -417,6 +450,21 @@ class EventMathParser {
   }
 
   _parseCondition() {
+    const first = this._parseSimpleCondition();
+    if (!first) return null;
+
+    // Check for 'and'/'or' connector
+    if (this.peek() && this.peek().type === 'KEYWORD' &&
+        (this.peek().value === 'and' || this.peek().value === 'or')) {
+      const op = this.advance().value;
+      const right = this._parseCondition(); // recursive for right-side chains
+      return ast('CompoundCondition', { left: first, op, right });
+    }
+
+    return first;
+  }
+
+  _parseSimpleCondition() {
     const left = this.expect('NAME');
     if (!left) return null;
     this.expect('KEYWORD', 'is');
@@ -433,22 +481,37 @@ class EventMathParser {
       if (kw === 'greater than') {
         this.advance();
         const right = this.expect('NAME');
-        return ast('Condition', { left: left.value, op: 'greater than', right: right ? right.value : '' });
+        return ast('Condition', { left: left.value, op: 'is greater than', right: right ? right.value : '' });
       }
       if (kw === 'less than') {
         this.advance();
         const right = this.expect('NAME');
-        return ast('Condition', { left: left.value, op: 'less than', right: right ? right.value : '' });
+        return ast('Condition', { left: left.value, op: 'is less than', right: right ? right.value : '' });
       }
       if (kw === 'at least') {
         this.advance();
         const right = this.expect('NAME');
-        return ast('Condition', { left: left.value, op: 'at least', right: right ? right.value : '' });
+        return ast('Condition', { left: left.value, op: 'is at least', right: right ? right.value : '' });
       }
       if (kw === 'at most') {
         this.advance();
         const right = this.expect('NAME');
-        return ast('Condition', { left: left.value, op: 'at most', right: right ? right.value : '' });
+        return ast('Condition', { left: left.value, op: 'is at most', right: right ? right.value : '' });
+      }
+      if (kw === 'starts with') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'is starts with', right: right ? right.value : '' });
+      }
+      if (kw === 'ends with') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'is ends with', right: right ? right.value : '' });
+      }
+      if (kw === 'contains') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'is contains', right: right ? right.value : '' });
       }
     }
 

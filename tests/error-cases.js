@@ -86,6 +86,24 @@ const cases = [
     expectCompiles: true,
     compiledContains: 'a + b',
   },
+  {
+    name: 'Compound AND condition compiles correctly',
+    source: 'mark a as 1\nmark b as 2\nwhen a is greater than 0 and b is greater than 0\n  run event task 1\nend',
+    expectCompiles: true,
+    compiledContains: '&&',
+  },
+  {
+    name: 'Compound OR condition compiles correctly',
+    source: 'mark status as done\nwhen status is done or status is complete\n  run event task 1\nend',
+    expectCompiles: true,
+    compiledContains: '||',
+  },
+  {
+    name: 'String joined with compiles correctly',
+    source: 'mark first as hello\nmark greeting as first joined with world',
+    expectCompiles: true,
+    compiledContains: 'String(',
+  },
 ];
 
 let passed = 0;
