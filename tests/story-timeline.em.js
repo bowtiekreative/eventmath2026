@@ -45,6 +45,7 @@ const act_1 = new EM.EventMathLayer("act 1", [
 // Timeline: "story"
 const story = new EM.EventMathTimeline("story");
 
+// Present: act 1
 story.log.push(...act_1.events);
 
 console.log(story.renderSection('present'));

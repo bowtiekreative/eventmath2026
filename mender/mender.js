@@ -96,7 +96,7 @@ const FAST_PATH_TABLE = [
     },
   },
   {
-    matcher: /After "(\w+)" I was expecting "is" or "from"/,
+    matcher: /After "(\w+)" I expected "is" \(literal\) or "from"/,
     classify: 'E005',
     template: 'Matter line problem: "{key}" needs "is" or "from".',
     fix: function(matches) {
@@ -129,6 +129,58 @@ const FAST_PATH_TABLE = [
     classify: 'E016',
     template: 'Unknown timeline section.',
     fix: 'Timeline sections must be named "past", "present", or "future". Each section is closed with "end".',
+  },
+  {
+    matcher: /I don't know the word "(\w+)"/,
+    classify: 'E002',
+    template: 'Unknown word "{word}".',
+    fix: function(matches) {
+      return `"${matches[1]}" is not part of EventMath's vocabulary. Did you mean to use a different keyword? Check the spelling.`;
+    },
+  },
+  {
+    matcher: /I was expecting the beginning of a matter block/,
+    classify: 'E007',
+    template: 'Missing "matter" keyword.',
+    fix: 'Add "matter" before the field lines, then "end" after them:\n  matter\n    title is Some value\n  end',
+  },
+  {
+    matcher: /I found "(\w+)" after "again"/,
+    classify: 'E009',
+    template: 'Loop problem after "again".',
+    fix: 'Use "again N times" for a fixed count, or "again until condition" for a conditional loop.\n  again 5 times\n  again until all done is true',
+  },
+  {
+    matcher: /I found "(\w+)" after "walk"/,
+    classify: 'E010',
+    template: 'Walk problem after "walk".',
+    fix: 'Write "walk layer_name as variable_name".\n  walk myLayer as item',
+  },
+  {
+    matcher: /I found "(\w+)" after "split"/,
+    classify: 'E011',
+    template: 'Split problem.',
+    fix: 'Use "split value into path name ... end path name ... end end". Each path is a block closed with "end".',
+  },
+  {
+    matcher: /closed its door but never opened it/,
+    classify: 'E012',
+    template: 'Door closed without being opened.',
+    fix: 'A door can only close if it was opened first. Either add "door open" with the inputs, or remove "door closed".',
+  },
+  {
+    matcher: /opened its door but never closed it/,
+    classify: 'E013',
+    template: 'Action never closes its door.',
+    fix: 'A warning — the action might still do useful work, but nothing returns. Add "door closed event_name" to return matter through the door.',
+  },
+  {
+    matcher: /Blocked door in (\w+)/,
+    classify: 'E014',
+    template: 'Blocked door — missing input.',
+    fix: function(matches) {
+      return `The door in "${matches[1]}" asked for inputs but nothing entered. Check the "door open" line and provide every input when calling the action.`;
+    },
   },
 ];
 

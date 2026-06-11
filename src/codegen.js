@@ -57,6 +57,17 @@ class EventMathCodeGen {
    */
   generate(ast) {
     this.output = [];
+
+    // Bug #14 fix: bail early if AST carries parse errors
+    if (ast.errors && ast.errors.length > 0) {
+      this._line(`// Compilation skipped — ${ast.errors.length} parse error(s) in source.`);
+      for (const err of ast.errors) {
+        const msg = typeof err === 'string' ? err : err.message || JSON.stringify(err);
+        this._line(`// ${msg}`);
+      }
+      this._line('module.exports = {};');
+      return this.output.join('\n');
+    }
     this.indent = 0;
     this._vars = new Set();
     this._varDecls = [];
@@ -249,6 +260,11 @@ class EventMathCodeGen {
             this._timelineNames.add(stmt.intoName);
           }
           break;
+        case 'Pulse':
+          if (stmt.name && !this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+          }
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -311,6 +327,7 @@ class EventMathCodeGen {
       case 'ZoomOut':        return this._genZoomOut(stmt);
       case 'ZoomOpposite':   return this._genZoomOpposite(stmt);
       case 'ZoomMeta':       return this._genZoomMeta(stmt);
+      case 'Pulse':          return this._genPulse(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -406,12 +423,30 @@ class EventMathCodeGen {
     this._line(`const ${varName} = new EM.EventMathTimeline("${this._escape(stmt.name)}");`);
     this._line('');
 
-    // Populate present layers
-    if (stmt.present && stmt.present.layers) {
-      for (const layer of stmt.present.layers) {
+    // Populate past sections (historical events)
+    if (stmt.past && stmt.past.layers && stmt.past.layers.length > 0) {
+      for (const layer of stmt.past.layers) {
+        this._line(`// Past: ${this._escape(layer.name)}`);
         this._line(`${varName}.log.push(...${this._safeName(layer.name)}.events);`);
       }
     }
+
+    // Populate present sections
+    if (stmt.present && stmt.present.layers) {
+      for (const layer of stmt.present.layers) {
+        this._line(`// Present: ${this._escape(layer.name)}`);
+        this._line(`${varName}.log.push(...${this._safeName(layer.name)}.events);`);
+      }
+    }
+
+    // Populate future sections (scheduled events)
+    if (stmt.future && stmt.future.layers && stmt.future.layers.length > 0) {
+      for (const layer of stmt.future.layers) {
+        this._line(`// Future: ${this._escape(layer.name)}`);
+        this._line(`${varName}.future.push(...${this._safeName(layer.name)}.events);`);
+      }
+    }
+
     this._line('');
   }
 
@@ -829,6 +864,44 @@ class EventMathCodeGen {
     this._line(`return __meta;`);
     this.indent--;
     this._line(`})();`);
+    this._line('');
+  }
+
+  /**
+   * Generate JS for a pulse (oscillating switch).
+   * Creates a toggle that cycles state every N timeline ticks.
+   * pulse switch_name [every N tick]
+   */
+  _genPulse(stmt) {
+    const varName = this._safeName(stmt.name);
+    const escName = this._escape(stmt.name);
+    const interval = stmt.every || 1;
+
+    this._line(`// Pulse: \"${escName}\" — oscillates every ${interval} tick(s)`);
+    this._line(`let ${varName}_pulse = false; // current state (the nucleus)`);
+    this._line(`let ${varName}_count = 0;     // tick counter`);
+    this._line(`const ${varName} = {`);
+    this.indent++;
+    this._line(`name: '${escName}',`);
+    this._line(`every: ${interval},`);
+    this._line(`get state() { return ${varName}_pulse; },`);
+    this._line(`tick() {`);
+    this.indent++;
+    this._line(`${varName}_count++;`);
+    this._line(`if (${varName}_count >= ${interval}) {`);
+    this.indent++;
+    this._line(`${varName}_count = 0;`);
+    this._line(`${varName}_pulse = !${varName}_pulse; // nucleus appears / disappears`);
+    this._line(`EM.getDefaultTimeline().append(new EM.TimelineEntry('set', { key: '${escName}', value: ${varName}_pulse }));`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`},`);
+    this._line(`reset() { ${varName}_pulse = false; ${varName}_count = 0; }`);
+    this.indent--;
+    this._line(`};`);
+    this._line(`EM.getDefaultTimeline()._state.pulses = EM.getDefaultTimeline()._state.pulses || {};`);
+    this._line(`EM.getDefaultTimeline()._state.pulses['${escName}'] = ${varName};`);
     this._line('');
   }
 

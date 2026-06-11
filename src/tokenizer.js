@@ -27,7 +27,22 @@ const KEYWORDS = new Set([
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
   'sort', 'filter', 'find', 'count', 'where', 'descending',
   'predict', 'across', 'resolve',
-  'zoom', 'show',
+  'zoom', 'show', 'pulse', 'tick', 'rate', 'amplitude', 'frequency',
+]);
+
+// Reserved words that cannot be used as declaration names (per spec E015)
+const RESERVED_WORDS = new Set([
+  'event', 'matter', 'category', 'cat', 'layer', 'timeline', 'action',
+  'door', 'open', 'closed', 'mark', 'set', 'run', 'when', 'otherwise',
+  'split', 'path', 'again', 'walk', 'end', 'is', 'from', 'as', 'to',
+  'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
+  'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
+  'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
+  'sort', 'filter', 'find', 'count', 'where', 'descending',
+  'predict', 'across', 'resolve',
+  'zoom', 'show', 'pulse', 'tick', 'rate', 'amplitude', 'frequency',
+  'lens', 'lenses', 'direction', 'directions', 'quantity', 'quantities',
+  'correct', 'incorrect', 'opposite',
 ]);
 
 class Token {
@@ -109,6 +124,11 @@ class EventMathTokenizer {
     // check → check <condition>
     if (lead === 'check') {
       return this._check(words, lineNum);
+    }
+
+    // pulse → pulse <name>
+    if (lead === 'pulse') {
+      return this._pulse(words, lineNum);
     }
 
     // mark → mark <name> as <literal>
@@ -626,6 +646,35 @@ class EventMathTokenizer {
     const tokens = [new Token('KEYWORD', 'check', lineNum)];
     // words[0] = 'check', rest is the full condition
     tokens.push(...this._tokenizeCondition(words.slice(1), lineNum));
+    return tokens;
+  }
+
+  /**
+   * Pulse declaration: pulse <name> [every N tick]
+   * Creates an oscillating control that toggles state each tick.
+   * The pulse is a binary switch — nucleus appears, then disappears.
+   */
+  _pulse(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'pulse', lineNum)];
+    // words[0] = 'pulse', rest is name
+    const rest = words.slice(1);
+    if (rest.length === 0) {
+      tokens.push(new Token('NAME', '', lineNum));
+      return tokens;
+    }
+    // pulse <name> [every N tick] — search for 'every' anywhere in rest
+    const everyIdx = this._indexOf(rest, 'every');
+    if (everyIdx > 0 && rest.length > everyIdx + 1) {
+      tokens.push(new Token('NAME', rest.slice(0, everyIdx).join(' '), lineNum));
+      tokens.push(new Token('KEYWORD', 'every', lineNum));
+      tokens.push(new Token('NUMBER', rest[everyIdx + 1], lineNum));
+      if (rest[everyIdx + 2] === 'tick' || rest[everyIdx + 2] === 'ticks') {
+        tokens.push(new Token('KEYWORD', rest[everyIdx + 2], lineNum));
+      }
+    } else {
+      // pulse <name>
+      tokens.push(new Token('NAME', rest.join(' '), lineNum));
+    }
     return tokens;
   }
 
@@ -1281,4 +1330,4 @@ class EventMathTokenizer {
   }
 }
 
-module.exports = { EventMathTokenizer, Token, KEYWORDS };
+module.exports = { EventMathTokenizer, Token, KEYWORDS, RESERVED_WORDS };

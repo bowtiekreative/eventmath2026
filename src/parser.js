@@ -12,6 +12,7 @@
  */
 
 const { Token } = require('./tokenizer.js');
+const RESERVED = require('./tokenizer.js').RESERVED_WORDS;
 
 const MAX_ITERATIONS = 10000;
 
@@ -129,6 +130,7 @@ class EventMathParser {
       case 'count':    return this._parseCountInLayer();
       case 'predict':  return this._parsePredictStmt();
       case 'resolve':  return this._parseResolveStmt();
+      case 'pulse':    return this._parsePulse();
       default:         return this._parseBodyName();
     }
   }
@@ -139,6 +141,7 @@ class EventMathParser {
     this.expect('KEYWORD', 'event');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('event');
+    this._checkReserved(nameToken);
 
     const result = ast('Event', { name: nameToken.value, category: null, matter: null });
 
@@ -194,6 +197,7 @@ class EventMathParser {
     this.expect('KEYWORD', 'layer');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('layer');
+    this._checkReserved(nameToken);
 
     const events = [];
     let guard = 0;
@@ -215,6 +219,7 @@ class EventMathParser {
     this.expect('KEYWORD', 'timeline');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('timeline');
+    this._checkReserved(nameToken);
 
     const result = ast('Timeline', { name: nameToken.value, past: null, present: null, future: null });
 
@@ -255,6 +260,7 @@ class EventMathParser {
     this.expect('KEYWORD', 'action');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('action');
+    this._checkReserved(nameToken);
 
     const result = ast('Action', { name: nameToken.value, doorOpen: null, body: [], doorClosed: null });
 
@@ -758,6 +764,34 @@ class EventMathParser {
     this.expect('KEYWORD', 'check');
     const condition = this._parseCondition();
     return ast('Check', { condition });
+  }
+
+  /**
+   * Pulse declaration: pulse <name> [every N tick]
+   */
+  _parsePulse() {
+    this.expect('KEYWORD', 'pulse');
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return ast('Pulse', { name: '', every: 1 });
+    this._checkReserved(nameToken);
+    let every = 1;
+    if (this.isKeyword('every')) {
+      this.advance(); // consume 'every'
+      const numToken = this.expect('NUMBER');
+      if (numToken) every = parseInt(numToken.value, 10) || 1;
+      this.match('KEYWORD', 'tick');
+      this.match('KEYWORD', 'ticks');
+    }
+    return ast('Pulse', { name: nameToken.value, every });
+  }
+
+  /**
+   * Reserved word enforcement (per spec E015).
+   */
+  _checkReserved(nameToken) {
+    if (nameToken && RESERVED.has(nameToken.value.toLowerCase())) {
+      this.errors.push(`Line ${nameToken.line}: The word "${nameToken.value}" is reserved and cannot be used as a name. Reserved words have one meaning in EventMath.`);
+    }
   }
 
   // ── Layer operations ─────────────────────────────────────────────
