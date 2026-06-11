@@ -88,6 +88,9 @@ class EventMathFormatter {
       case 'VibrateStmt':  return this._formatVibrateStmt(stmt);
       case 'CycleStmt':    return this._formatCycleStmt(stmt);
       case 'ResonateStmt': return this._formatResonateStmt(stmt);
+      case 'WeightStmt':   return this._formatWeightStmt(stmt);
+      case 'ExplainStmt':  return this._formatExplainStmt(stmt);
+      case 'AnalogyStmt':  return this._formatAnalogyStmt(stmt);
     }
   }
 
@@ -551,6 +554,18 @@ class EventMathFormatter {
 
   _formatResonateStmt(stmt) {
     this._line(`resonate ${stmt.firstName} and ${stmt.secondName}`);
+  }
+
+  _formatWeightStmt(stmt) {
+    this._line(`weight ${stmt.targetName} at ${stmt.value}`);
+  }
+
+  _formatExplainStmt(stmt) {
+    this._line(`explain ${stmt.observations} from ${stmt.candidates} into ${stmt.intoName}`);
+  }
+
+  _formatAnalogyStmt(stmt) {
+    this._line(`analogy ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

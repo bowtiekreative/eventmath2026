@@ -29,6 +29,7 @@ const KEYWORDS = new Set([
   'predict', 'across', 'resolve',
   'zoom', 'show',
   'spin', 'vibrate', 'cycle', 'resonate',
+  'weight', 'explain', 'analogy',
 ]);
 
 class Token {
@@ -150,6 +151,21 @@ class EventMathTokenizer {
     // resonate → resonate <X> and <Y>
     if (lead === 'resonate') {
       return this._resonateStmt(words, lineNum);
+    }
+
+    // weight → weight <X> at <N>   (probabilistic)
+    if (lead === 'weight') {
+      return this._weightStmt(words, lineNum);
+    }
+
+    // explain → explain <X> from <Y> into <Z>   (abductive)
+    if (lead === 'explain') {
+      return this._explainStmt(words, lineNum);
+    }
+
+    // analogy → analogy <X> and <Y> into <Z>   (analogical)
+    if (lead === 'analogy') {
+      return this._analogyStmt(words, lineNum);
     }
 
     // when → when <condition>
@@ -516,6 +532,37 @@ class EventMathTokenizer {
     const firstName  = words.slice(1, andIdx).join(' ');
     const secondName = words.slice(andIdx + 1).join(' ');
     return [new Token('RESONATE_STMT', { firstName, secondName }, lineNum)];
+  }
+
+  // weight <name> at <N>   — probabilistic weight assignment
+  _weightStmt(words, lineNum) {
+    const atIdx = this._indexOfFrom(words, 'at', 1);
+    if (atIdx < 0) return [new Token('KEYWORD', 'weight', lineNum)];
+    const targetName = words.slice(1, atIdx).join(' ');
+    const value      = parseFloat(words[atIdx + 1]) || 1;
+    return [new Token('WEIGHT_STMT', { targetName, value }, lineNum)];
+  }
+
+  // explain <observations> from <candidates> into <result>
+  _explainStmt(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const intoIdx = this._indexOf(words, 'into');
+    if (fromIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'explain', lineNum)];
+    const observations = words.slice(1, fromIdx).join(' ');
+    const candidates   = words.slice(fromIdx + 1, intoIdx).join(' ');
+    const intoName     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('EXPLAIN_STMT', { observations, candidates, intoName }, lineNum)];
+  }
+
+  // analogy <X> and <Y> into <Z>   — structural similarity
+  _analogyStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'analogy', lineNum)];
+    const firstName  = words.slice(1, andIdx).join(' ');
+    const secondName = words.slice(andIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('ANALOGY_STMT', { firstName, secondName, intoName }, lineNum)];
   }
 
   _when(words, lineNum) {
@@ -945,6 +992,17 @@ class EventMathTokenizer {
         const subject = words.slice(0, repeatedIdx);
         const nWords = words.slice(repeatedIdx + 1, -1); // strip 'times' at end
         return { kind: 'repeated', a: subject, n: nWords };
+      }
+    }
+
+    // weighted accuracy of <layer> where <condition>
+    if (w0 === 'weighted' && w1 === 'accuracy' && words[2] === 'of') {
+      const rest = words.slice(3);
+      const whereIdx = this._indexOf(rest, 'where');
+      if (whereIdx >= 0) {
+        const layer     = rest.slice(0, whereIdx);
+        const condition = rest.slice(whereIdx + 1);
+        return { kind: 'weighted_accuracy_of', layer, condition };
       }
     }
 

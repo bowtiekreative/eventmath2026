@@ -102,6 +102,9 @@ class EventMathParser {
     if (t.type === 'VIBRATE_STMT')  return this._parseVibrateStmt();
     if (t.type === 'CYCLE_STMT')    return this._parseCycleStmt();
     if (t.type === 'RESONATE_STMT') return this._parseResonateStmt();
+    if (t.type === 'WEIGHT_STMT')   return this._parseWeightStmt();
+    if (t.type === 'EXPLAIN_STMT')  return this._parseExplainStmt();
+    if (t.type === 'ANALOGY_STMT')  return this._parseAnalogyStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -914,6 +917,32 @@ class EventMathParser {
     const t = this.advance();
     if (!t || !t.value) return null;
     return ast('ResonateStmt', { firstName: t.value.firstName, secondName: t.value.secondName });
+  }
+
+  _parseWeightStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('WeightStmt', { targetName: t.value.targetName, value: t.value.value });
+  }
+
+  _parseExplainStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ExplainStmt', {
+      observations: t.value.observations,
+      candidates:   t.value.candidates,
+      intoName:     t.value.intoName
+    });
+  }
+
+  _parseAnalogyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AnalogyStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

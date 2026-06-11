@@ -99,6 +99,16 @@ class EventMathValidator {
             this.marks.set(stmt.intoName, true);
           }
           break;
+        case 'ExplainStmt':
+          if (stmt.intoName) {
+            this.events.set(stmt.intoName, true);
+          }
+          break;
+        case 'AnalogyStmt':
+          if (stmt.intoName) {
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
       }
     }
   }

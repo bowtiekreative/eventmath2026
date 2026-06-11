@@ -79,6 +79,9 @@ class EventMathCodeGen {
     this._line("  ? EventMathRuntime");
     this._line("  : require('../runtime/eventmath-runtime.js');");
     this._line('');
+    // Probabilistic weight registry — populated by weight statements
+    this._line('const __weights = {};');
+    this._line('');
 
     // First pass: register all declaration names and door inputs
     this._firstPass(ast.statements);
@@ -255,7 +258,18 @@ class EventMathCodeGen {
           }
           break;
         case 'CycleStmt':
-          // cycle produces a completion event stored on the torus
+          break;
+        case 'ExplainStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._eventNames.add(stmt.intoName);
+          }
+          break;
+        case 'AnalogyStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._vars.add(stmt.intoName); // numeric mark
+          }
           break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
@@ -323,6 +337,9 @@ class EventMathCodeGen {
       case 'VibrateStmt':    return this._genVibrateStmt(stmt);
       case 'CycleStmt':      return this._genCycleStmt(stmt);
       case 'ResonateStmt':   return this._genResonateStmt(stmt);
+      case 'WeightStmt':     return this._genWeightStmt(stmt);
+      case 'ExplainStmt':    return this._genExplainStmt(stmt);
+      case 'AnalogyStmt':    return this._genAnalogyStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -617,6 +634,12 @@ class EventMathCodeGen {
       const targetName = this._safeName(op.target);
       return `(${targetName}.zoomLevel || 1)`;
     }
+    if (kind === 'weighted_accuracy_of') {
+      const layerName = this._safeName(op.layer.join(' '));
+      const condStr = (op.condition || []).join(' ');
+      const cond = this._genMatterCondition(condStr, '_p');
+      return `(function() {\n  const _resolved = ${layerName}.events.filter(_p => _p.matter && _p.matter.resolved === true && (${cond}));\n  let _wCorrect = 0, _wTotal = 0;\n  for (const _p of _resolved) {\n    const _w = __weights[_p.matter.direction] || __weights[_p.matter.lens] || __weights[_p.matter.quantity] || 1;\n    _wTotal += _w;\n    if (_p.matter.correct === true) _wCorrect += _w;\n  }\n  return _wTotal > 0 ? Math.round((_wCorrect / _wTotal) * 100) / 100 : 0;\n})()`;
+    }
     return '""';
   }
 
@@ -883,9 +906,128 @@ class EventMathCodeGen {
     const secondEsc  = this._escape(stmt.secondName);
 
     this._line(`// resonate ${firstEsc} and ${secondEsc}`);
-    // Add resonance to whichever is a torus; fall back to both
     this._line(`if (${firstVar} && typeof ${firstVar}.addResonance === 'function') ${firstVar}.addResonance('${secondEsc}');`);
     this._line(`if (${secondVar} && typeof ${secondVar}.addResonance === 'function') ${secondVar}.addResonance('${firstEsc}');`);
+    this._line('');
+  }
+
+  // ── v1.6 Reasoning statements ────────────────────────────────────
+
+  // weight <name> at <N>  — store probability weight in registry
+  _genWeightStmt(stmt) {
+    const key = this._safeName(stmt.targetName);
+    const esc = this._escape(stmt.targetName);
+    this._line(`// weight: ${esc} = ${stmt.value}`);
+    this._line(`__weights['${key}'] = ${stmt.value};`);
+    this._line('');
+  }
+
+  // explain <observations> from <candidates> into <result>
+  // Abductive: find the candidate from <candidates> that best explains
+  // the pattern of correct predictions in <observations>.
+  _genExplainStmt(stmt) {
+    const obsVar  = this._safeName(stmt.observations);
+    const canVar  = this._safeName(stmt.candidates);
+    const intoVar = this._safeName(stmt.intoName);
+    const obsEsc  = this._escape(stmt.observations);
+    const canEsc  = this._escape(stmt.candidates);
+    const intoEsc = this._escape(stmt.intoName);
+
+    this._line(`// explain ${obsEsc} from ${canEsc} into ${intoEsc}`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    // Collect correct observations — handle both layer.events and raw arrays
+    this._line(`const __obs = (Array.isArray(${obsVar}) ? ${obsVar} : (${obsVar}.events || []));`);
+    this._line(`const __isTruthy = v => v === true || v === 'true';`);
+    this._line(`const __correct = __obs.filter(_p => _p.matter && __isTruthy(_p.matter.resolved) && __isTruthy(_p.matter.correct));`);
+    this._line(`const __candidates = (Array.isArray(${canVar}) ? ${canVar} : (${canVar}.events || []));`);
+    this._line(`let __bestScore = -1, __bestEvt = null, __bestReason = '';`);
+    this._line(`for (const __c of __candidates) {`);
+    this.indent++;
+    this._line(`let __score = 0;`);
+    this._line(`const __cMatter = __c.matter || {};`);
+    this._line(`for (const __p of __correct) {`);
+    this.indent++;
+    this._line(`const __pMatter = __p.matter || {};`);
+    // Weight-adjusted scoring: each field match scores weight of that field
+    this._line(`for (const __k of Object.keys(__cMatter)) {`);
+    this.indent++;
+    this._line(`if (__pMatter[__k] !== undefined && __pMatter[__k] === __cMatter[__k]) {`);
+    this.indent++;
+    this._line(`__score += (__weights[String(__cMatter[__k])] || __weights[__k] || 1);`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`}`);
+    this._line(`if (__score > __bestScore) {`);
+    this.indent++;
+    this._line(`__bestScore = __score;`);
+    this._line(`__bestEvt = __c;`);
+    this._line(`__bestReason = 'matched ' + Object.keys(__cMatter).filter(k => __correct.some(p => (p.matter||{})[k] === __cMatter[k])).join(', ');`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`}`);
+    // Wrap best result as an event with explanation metadata
+    this._line(`if (!__bestEvt) return new EM.EventMathEvent('no_explanation', 'explanation', { score: 0, reason: 'no candidates matched' });`);
+    this._line(`const __expMatter = Object.assign({}, __bestEvt.matter, {`);
+    this.indent++;
+    this._line(`explanation_score: Math.round(__bestScore * 100) / 100,`);
+    this._line(`explanation_of: '${obsEsc}',`);
+    this._line(`matched_fields: __bestReason,`);
+    this._line(`abductive: true`);
+    this.indent--;
+    this._line(`});`);
+    this._line(`return new EM.EventMathEvent(__bestEvt.id + '_explanation', 'explanation', __expMatter);`);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  // analogy <X> and <Y> into <Z>
+  // Analogical: compute structural similarity between X and Y (0-1 score).
+  // Compares: matter field overlap (Jaccard), zoom level match, governance role match.
+  _genAnalogyStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const firstEsc  = this._escape(stmt.firstName);
+    const secondEsc = this._escape(stmt.secondName);
+    const intoEsc   = this._escape(stmt.intoName);
+
+    this._line(`// analogy ${firstEsc} and ${secondEsc} into ${intoEsc}`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    // Extract matter from event, timeline control entry, or raw object
+    this._line(`function __getMatter(x) {`);
+    this.indent++;
+    this._line(`if (!x) return {};`);
+    this._line(`if (x.matter) return x.matter;`);
+    this._line(`if (x.log && x.log[0] && x.log[0].data) return x.log[0].data.matter || {};`);
+    this._line(`return {};`);
+    this.indent--;
+    this._line(`}`);
+    this._line(`const __aM = __getMatter(${firstVar});`);
+    this._line(`const __bM = __getMatter(${secondVar});`);
+    this._line(`const __aKeys = new Set(Object.keys(__aM));`);
+    this._line(`const __bKeys = new Set(Object.keys(__bM));`);
+    // Jaccard similarity on matter fields with matching values
+    this._line(`const __intersection = [...__aKeys].filter(k => __bKeys.has(k) && __aM[k] === __bM[k]).length;`);
+    this._line(`const __union = new Set([...__aKeys, ...__bKeys]).size;`);
+    this._line(`const __matterSim = __union > 0 ? __intersection / __union : 1;`);
+    // Structural similarity: zoom level, opposite, meta, rings
+    this._line(`let __sScore = 0, __sTotal = 0;`);
+    this._line(`const __a = ${firstVar}, __b = ${secondVar};`);
+    this._line(`if (__a.zoomLevel !== undefined && __b.zoomLevel !== undefined) { __sTotal++; if (__a.zoomLevel === __b.zoomLevel) __sScore++; }`);
+    this._line(`if (__a.opposite !== undefined || __b.opposite !== undefined) { __sTotal++; if (__a.opposite === __b.opposite) __sScore++; }`);
+    this._line(`if (__a.meta !== undefined || __b.meta !== undefined) { __sTotal++; if (__a.meta === __b.meta) __sScore++; }`);
+    this._line(`if (__a.rings !== undefined || __b.rings !== undefined) { __sTotal++; if ((__a.rings||[]).length === (__b.rings||[]).length) __sScore++; }`);
+    this._line(`const __structSim = __sTotal > 0 ? __sScore / __sTotal : 1;`);
+    this._line(`return Math.round((__matterSim * 0.6 + __structSim * 0.4) * 100) / 100;`);
+    this.indent--;
+    this._line(`})();`);
     this._line('');
   }
 
