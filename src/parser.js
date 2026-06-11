@@ -106,7 +106,9 @@ class EventMathParser {
       case 'add':      return this._parseAdd();
       case 'remove':   return this._parseRemove();
       case 'merge':    return this._parseMerge();
-      default:         return this._parseBodyName(); 
+      case 'overlap':  return this._parseOverlap();
+      case 'note':     return this._parseNote();
+      default:         return this._parseBodyName();
     }
   }
 
@@ -354,12 +356,43 @@ class EventMathParser {
     const left = this.expect('NAME');
     if (!left) return null;
     this.expect('KEYWORD', 'is');
-    const not = this.isKeyword('not');
-    if (not) this.advance();
+
+    // Check for multi-word operators
+    const peek = this.peek();
+    if (peek && peek.type === 'KEYWORD') {
+      const kw = peek.value;
+      if (kw === 'not') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'is not', right: right ? right.value : '' });
+      }
+      if (kw === 'greater than') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'greater than', right: right ? right.value : '' });
+      }
+      if (kw === 'less than') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'less than', right: right ? right.value : '' });
+      }
+      if (kw === 'at least') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'at least', right: right ? right.value : '' });
+      }
+      if (kw === 'at most') {
+        this.advance();
+        const right = this.expect('NAME');
+        return ast('Condition', { left: left.value, op: 'at most', right: right ? right.value : '' });
+      }
+    }
+
+    // Default: just NAME
     const right = this.expect('NAME');
     return ast('Condition', {
       left: left.value,
-      op: not ? 'is not' : 'is',
+      op: 'is',
       right: right ? right.value : '',
     });
   }
@@ -497,6 +530,36 @@ class EventMathParser {
     this.expect('KEYWORD', 'into');
     const target = this.expect('NAME');
     return ast('Merge', { source: source ? source.value : '', target: target ? target.value : '' });
+  }
+
+  // ── Overlap ──────────────────────────────────────────────────────
+
+  _parseOverlap() {
+    this.expect('KEYWORD', 'overlap');
+    const tracks = [];
+    let current = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < MAX_ITERATIONS) {
+      if (this.isKeyword('and')) {
+        this.advance();
+        tracks.push(current);
+        current = [];
+      } else {
+        const stmt = this._parseStatement();
+        if (stmt) current.push(stmt);
+      }
+    }
+    tracks.push(current);
+    this.expect('KEYWORD', 'end');
+    return ast('Overlap', { tracks });
+  }
+
+  // ── Note ─────────────────────────────────────────────────────────
+
+  _parseNote() {
+    this.expect('KEYWORD', 'note');
+    const textTok = this.expect('LITERAL');
+    return ast('Note', { text: textTok ? textTok.value : '' });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ const KEYWORDS = new Set([
   'split', 'path', 'again', 'walk', 'end', 'is', 'from', 'as', 'to',
   'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
-  'and', 'not', 'until',
+  'and', 'not', 'until', 'overlap', 'note',
 ]);
 
 class Token {
@@ -163,6 +163,21 @@ class EventMathTokenizer {
       return [new Token('KEYWORD', 'end', lineNum)];
     }
 
+    // overlap — parallel track block
+    if (lead === 'overlap') {
+      return [new Token('KEYWORD', 'overlap', lineNum)];
+    }
+
+    // note — annotation
+    if (lead === 'note') {
+      return this._note(words, lineNum);
+    }
+
+    // and — bare track separator in overlap block
+    if (lead === 'and') {
+      return [new Token('KEYWORD', 'and', lineNum)];
+    }
+
     // ── Action call: <name> with <key> is <value> and ... ────
     // Must check BEFORE matter lines since action calls also have "is"
     if (this._hasDelimiter(words, 'with')) {
@@ -255,20 +270,14 @@ class EventMathTokenizer {
   }
 
   _when(words, lineNum) {
-    // when <name> is <value>  or  when <name> is not <value>
+    // when <name> is [not|greater than|less than|at least|at most] <value>
     const tokens = [new Token('KEYWORD', 'when', lineNum)];
     const isIdx = this._indexOf(words, 'is');
     if (isIdx > 0) {
       tokens.push(new Token('NAME', words.slice(1, isIdx).join(' '), lineNum));
       tokens.push(new Token('KEYWORD', 'is', lineNum));
       const rest = words.slice(isIdx + 1);
-      // Handle "not" in condition
-      if (rest[0] === 'not') {
-        tokens.push(new Token('KEYWORD', 'not', lineNum));
-        tokens.push(new Token('NAME', rest.slice(1).join(' '), lineNum));
-      } else {
-        tokens.push(new Token('NAME', rest.join(' '), lineNum));
-      }
+      tokens.push(...this._tokenizeCondition(rest, lineNum));
     }
     return tokens;
   }
@@ -288,7 +297,7 @@ class EventMathTokenizer {
       if (isIdx > 0) {
         tokens.push(new Token('NAME', rest.slice(1, isIdx).join(' '), lineNum));
         tokens.push(new Token('KEYWORD', 'is', lineNum));
-        tokens.push(new Token('NAME', rest.slice(isIdx + 1).join(' '), lineNum));
+        tokens.push(...this._tokenizeCondition(rest.slice(isIdx + 1), lineNum));
       } else {
         tokens.push(new Token('NAME', rest.slice(1).join(' '), lineNum));
       }
@@ -458,6 +467,45 @@ class EventMathTokenizer {
       if (i < rest.length && rest[i] === 'and') i++;
     }
 
+    return tokens;
+  }
+
+  /**
+   * Note annotation: note <text>
+   */
+  _note(words, lineNum) {
+    return [
+      new Token('KEYWORD', 'note', lineNum),
+      new Token('LITERAL', words.slice(1).join(' '), lineNum),
+    ];
+  }
+
+  /**
+   * Shared condition tokenizer: handles the part after "is" in when/again until.
+   * Recognizes: not, greater than, less than, at least, at most
+   */
+  _tokenizeCondition(rest, lineNum) {
+    const tokens = [];
+    if (!rest || rest.length === 0) return tokens;
+
+    if (rest[0] === 'not') {
+      tokens.push(new Token('KEYWORD', 'not', lineNum));
+      tokens.push(new Token('NAME', rest.slice(1).join(' '), lineNum));
+    } else if (rest.length >= 2 && rest[0] === 'greater' && rest[1] === 'than') {
+      tokens.push(new Token('KEYWORD', 'greater than', lineNum));
+      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
+    } else if (rest.length >= 2 && rest[0] === 'less' && rest[1] === 'than') {
+      tokens.push(new Token('KEYWORD', 'less than', lineNum));
+      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
+    } else if (rest.length >= 2 && rest[0] === 'at' && rest[1] === 'least') {
+      tokens.push(new Token('KEYWORD', 'at least', lineNum));
+      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
+    } else if (rest.length >= 2 && rest[0] === 'at' && rest[1] === 'most') {
+      tokens.push(new Token('KEYWORD', 'at most', lineNum));
+      tokens.push(new Token('NAME', rest.slice(2).join(' '), lineNum));
+    } else {
+      tokens.push(new Token('NAME', rest.join(' '), lineNum));
+    }
     return tokens;
   }
 

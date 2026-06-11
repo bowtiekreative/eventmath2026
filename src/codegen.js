@@ -87,8 +87,21 @@ class EventMathCodeGen {
     }
 
     // Second pass: generate code
+    this._hasOverlap = this._detectOverlap(ast.statements);
+    if (this._hasOverlap) {
+      this._line('(async () => {');
+      this.indent++;
+    }
+
     for (const stmt of ast.statements) {
       this._genStatement(stmt);
+    }
+
+    if (this._hasOverlap) {
+      this.indent--;
+      this._line('})().catch(err => {');
+      this._line('  console.error(\'Broken event:\', err.message);');
+      this._line('});');
     }
 
     // Template for acceptance test outputs
@@ -182,6 +195,8 @@ class EventMathCodeGen {
       case 'RemoveLayer':    return this._genRemoveLayer(stmt);
       case 'RemoveEvent':    return this._genRemoveEvent(stmt);
       case 'Merge':          return this._genMerge(stmt);
+      case 'Overlap':        return this._genOverlap(stmt);
+      case 'Note':           return this._genNote(stmt);
       case 'NameRef':        return null; // standalone names are no-ops
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
@@ -410,17 +425,26 @@ class EventMathCodeGen {
   _genCondition(cond) {
     const left = this._walkRef(cond.left);
     const rightVal = cond.right || '';
+
+    // For numeric operators, emit the right-hand side as a number if it looks numeric
+    const numericOps = new Set(['greater than', 'less than', 'at least', 'at most']);
     let right;
     if (rightVal === 'true') right = 'true';
     else if (rightVal === 'false') right = 'false';
     else if (/^\d+(\.\d+)?$/.test(rightVal)) right = rightVal;
+    else if (numericOps.has(cond.op) && /^\d+(\.\d+)?$/.test(rightVal)) right = rightVal;
     else right = `"${this._escape(rightVal)}"`;
-    if (cond.op === 'is') {
-      return `${left} === ${right}`;
-    } else if (cond.op === 'is not') {
-      return `${left} !== ${right}`;
-    }
-    return `${left} === ${right}`;
+
+    const ops = {
+      'is': '===',
+      'is not': '!==',
+      'greater than': '>',
+      'less than': '<',
+      'at least': '>=',
+      'at most': '<=',
+    };
+    const jsOp = ops[cond.op] || '===';
+    return `${left} ${jsOp} ${right}`;
   }
 
   /**
@@ -578,6 +602,53 @@ class EventMathCodeGen {
 
   _genMerge(stmt) {
     this._line(`// merge ${stmt.source} into ${stmt.target}`);
+  }
+
+  // ── Overlap & Note ─────────────────────────────────────────────
+
+  /**
+   * Recursively checks whether any node in the AST is an Overlap.
+   */
+  _detectOverlap(statements) {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (!stmt) continue;
+      if (stmt.type === 'Overlap') return true;
+      // Check nested bodies
+      if (stmt.body && this._detectOverlap(stmt.body)) return true;
+      if (stmt.otherwise && this._detectOverlap(stmt.otherwise)) return true;
+      if (stmt.tracks) {
+        for (const track of stmt.tracks) {
+          if (this._detectOverlap(track)) return true;
+        }
+      }
+      // Check path bodies in split
+      if (stmt.paths) {
+        for (const path of stmt.paths) {
+          if (path.body && this._detectOverlap(path.body)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  _genOverlap(stmt) {
+    this._line('// overlap: run these tracks at the same time');
+    this._line('await Promise.all([');
+    this.indent++;
+    for (const track of (stmt.tracks || [])) {
+      this._line('(async () => {');
+      this.indent++;
+      for (const s of track) this._genStatement(s, this._inAction);
+      this.indent--;
+      this._line('})(),');
+    }
+    this.indent--;
+    this._line(']);');
+  }
+
+  _genNote(stmt) {
+    this._line(`// note: ${stmt.text}`);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────

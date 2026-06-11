@@ -248,6 +248,34 @@ This catalog doubles as the Mender's fast-path table: each error class carries i
 
 ---
 
+### E017 — Undefined reference
+**Template:** `"{context}" uses "{name}", but nothing named "{name}" was declared. Did you write "event {name}" or "layer {name}" or "mark {name} as ..." first?`
+
+| Context | Example |
+|---|---|
+| Layer references an undeclared event | `layer sprint` lists `ghost story` but no `event ghost story` exists |
+| Timeline references an undeclared layer | `timeline project present` lists `beta layer` but no `layer beta layer` exists |
+| Walk references an undeclared layer | `walk missing layer as item` when no `layer missing layer` exists |
+
+**Typical cause:** Referencing an event in a layer, or a layer in a timeline, before declaring it — or a typo in the name.
+**Suggested fix:** Add the declaration before the reference, or check the spelling.
+
+---
+
+### E018 — Duplicate declaration
+**Template:** `A {kind} named "{name}" was already declared. Each {kind} needs a unique name.`
+
+| Context | Example |
+|---|---|
+| Two events with the same name | `event user logs in` declared twice |
+| Two layers with the same name | `layer sprint` block appears twice |
+| Two actions with the same name | `action send email` defined more than once |
+
+**Typical cause:** Copy-pasting a block and forgetting to rename it.
+**Suggested fix:** Give one of them a different name.
+
+---
+
 ## Mender fast-path table
 
 When the error is one of these classes and the typical cause is clear, the Mender can skip to Phase 5 (recommend the fix) without going through Phases 2–4:

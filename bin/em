@@ -22,6 +22,7 @@ const { EventMathTokenizer } = require(path.join(ROOT, 'src/tokenizer.js'));
 const { EventMathParser } = require(path.join(ROOT, 'src/parser.js'));
 const { EventMathCodeGen } = require(path.join(ROOT, 'src/codegen.js'));
 const { EventMathFormatter } = require(path.join(ROOT, 'src/formatter.js'));
+const { EventMathValidator } = require(path.join(ROOT, 'src/validator.js'));
 
 function die(msg) {
   console.error(msg);
@@ -83,6 +84,16 @@ function cmdCompile(file, opts) {
   const src = readFileOrStdin(file);
   const ast = parseEM(src, file);
   if (!ast) process.exit(1);
+
+  // Semantic validation (non-blocking in alpha — print but don't stop compile)
+  const validator = new EventMathValidator();
+  const validation = validator.validate(ast);
+  if (validation.errors.length > 0) {
+    for (const err of validation.errors) console.warn('  Semantic warning:', err);
+  }
+  if (validation.warnings.length > 0) {
+    for (const w of validation.warnings) console.warn('  Warning:', w);
+  }
 
   const codegen = new EventMathCodeGen();
   const js = codegen.generate(ast);
@@ -209,6 +220,16 @@ function cmdCheck(file, opts) {
       console.error(file ? `${file}: ${msg}` : msg);
     }
     process.exit(1);
+  }
+
+  // Semantic validation
+  const validator = new EventMathValidator();
+  const validation = validator.validate(ast);
+  if (validation.errors.length > 0) {
+    for (const err of validation.errors) console.error('  Error:', err);
+  }
+  if (validation.warnings.length > 0) {
+    for (const w of validation.warnings) console.warn('  Warning:', w);
   }
 
   if (opts.verbose) {

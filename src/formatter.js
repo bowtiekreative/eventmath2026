@@ -64,6 +64,8 @@ class EventMathFormatter {
       case 'RemoveEvent': return this._formatRemoveEvent(stmt);
       case 'Merge':       return this._formatMerge(stmt);
       case 'NameRef':     return this._formatNameRef(stmt);
+      case 'Overlap':     return this._formatOverlap(stmt);
+      case 'Note':        return this._formatNote(stmt);
     }
   }
 
@@ -186,12 +188,25 @@ class EventMathFormatter {
     }
   }
 
+  _formatCondition(cond) {
+    if (!cond) return '';
+    const opMap = {
+      'is': 'is',
+      'is not': 'is not',
+      'greater than': 'is greater than',
+      'less than': 'is less than',
+      'at least': 'is at least',
+      'at most': 'is at most',
+    };
+    const op = opMap[cond.op] || 'is';
+    return `${cond.left} ${op} ${cond.right}`;
+  }
+
   // ── When / Otherwise ──────────────────────────────────────
 
   _formatWhen(stmt) {
     if (stmt.condition) {
-      const op = stmt.condition.op === 'is' ? 'is' : 'is not';
-      this._line(`when ${stmt.condition.left} ${op} ${stmt.condition.right}`);
+      this._line(`when ${this._formatCondition(stmt.condition)}`);
     } else {
       this._line('when');
     }
@@ -249,8 +264,7 @@ class EventMathFormatter {
 
   _formatAgainUntil(stmt) {
     if (stmt.condition) {
-      const op = stmt.condition.op === 'is' ? 'is' : 'is not';
-      this._line(`again until ${stmt.condition.left} ${op} ${stmt.condition.right}`);
+      this._line(`again until ${this._formatCondition(stmt.condition)}`);
     } else {
       this._line('again until');
     }
@@ -331,6 +345,30 @@ class EventMathFormatter {
 
   _formatNameRef(stmt) {
     this._line(stmt.name);
+  }
+
+  // ── Overlap ───────────────────────────────────────────────
+
+  _formatOverlap(stmt) {
+    this._line('overlap');
+    const tracks = stmt.tracks || [];
+    for (let i = 0; i < tracks.length; i++) {
+      if (i > 0) {
+        this._line('and');
+      }
+      this.indent++;
+      for (const s of tracks[i]) {
+        this._formatStatement(s);
+      }
+      this.indent--;
+    }
+    this._line('end');
+  }
+
+  // ── Note ──────────────────────────────────────────────────
+
+  _formatNote(stmt) {
+    this._line(`note ${stmt.text}`);
   }
 }
 
