@@ -237,6 +237,18 @@ class EventMathCodeGen {
             this._eventNames.add(stmt.asName);
           }
           break;
+        case 'ZoomOpposite':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._timelineNames.add(stmt.intoName);
+          }
+          break;
+        case 'ZoomMeta':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._timelineNames.add(stmt.intoName);
+          }
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -297,6 +309,8 @@ class EventMathCodeGen {
       case 'ResolveStmt':    return this._genResolveStmt(stmt);
       case 'ZoomIn':         return this._genZoomIn(stmt);
       case 'ZoomOut':        return this._genZoomOut(stmt);
+      case 'ZoomOpposite':   return this._genZoomOpposite(stmt);
+      case 'ZoomMeta':       return this._genZoomMeta(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -751,6 +765,70 @@ class EventMathCodeGen {
       this.indent--;
       this._line(`);`);
     }
+    this._line('');
+  }
+
+  _genZoomOpposite(stmt) {
+    const srcVar    = this._safeName(stmt.sourceName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const srcEsc    = this._escape(stmt.sourceName);
+    const intoEsc   = this._escape(stmt.intoName);
+
+    this._line(`// zoom opposite: equal and opposite control of "${srcEsc}"`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    this._line(`const __src = ${srcVar};`);
+    this._line(`const __level = (__src && __src.zoomLevel) || 1;`);
+    this._line(`const __opp = new EM.EventMathTimeline('${intoEsc}');`);
+    this._line(`__opp.zoomLevel = __level;`);
+    this._line(`__opp.opposite = true;`);
+    this._line(`__opp.oppositeOf = '${srcEsc}';`);
+    this._line(`__opp.polarity = -1;`);
+    this._line(`const __oppMatter = {`);
+    this.indent++;
+    this._line(`type: 'opposite control',`);
+    this._line(`opposite_of: '${srcEsc}',`);
+    this._line(`zoom_level: __level,`);
+    this._line(`polarity: 'negative',`);
+    this._line(`description: 'equal and opposite force to ' + '${srcEsc}'`);
+    this.indent--;
+    this._line(`};`);
+    this._line(`__opp.append(new EM.TimelineEntry('control', new EM.EventMathEvent('opp_ctrl_' + Date.now(), 'opposite control', __oppMatter)));`);
+    this._line(`return __opp;`);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  _genZoomMeta(stmt) {
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    const subjectRefs  = stmt.subjects.map(s => this._safeName(s));
+    const subjectNames = stmt.subjects.map(s => `'${this._escape(s)}'`).join(', ');
+
+    this._line(`// zoom meta: meta-control governing [${stmt.subjects.join(', ')}]`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    this._line(`const __governs = [${subjectRefs.join(', ')}];`);
+    this._line(`const __maxLevel = Math.max(...__governs.map(s => (s && s.zoomLevel) || 1));`);
+    this._line(`const __meta = new EM.EventMathTimeline('${intoEsc}');`);
+    this._line(`__meta.zoomLevel = __maxLevel + 1;`);
+    this._line(`__meta.meta = true;`);
+    this._line(`__meta.governs = __governs;`);
+    this._line(`__meta.governsNames = [${subjectNames}];`);
+    this._line(`const __metaMatter = {`);
+    this.indent++;
+    this._line(`type: 'meta control',`);
+    this._line(`governs_count: __governs.length,`);
+    this._line(`governs: [${subjectNames}].join(', '),`);
+    this._line(`zoom_level: __meta.zoomLevel,`);
+    this._line(`description: 'meta-control governing the governing controls'`);
+    this.indent--;
+    this._line(`};`);
+    this._line(`__meta.append(new EM.TimelineEntry('control', new EM.EventMathEvent('meta_ctrl_' + Date.now(), 'meta control', __metaMatter)));`);
+    this._line(`return __meta;`);
+    this.indent--;
+    this._line(`})();`);
     this._line('');
   }
 

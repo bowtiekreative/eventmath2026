@@ -192,10 +192,12 @@ class EventMathTokenizer {
       return this._countInLayer(words, lineNum);
     }
 
-    // zoom → zoom in ... | zoom out ...
+    // zoom → zoom in ... | zoom out ... | zoom opposite ... | zoom meta ...
     if (lead === 'zoom') {
       if (words[1] === 'in') return this._tokenizeZoomIn(words, lineNum);
       if (words[1] === 'out') return this._tokenizeZoomOut(words, lineNum);
+      if (words[1] === 'opposite') return this._tokenizeZoomOpposite(words, lineNum);
+      if (words[1] === 'meta') return this._tokenizeZoomMeta(words, lineNum);
       return [new Token('KEYWORD', 'zoom', lineNum)];
     }
 
@@ -1121,6 +1123,61 @@ class EventMathTokenizer {
     return [new Token('ZOOM_OUT', {
       sourceType, sourceName, asName
     }, lineNum)];
+  }
+
+  /**
+   * Zoom opposite: zoom opposite on <source> into <result>
+   * Creates the equal and opposite control of an existing control.
+   *
+   * Produces token: { type: 'ZOOM_OPPOSITE', sourceName, intoName }
+   */
+  _tokenizeZoomOpposite(words, lineNum) {
+    // words: zoom opposite on <source> into <result>
+    const onIdx = this._indexOf(words, 'on');
+    const intoIdx = this._indexOf(words, 'into');
+
+    if (onIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'zoom', lineNum)];
+    }
+
+    const sourceName = words.slice(onIdx + 1, intoIdx).join(' ');
+    const intoName = words.slice(intoIdx + 1).join(' ');
+
+    return [new Token('ZOOM_OPPOSITE', { sourceName, intoName }, lineNum)];
+  }
+
+  /**
+   * Zoom meta: zoom meta on <n1> and <n2> and <n3> and <n4> into <result>
+   * Creates the meta-control governing four subjects (two events + two controls).
+   * Names can be multi-word; `and` is the separator; `into` terminates subject list.
+   *
+   * Produces token: { type: 'ZOOM_META', subjects: string[], intoName }
+   */
+  _tokenizeZoomMeta(words, lineNum) {
+    // words: zoom meta on <n1> and <n2> ... into <result>
+    const onIdx = this._indexOf(words, 'on');
+    const intoIdx = this._indexOf(words, 'into');
+
+    if (onIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'zoom', lineNum)];
+    }
+
+    const intoName = words.slice(intoIdx + 1).join(' ');
+
+    // Collect subject names separated by standalone 'and' between onIdx+1 and intoIdx
+    const subjectWords = words.slice(onIdx + 1, intoIdx);
+    const subjects = [];
+    let current = [];
+    for (const w of subjectWords) {
+      if (w === 'and') {
+        if (current.length > 0) { subjects.push(current.join(' ')); current = []; }
+      } else {
+        current.push(w);
+      }
+    }
+    if (current.length > 0) subjects.push(current.join(' '));
+
+    return [new Token('ZOOM_META', { subjects, intoName }, lineNum)];
   }
 
   /**

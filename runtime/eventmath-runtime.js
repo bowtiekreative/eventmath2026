@@ -109,6 +109,13 @@
     this.snapshots = {};        // { index: state }
     this._state = {};           // Current derived state (marks, events, etc.)
     this.zoomLevel = 1;
+    // v1.4 — opposite / meta governance fields
+    this.opposite = false;      // true if this is an equal-and-opposite control
+    this.oppositeOf = null;     // name of the source control this opposes
+    this.polarity = 1;          // 1 = positive direction, -1 = opposite direction
+    this.meta = false;          // true if this is a meta-control
+    this.governs = null;        // array of governed objects
+    this.governsNames = null;   // array of governed names
   }
 
   /**
@@ -261,16 +268,33 @@
    */
   EventMathTimeline.prototype.render = function () {
     var st = this._rebuild();
-    var lines = ['── Timeline: ' + this.name + ' ──'];
-    lines.push('  Pointer: ' + this.pointer + ' / ' + this.log.length);
+    var role = this.meta ? 'Meta-Control' : (this.opposite ? 'Opposite Control' : 'Timeline');
+    var lines = ['── ' + role + ': ' + this.name + ' ──'];
+    lines.push('  Zoom Level: ' + this.zoomLevel);
+
+    if (this.opposite && this.oppositeOf) {
+      lines.push('  Opposes: ' + this.oppositeOf);
+      lines.push('  Polarity: -1 (equal and opposite)');
+    }
+    if (this.meta && this.governsNames) {
+      lines.push('  Governs: ' + this.governsNames.join(', '));
+      lines.push('  Governed count: ' + this.governsNames.length);
+    }
+
+    lines.push('  Log entries: ' + this.log.length);
     lines.push('  Events: ' + (st.events ? Object.keys(st.events).length : 0));
     lines.push('  Marks: ' + (st.marks ? Object.keys(st.marks).length : 0));
 
-    if (st.events) {
-      for (var id in st.events) {
-        if (st.events.hasOwnProperty(id)) {
-          var evt = st.events[id];
-          lines.push('  Event: ' + (evt.id || id) + ' [' + evt.cat + ']');
+    if (this.log.length > 0) {
+      for (var i = 0; i < this.log.length; i++) {
+        var entry = this.log[i];
+        if (entry.type === 'control' && entry.data) {
+          var m = entry.data.matter || {};
+          for (var k in m) {
+            if (m.hasOwnProperty(k)) {
+              lines.push('  ' + k + ': ' + m[k]);
+            }
+          }
         }
       }
     }

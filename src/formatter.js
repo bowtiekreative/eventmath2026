@@ -82,6 +82,8 @@ class EventMathFormatter {
       case 'ResolveStmt':  return this._formatResolveStmt(stmt);
       case 'ZoomIn':       return this._formatZoomIn(stmt);
       case 'ZoomOut':      return this._formatZoomOut(stmt);
+      case 'ZoomOpposite': return this._formatZoomOpposite(stmt);
+      case 'ZoomMeta':     return this._formatZoomMeta(stmt);
     }
   }
 
@@ -520,6 +522,15 @@ class EventMathFormatter {
   _formatZoomOut(stmt) {
     const srcRef = stmt.sourceType !== 'event' ? `${stmt.sourceType} ${stmt.sourceName}` : stmt.sourceName;
     this._line(`zoom out on ${srcRef} as event ${stmt.asName}`);
+  }
+
+  _formatZoomOpposite(stmt) {
+    this._line(`zoom opposite on ${stmt.sourceName} into ${stmt.intoName}`);
+  }
+
+  _formatZoomMeta(stmt) {
+    const subjects = stmt.subjects.join(' and ');
+    this._line(`zoom meta on ${subjects} into ${stmt.intoName}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

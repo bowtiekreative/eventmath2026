@@ -93,9 +93,11 @@ class EventMathParser {
 
     if (t.type === 'KEYWORD' && t.value === 'end') return null;
 
-    // Handle ZOOM_IN / ZOOM_OUT tokens (non-KEYWORD type)
-    if (t.type === 'ZOOM_IN') return this._parseZoomIn();
-    if (t.type === 'ZOOM_OUT') return this._parseZoomOut();
+    // Handle ZOOM_* tokens (non-KEYWORD type)
+    if (t.type === 'ZOOM_IN')       return this._parseZoomIn();
+    if (t.type === 'ZOOM_OUT')      return this._parseZoomOut();
+    if (t.type === 'ZOOM_OPPOSITE') return this._parseZoomOpposite();
+    if (t.type === 'ZOOM_META')     return this._parseZoomMeta();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -868,6 +870,20 @@ class EventMathParser {
     if (!t || !t.value) return null;
     const { sourceType, sourceName, asName } = t.value;
     return ast('ZoomOut', { sourceType, sourceName, asName });
+  }
+
+  _parseZoomOpposite() {
+    const t = this.advance(); // consume ZOOM_OPPOSITE token
+    if (!t || !t.value) return null;
+    const { sourceName, intoName } = t.value;
+    return ast('ZoomOpposite', { sourceName, intoName });
+  }
+
+  _parseZoomMeta() {
+    const t = this.advance(); // consume ZOOM_META token
+    if (!t || !t.value) return null;
+    const { subjects, intoName } = t.value;
+    return ast('ZoomMeta', { subjects, intoName });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

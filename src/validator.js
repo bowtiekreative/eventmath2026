@@ -79,9 +79,18 @@ class EventMathValidator {
           }
           break;
         case 'ZoomOut':
-          // Register the zoom-out result as a known event
           if (stmt.asName) {
             this.events.set(stmt.asName, true);
+          }
+          break;
+        case 'ZoomOpposite':
+          if (stmt.intoName) {
+            this.timelines.set(stmt.intoName, true);
+          }
+          break;
+        case 'ZoomMeta':
+          if (stmt.intoName) {
+            this.timelines.set(stmt.intoName, true);
           }
           break;
       }
