@@ -64,6 +64,7 @@
     }
     this.name = name || '';
     this.events = events || [];
+    this.zoomLevel = 1;
   }
 
   EventMathLayer.prototype.render = function () {
@@ -107,6 +108,7 @@
     this.future = [];           // Planned events
     this.snapshots = {};        // { index: state }
     this._state = {};           // Current derived state (marks, events, etc.)
+    this.zoomLevel = 1;
   }
 
   /**
@@ -285,6 +287,39 @@
   };
 
   /**
+   * Zoom in between two events in this timeline — returns a new timeline
+   * representing the gap between them.
+   */
+  EventMathTimeline.prototype.zoomIn = function (fromEventId, toEventId) {
+    var fromEvt = null, toEvt = null;
+    for (var i = 0; i < this.log.length; i++) {
+      var entry = this.log[i];
+      if (entry.data && entry.data.id === fromEventId) fromEvt = entry.data;
+      if (entry.data && entry.data.id === toEventId) toEvt = entry.data;
+    }
+    var ctrl = new EventMathTimeline('control_' + fromEventId + '_' + toEventId);
+    ctrl.zoomLevel = this.zoomLevel + 1;
+    if (fromEvt && toEvt) {
+      ctrl.append(new TimelineEntry('control', new EventMathEvent(
+        'ctrl_' + Date.now(), 'control',
+        { from: fromEventId, to: toEventId, zoom_level: ctrl.zoomLevel, control: true }
+      )));
+    }
+    return ctrl;
+  };
+
+  /**
+   * Zoom out — collapse this timeline to a single summary event.
+   */
+  EventMathTimeline.prototype.zoomOut = function () {
+    return new EventMathEvent(
+      'summary_' + this.name.replace(/\s+/g, '_'),
+      'summary',
+      { source: this.name, zoom_level: Math.max(1, this.zoomLevel - 1), entry_count: this.log.length, summary: this.render() }
+    );
+  };
+
+  /**
    * Render past/present/future sections.
    */
   EventMathTimeline.prototype.renderSection = function (section) {
@@ -325,6 +360,31 @@
       }
     }
     return lines.join('\n');
+  };
+
+  /**
+   * Zoom in between two events in this layer — returns a new layer.
+   */
+  EventMathLayer.prototype.zoomIn = function (fromIdx, toIdx) {
+    var ctrl = new EventMathLayer('control_' + this.name, []);
+    ctrl.zoomLevel = this.zoomLevel + 1;
+    var fromEvt = this.events[fromIdx];
+    var toEvt = this.events[toIdx];
+    if (fromEvt && toEvt) {
+      ctrl.events.push(new EventMathEvent('ctrl_' + Date.now(), 'control', { from: fromEvt.id, to: toEvt.id, zoom_level: ctrl.zoomLevel, control: true }));
+    }
+    return ctrl;
+  };
+
+  /**
+   * Zoom out — collapse this layer to a single summary event.
+   */
+  EventMathLayer.prototype.zoomOut = function () {
+    return new EventMathEvent(
+      'summary_' + this.name.replace(/\s+/g, '_'),
+      'summary',
+      { source: this.name, zoom_level: Math.max(1, this.zoomLevel - 1), event_count: this.events.length, summary: this.render() }
+    );
   };
 
   // ── Auto-tracking ───────────────────────────────────────

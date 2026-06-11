@@ -214,6 +214,23 @@ class EventMathCodeGen {
             // Count targets are numeric marks
           }
           break;
+        case 'ZoomIn':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            // layer→layer zoom creates a new layer; event→event and timeline→timeline create a timeline
+            if (stmt.fromType === 'layer') {
+              this._layerNames.add(stmt.intoName);
+            } else {
+              this._timelineNames.add(stmt.intoName);
+            }
+          }
+          break;
+        case 'ZoomOut':
+          if (stmt.asName && !this._vars.has(stmt.asName)) {
+            this._vars.add(stmt.asName);
+            this._eventNames.add(stmt.asName);
+          }
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -271,6 +288,8 @@ class EventMathCodeGen {
       case 'CountInLayer':   return this._genCountInLayer(stmt);
       case 'PredictStmt':    return this._genPredictStmt(stmt);
       case 'ResolveStmt':    return this._genResolveStmt(stmt);
+      case 'ZoomIn':         return this._genZoomIn(stmt);
+      case 'ZoomOut':        return this._genZoomOut(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -553,6 +572,10 @@ class EventMathCodeGen {
       const cond = this._genMatterCondition(condStr, '_p');
       return `(function() {\n  const _resolved = ${layerName}.events.filter(_p => _p.matter.resolved === true && (${cond}));\n  const _correct = _resolved.filter(_p => _p.matter.correct === true);\n  return _resolved.length > 0 ? Math.round((_correct.length / _resolved.length) * 100) / 100 : 0;\n})()`;
     }
+    if (kind === 'zoom_level_of') {
+      const targetName = this._safeName(op.target);
+      return `(${targetName}.zoomLevel || 1)`;
+    }
     return '""';
   }
 
@@ -615,6 +638,105 @@ class EventMathCodeGen {
     this._line(`return _p;`);
     this.indent--;
     this._line(`});`);
+  }
+
+  // ── Zoom statements ──────────────────────────────────────────────
+
+  _genZoomIn(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const fromVar = this._safeName(stmt.fromName);
+    const toVar = this._safeName(stmt.toName);
+    const fromNameEsc = this._escape(stmt.fromName);
+    const toNameEsc = this._escape(stmt.toName);
+    const intoNameEsc = this._escape(stmt.intoName);
+    const gapDesc = `between ${stmt.fromName} and ${stmt.toName}`;
+
+    this._line(`// zoom in on ${fromNameEsc} and ${toNameEsc} into ${intoNameEsc}`);
+
+    if (stmt.fromType === 'layer') {
+      // layer→layer zoom produces a new EventMathLayer
+      this._line(`const ${intoVar} = new EM.EventMathLayer('${intoNameEsc}', []);`);
+      this._line(`${intoVar}.zoomLevel = ((${fromVar}.zoomLevel || 1) + 1);`);
+      this._line(`${intoVar}.events.push(new EM.EventMathEvent('ctrl_' + Date.now(), 'control', {`);
+      this.indent++;
+      this._line(`from: '${fromNameEsc}',`);
+      this._line(`to: '${toNameEsc}',`);
+      this._line(`zoom_level: ${intoVar}.zoomLevel,`);
+      this._line(`control: true,`);
+      this._line(`gap_description: '${this._escape(gapDesc)}',`);
+      this._line(`from_count: ${fromVar}.events.length,`);
+      this._line(`to_count: ${toVar}.events.length`);
+      this.indent--;
+      this._line(`}));`);
+    } else {
+      // event→event or timeline→timeline zoom produces a new EventMathTimeline
+      this._line(`const ${intoVar} = new EM.EventMathTimeline('${intoNameEsc}');`);
+      this._line(`${intoVar}.zoomLevel = ((${fromVar}.zoomLevel || 1) + 1);`);
+      this._line(`const _ctrl_matter_${intoVar} = {`);
+      this.indent++;
+      if (stmt.fromType === 'timeline') {
+        this._line(`from: ${fromVar}.name,`);
+        this._line(`to: ${toVar}.name,`);
+      } else {
+        this._line(`from: ${fromVar}.id,`);
+        this._line(`to: ${toVar}.id,`);
+      }
+      this._line(`zoom_level: ${intoVar}.zoomLevel,`);
+      this._line(`control: true,`);
+      this._line(`gap_description: '${this._escape(gapDesc)}'`);
+      this.indent--;
+      this._line(`};`);
+      if (stmt.fromType !== 'timeline') {
+        this._line(`Object.keys(${fromVar}.matter || {}).forEach(k => { _ctrl_matter_${intoVar}['from_' + k] = ${fromVar}.matter[k]; });`);
+        this._line(`Object.keys(${toVar}.matter || {}).forEach(k => { _ctrl_matter_${intoVar}['to_' + k] = ${toVar}.matter[k]; });`);
+      }
+      this._line(`${intoVar}.append(new EM.TimelineEntry('control', new EM.EventMathEvent('ctrl_' + Date.now(), 'control', _ctrl_matter_${intoVar})));`);
+    }
+    this._line('');
+  }
+
+  _genZoomOut(stmt) {
+    const asVar = this._safeName(stmt.asName);
+    const srcVar = this._safeName(stmt.sourceName);
+    const sourceNameEsc = this._escape(stmt.sourceName);
+    const asNameEsc = this._escape(stmt.asName);
+
+    this._line(`// zoom out on ${stmt.sourceType} ${sourceNameEsc} as event ${asNameEsc}`);
+    if (stmt.sourceType === 'timeline') {
+      this._line(`const ${asVar} = new EM.EventMathEvent(`);
+      this.indent++;
+      this._line(`'${asNameEsc}',`);
+      this._line(`'summary',`);
+      this._line(`{`);
+      this.indent++;
+      this._line(`source_type: 'timeline',`);
+      this._line(`source_name: '${sourceNameEsc}',`);
+      this._line(`zoom_level: Math.max(1, (${srcVar}.zoomLevel || 1) - 1),`);
+      this._line(`entry_count: ${srcVar}.log.length,`);
+      this._line(`summary: ${srcVar}.render()`);
+      this.indent--;
+      this._line(`}`);
+      this.indent--;
+      this._line(`);`);
+    } else {
+      // layer
+      this._line(`const ${asVar} = new EM.EventMathEvent(`);
+      this.indent++;
+      this._line(`'${asNameEsc}',`);
+      this._line(`'summary',`);
+      this._line(`{`);
+      this.indent++;
+      this._line(`source_type: 'layer',`);
+      this._line(`source_name: '${sourceNameEsc}',`);
+      this._line(`zoom_level: Math.max(1, (${srcVar}.zoomLevel || 1) - 1),`);
+      this._line(`event_count: ${srcVar}.events.length,`);
+      this._line(`summary: ${srcVar}.render()`);
+      this.indent--;
+      this._line(`}`);
+      this.indent--;
+      this._line(`);`);
+    }
+    this._line('');
   }
 
   /**

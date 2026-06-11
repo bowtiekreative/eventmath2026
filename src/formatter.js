@@ -79,6 +79,8 @@ class EventMathFormatter {
       case 'CountInLayer': return this._formatCountInLayer(stmt);
       case 'PredictStmt':  return this._formatPredictStmt(stmt);
       case 'ResolveStmt':  return this._formatResolveStmt(stmt);
+      case 'ZoomIn':       return this._formatZoomIn(stmt);
+      case 'ZoomOut':      return this._formatZoomOut(stmt);
     }
   }
 
@@ -496,6 +498,19 @@ class EventMathFormatter {
   _formatResolveStmt(stmt) {
     const cond = this._formatCondition(stmt.condition);
     this._line(`resolve ${stmt.layer} where ${cond} as ${stmt.outcome}`);
+  }
+
+  // ── Zoom In / Zoom Out ────────────────────────────────────
+
+  _formatZoomIn(stmt) {
+    const fromRef = stmt.fromType !== 'event' ? `${stmt.fromType} ${stmt.fromName}` : stmt.fromName;
+    const toRef = stmt.toType !== 'event' ? `${stmt.toType} ${stmt.toName}` : stmt.toName;
+    this._line(`zoom in on ${fromRef} and ${toRef} into ${stmt.intoName}`);
+  }
+
+  _formatZoomOut(stmt) {
+    const srcRef = stmt.sourceType !== 'event' ? `${stmt.sourceType} ${stmt.sourceName}` : stmt.sourceName;
+    this._line(`zoom out on ${srcRef} as event ${stmt.asName}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

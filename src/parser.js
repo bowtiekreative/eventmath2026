@@ -93,6 +93,10 @@ class EventMathParser {
 
     if (t.type === 'KEYWORD' && t.value === 'end') return null;
 
+    // Handle ZOOM_IN / ZOOM_OUT tokens (non-KEYWORD type)
+    if (t.type === 'ZOOM_IN') return this._parseZoomIn();
+    if (t.type === 'ZOOM_OUT') return this._parseZoomOut();
+
     switch (t.value) {
       case 'event':    return this._parseEvent();
       case 'layer':    return this._parseLayer();
@@ -841,6 +845,22 @@ class EventMathParser {
       condition,
       outcome: outcomeTok ? outcomeTok.value : 'correct',
     });
+  }
+
+  // ── Zoom In / Zoom Out ───────────────────────────────────────────
+
+  _parseZoomIn() {
+    const t = this.advance(); // consume ZOOM_IN token
+    if (!t || !t.value) return null;
+    const { fromType, fromName, toType, toName, intoName } = t.value;
+    return ast('ZoomIn', { fromType, fromName, toType, toName, intoName });
+  }
+
+  _parseZoomOut() {
+    const t = this.advance(); // consume ZOOM_OUT token
+    if (!t || !t.value) return null;
+    const { sourceType, sourceName, asName } = t.value;
+    return ast('ZoomOut', { sourceType, sourceName, asName });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

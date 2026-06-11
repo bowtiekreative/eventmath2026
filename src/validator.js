@@ -68,6 +68,22 @@ class EventMathValidator {
           this.actions.set(stmt.name, true);
           this.marks.set(stmt.name, true);
           break;
+        case 'ZoomIn':
+          // Register the zoom-in result as a known layer or timeline
+          if (stmt.intoName) {
+            if (stmt.fromType === 'layer') {
+              this.layers.set(stmt.intoName, true);
+            } else {
+              this.timelines.set(stmt.intoName, true);
+            }
+          }
+          break;
+        case 'ZoomOut':
+          // Register the zoom-out result as a known event
+          if (stmt.asName) {
+            this.events.set(stmt.asName, true);
+          }
+          break;
       }
     }
   }
@@ -79,7 +95,7 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

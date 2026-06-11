@@ -27,6 +27,7 @@ const KEYWORDS = new Set([
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
   'sort', 'filter', 'find', 'count', 'where', 'descending',
   'predict', 'across', 'resolve',
+  'zoom',
 ]);
 
 class Token {
@@ -184,6 +185,13 @@ class EventMathTokenizer {
     // count → count in <name> where <condition> into <markname>
     if (lead === 'count') {
       return this._countInLayer(words, lineNum);
+    }
+
+    // zoom → zoom in ... | zoom out ...
+    if (lead === 'zoom') {
+      if (words[1] === 'in') return this._tokenizeZoomIn(words, lineNum);
+      if (words[1] === 'out') return this._tokenizeZoomOut(words, lineNum);
+      return [new Token('KEYWORD', 'zoom', lineNum)];
     }
 
     // predict → predict <subject> across <dir> and <lens> and <qty> into <out>
@@ -882,6 +890,11 @@ class EventMathTokenizer {
       }
     }
 
+    // zoom level of <target>
+    if (w0 === 'zoom' && w1 === 'level' && words[2] === 'of') {
+      return { kind: 'zoom_level_of', target: words.slice(3).join(' ') };
+    }
+
     return null;
   }
 
@@ -1001,6 +1014,100 @@ class EventMathTokenizer {
     tokens.push(new Token('NAME', markName, lineNum));
 
     return tokens;
+  }
+
+  /**
+   * Zoom in statement: zoom in on <A ref> and <B ref> into <name>
+   * words[0] = 'zoom', words[1] = 'in', words[2] = 'on'
+   *
+   * A ref and B ref may start with 'layer' or 'timeline' as type hints.
+   * Produces token: { type: 'ZOOM_IN', fromType, fromName, toType, toName, intoName, line }
+   */
+  _tokenizeZoomIn(words, lineNum) {
+    // words: zoom in on [layer|timeline] <name> and [layer|timeline] <name> into <name>
+    // words[0]=zoom, words[1]=in, words[2]=on
+    const onIdx = this._indexOf(words, 'on');
+    const andIdx = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+
+    if (onIdx < 0 || andIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'zoom', lineNum)];
+    }
+
+    // Parse A ref: words from onIdx+1 to andIdx-1
+    const aWords = words.slice(onIdx + 1, andIdx);
+    let fromType = 'event', fromName;
+    if (aWords[0] === 'layer') {
+      fromType = 'layer';
+      fromName = aWords.slice(1).join(' ');
+    } else if (aWords[0] === 'timeline') {
+      fromType = 'timeline';
+      fromName = aWords.slice(1).join(' ');
+    } else {
+      fromName = aWords.join(' ');
+    }
+
+    // Parse B ref: words from andIdx+1 to intoIdx-1
+    const bWords = words.slice(andIdx + 1, intoIdx);
+    let toType = 'event', toName;
+    if (bWords[0] === 'layer') {
+      toType = 'layer';
+      toName = bWords.slice(1).join(' ');
+    } else if (bWords[0] === 'timeline') {
+      toType = 'timeline';
+      toName = bWords.slice(1).join(' ');
+    } else {
+      toName = bWords.join(' ');
+    }
+
+    const intoName = words.slice(intoIdx + 1).join(' ');
+
+    return [new Token('ZOOM_IN', {
+      fromType, fromName, toType, toName, intoName
+    }, lineNum)];
+  }
+
+  /**
+   * Zoom out statement: zoom out on [timeline|layer] <name> as event <name>
+   * words[0] = 'zoom', words[1] = 'out', words[2] = 'on'
+   *
+   * Produces token: { type: 'ZOOM_OUT', sourceType, sourceName, asName, line }
+   */
+  _tokenizeZoomOut(words, lineNum) {
+    // words: zoom out on [timeline|layer] <name> as event <name>
+    // words[0]=zoom, words[1]=out, words[2]=on
+    const onIdx = this._indexOf(words, 'on');
+    const asIdx = this._indexOf(words, 'as');
+
+    if (onIdx < 0 || asIdx < 0) {
+      return [new Token('KEYWORD', 'zoom', lineNum)];
+    }
+
+    // Parse source ref: words from onIdx+1 to asIdx-1
+    const srcWords = words.slice(onIdx + 1, asIdx);
+    let sourceType = 'event', sourceName;
+    if (srcWords[0] === 'timeline') {
+      sourceType = 'timeline';
+      sourceName = srcWords.slice(1).join(' ');
+    } else if (srcWords[0] === 'layer') {
+      sourceType = 'layer';
+      sourceName = srcWords.slice(1).join(' ');
+    } else {
+      sourceName = srcWords.join(' ');
+    }
+
+    // Parse as name: words after 'as', skip optional 'event' keyword
+    const asWords = words.slice(asIdx + 1);
+    let asName;
+    if (asWords[0] === 'event') {
+      asName = asWords.slice(1).join(' ');
+    } else {
+      asName = asWords.join(' ');
+    }
+
+    return [new Token('ZOOM_OUT', {
+      sourceType, sourceName, asName
+    }, lineNum)];
   }
 
   /**

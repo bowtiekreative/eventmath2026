@@ -145,6 +145,18 @@ const cases = [
     expectCompiles: true,
     compiledContains: '.map(',
   },
+  {
+    name: 'zoom in statement parses correctly',
+    source: 'event evt a\ncategory test\nend\nevent evt b\ncategory test\nend\nzoom in on evt a and evt b into the gap',
+    expectCompiles: true,
+    compiledContains: 'EventMathTimeline',
+  },
+  {
+    name: 'zoom out statement parses correctly',
+    source: 'timeline my tl\npast\nend\npresent\nend\nfuture\nend\nend\nzoom out on timeline my tl as event my summary',
+    expectCompiles: true,
+    compiledContains: 'zoom_level',
+  },
 ];
 
 let passed = 0;
