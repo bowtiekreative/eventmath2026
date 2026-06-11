@@ -104,6 +104,17 @@ const cases = [
     expectCompiles: true,
     compiledContains: 'String(',
   },
+  {
+    name: 'Use statement parses correctly',
+    source: 'use sprint features from events.em',
+    expectNoErrors: true,
+  },
+  {
+    name: 'Use statement compiles to require',
+    source: 'use sprint layer from events.em',
+    expectCompiles: true,
+    compiledContains: "require('./events.em.js')",
+  },
 ];
 
 let passed = 0;

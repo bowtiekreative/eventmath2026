@@ -60,6 +60,14 @@ class EventMathValidator {
         case 'Mark':
           this._registerSymbol('mark', stmt.name, this.marks);
           break;
+        case 'Use':
+          // Imported names are external — treat as valid symbols to avoid false E017 errors
+          // Add to all symbol sets since we don't know the type at validate time
+          this.events.set(stmt.name, true);
+          this.layers.set(stmt.name, true);
+          this.actions.set(stmt.name, true);
+          this.marks.set(stmt.name, true);
+          break;
       }
     }
   }

@@ -115,6 +115,7 @@ class EventMathParser {
       case 'note':     return this._parseNote();
       case 'broken':   return this._parseBrokenEvent();
       case 'check':    return this._parseCheck();
+      case 'use':      return this._parseUse();
       default:         return this._parseBodyName();
     }
   }
@@ -397,6 +398,21 @@ class EventMathParser {
     this.expect('KEYWORD', 'run');
     const t = this.peek();
     return ast('Run', { target: t && t.type === 'NAME' ? this.advance().value : null });
+  }
+
+  // ── Use statement ────────────────────────────────────────────────
+
+  _parseUse() {
+    this.expect('KEYWORD', 'use');
+    // Consume name tokens until we hit KEYWORD('from')
+    const nameWords = [];
+    while (this.peek() && !(this.peek().type === 'KEYWORD' && this.peek().value === 'from')) {
+      nameWords.push(this.advance().value);
+    }
+    const name = nameWords.join(' ');
+    this.expect('KEYWORD', 'from');
+    const fileTok = this.expect('LITERAL');
+    return ast('Use', { name, from: fileTok ? fileTok.value : '' });
   }
 
   // ── Body name (action call, bare ref) ────────────────────────────

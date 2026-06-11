@@ -24,7 +24,7 @@ const KEYWORDS = new Set([
   'split', 'path', 'again', 'walk', 'end', 'is', 'from', 'as', 'to',
   'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
-  'and', 'not', 'until', 'overlap', 'note', 'broken', 'check',
+  'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
 ]);
 
 class Token {
@@ -91,6 +91,11 @@ class EventMathTokenizer {
       } else {
         return this._keywordName(lead, words.slice(1), lineNum);
       }
+    }
+
+    // use → use <name> from <file>
+    if (lead === 'use') {
+      return this._use(words, lineNum);
     }
 
     // broken event → broken event <name>
@@ -488,6 +493,26 @@ class EventMathTokenizer {
       tokens.push(new Token('NAME', words.slice(1, intoIdx).join(' '), lineNum));
       tokens.push(new Token('KEYWORD', 'into', lineNum));
       tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * Use statement: use <name> from <file>
+   * words[0] = 'use', then name words, then 'from', then filename
+   */
+  _use(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'use', lineNum)];
+    const fromIdx = this._indexOf(words, 'from');
+    if (fromIdx > 1) {
+      tokens.push(new Token('NAME', words.slice(1, fromIdx).join(' '), lineNum));
+      tokens.push(new Token('KEYWORD', 'from', lineNum));
+      // filename — join remaining words (handles paths with spaces, though not recommended)
+      tokens.push(new Token('LITERAL', words.slice(fromIdx + 1).join(' '), lineNum));
+    } else if (fromIdx === 1) {
+      // "use from <file>" — malformed, but emit partial
+      tokens.push(new Token('KEYWORD', 'from', lineNum));
+      tokens.push(new Token('LITERAL', words.slice(fromIdx + 1).join(' '), lineNum));
     }
     return tokens;
   }

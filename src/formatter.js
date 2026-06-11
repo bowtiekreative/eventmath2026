@@ -72,6 +72,7 @@ class EventMathFormatter {
       case 'Note':         return this._formatNote(stmt);
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
       case 'Check':        return this._formatCheck(stmt);
+      case 'Use':          return this._formatUse(stmt);
     }
   }
 
@@ -424,6 +425,12 @@ class EventMathFormatter {
     if (!stmt.condition) return;
     const cond = this._formatCondition(stmt.condition);
     this._line(`check ${cond}`);
+  }
+
+  // ── Use ───────────────────────────────────────────────────
+
+  _formatUse(stmt) {
+    this._line(`use ${stmt.name} from ${stmt.from}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

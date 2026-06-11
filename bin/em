@@ -52,6 +52,44 @@ function parseEM(src, file) {
   return ast;
 }
 
+// ── Dependency compilation ────────────────────────────────
+
+function compileDependencies(ast, mainFilePath, compiled) {
+  if (!compiled) compiled = new Set();
+  const dir = path.dirname(path.resolve(mainFilePath));
+  const useStmts = ast.statements.filter(s => s.type === 'Use');
+
+  for (const stmt of useStmts) {
+    const depPath = path.resolve(dir, stmt.from);
+    if (compiled.has(depPath)) continue; // avoid circular deps
+
+    if (!fs.existsSync(depPath)) {
+      console.warn(`  Warning: referenced file "${stmt.from}" not found`);
+      continue;
+    }
+
+    compiled.add(depPath);
+
+    // Recursively compile this dependency
+    const depSrc = fs.readFileSync(depPath, 'utf-8');
+    const tokenizer = new EventMathTokenizer();
+    const depAst = new EventMathParser(tokenizer.tokenize(depSrc)).parse();
+    if (!depAst) continue;
+
+    // Compile its dependencies first
+    compileDependencies(depAst, depPath, compiled);
+
+    // Compile the dependency itself
+    const depOutPath = depPath.replace(/\.em$/, '.em.js');
+    if (!fs.existsSync(depOutPath)) {
+      const gen = new EventMathCodeGen();
+      const depJs = gen.generate(depAst);
+      fs.writeFileSync(depOutPath, depJs);
+      console.log(`  Compiled dependency: ${path.relative(process.cwd(), depPath)}`);
+    }
+  }
+}
+
 // ── Commands ─────────────────────────────────────────────
 
 function cmdHelp() {
@@ -93,6 +131,11 @@ function cmdCompile(file, opts) {
   }
   if (validation.warnings.length > 0) {
     for (const w of validation.warnings) console.warn('  Warning:', w);
+  }
+
+  // Compile dependencies first (use statements)
+  if (file && file !== '-') {
+    compileDependencies(ast, file, new Set());
   }
 
   const codegen = new EventMathCodeGen();
@@ -176,6 +219,11 @@ function cmdRun(file, opts) {
   const src = readFileOrStdin(file);
   const ast = parseEM(src, file);
   if (!ast) process.exit(1);
+
+  // Compile dependencies first (use statements)
+  if (file && file !== '-') {
+    compileDependencies(ast, file, new Set());
+  }
 
   const codegen = new EventMathCodeGen();
   let js = codegen.generate(ast);
