@@ -93,11 +93,15 @@ class EventMathParser {
 
     if (t.type === 'KEYWORD' && t.value === 'end') return null;
 
-    // Handle ZOOM_* tokens (non-KEYWORD type)
+    // Handle ZOOM_* and torus tokens (non-KEYWORD types)
     if (t.type === 'ZOOM_IN')       return this._parseZoomIn();
     if (t.type === 'ZOOM_OUT')      return this._parseZoomOut();
     if (t.type === 'ZOOM_OPPOSITE') return this._parseZoomOpposite();
     if (t.type === 'ZOOM_META')     return this._parseZoomMeta();
+    if (t.type === 'SPIN_STMT')     return this._parseSpinStmt();
+    if (t.type === 'VIBRATE_STMT')  return this._parseVibrateStmt();
+    if (t.type === 'CYCLE_STMT')    return this._parseCycleStmt();
+    if (t.type === 'RESONATE_STMT') return this._parseResonateStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -884,6 +888,32 @@ class EventMathParser {
     if (!t || !t.value) return null;
     const { subjects, intoName } = t.value;
     return ast('ZoomMeta', { subjects, intoName });
+  }
+
+  // ── Torus statements ─────────────────────────────────────────────
+
+  _parseSpinStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SpinStmt', { sourceName: t.value.sourceName, intoName: t.value.intoName });
+  }
+
+  _parseVibrateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('VibrateStmt', { torusName: t.value.torusName, rings: t.value.rings });
+  }
+
+  _parseCycleStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('CycleStmt', { torusName: t.value.torusName });
+  }
+
+  _parseResonateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ResonateStmt', { firstName: t.value.firstName, secondName: t.value.secondName });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

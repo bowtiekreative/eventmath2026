@@ -249,6 +249,14 @@ class EventMathCodeGen {
             this._timelineNames.add(stmt.intoName);
           }
           break;
+        case 'SpinStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+          }
+          break;
+        case 'CycleStmt':
+          // cycle produces a completion event stored on the torus
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -311,6 +319,10 @@ class EventMathCodeGen {
       case 'ZoomOut':        return this._genZoomOut(stmt);
       case 'ZoomOpposite':   return this._genZoomOpposite(stmt);
       case 'ZoomMeta':       return this._genZoomMeta(stmt);
+      case 'SpinStmt':       return this._genSpinStmt(stmt);
+      case 'VibrateStmt':    return this._genVibrateStmt(stmt);
+      case 'CycleStmt':      return this._genCycleStmt(stmt);
+      case 'ResonateStmt':   return this._genResonateStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -829,6 +841,51 @@ class EventMathCodeGen {
     this._line(`return __meta;`);
     this.indent--;
     this._line(`})();`);
+    this._line('');
+  }
+
+  // ── Torus statements ────────────────────────────────────────────
+
+  _genSpinStmt(stmt) {
+    const torusVar  = this._safeName(stmt.intoName);
+    const sourceVar = this._safeName(stmt.sourceName);
+    const intoEsc   = this._escape(stmt.intoName);
+    const srcEsc    = this._escape(stmt.sourceName);
+
+    this._line(`// spin ${srcEsc} into ${intoEsc}`);
+    this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
+    this._line(`${torusVar}.spinFrom(${sourceVar});`);
+    this._line('');
+  }
+
+  _genVibrateStmt(stmt) {
+    const torusVar = this._safeName(stmt.torusName);
+    const torusEsc = this._escape(stmt.torusName);
+
+    this._line(`// vibrate ${torusEsc} across ${stmt.rings} rings`);
+    this._line(`${torusVar}.expand(${stmt.rings});`);
+    this._line('');
+  }
+
+  _genCycleStmt(stmt) {
+    const torusVar = this._safeName(stmt.torusName);
+    const torusEsc = this._escape(stmt.torusName);
+
+    this._line(`// cycle ${torusEsc} — mark the completion event`);
+    this._line(`${torusVar}.complete();`);
+    this._line('');
+  }
+
+  _genResonateStmt(stmt) {
+    const firstVar   = this._safeName(stmt.firstName);
+    const secondVar  = this._safeName(stmt.secondName);
+    const firstEsc   = this._escape(stmt.firstName);
+    const secondEsc  = this._escape(stmt.secondName);
+
+    this._line(`// resonate ${firstEsc} and ${secondEsc}`);
+    // Add resonance to whichever is a torus; fall back to both
+    this._line(`if (${firstVar} && typeof ${firstVar}.addResonance === 'function') ${firstVar}.addResonance('${secondEsc}');`);
+    this._line(`if (${secondVar} && typeof ${secondVar}.addResonance === 'function') ${secondVar}.addResonance('${firstEsc}');`);
     this._line('');
   }
 

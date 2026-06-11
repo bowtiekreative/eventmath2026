@@ -93,6 +93,12 @@ class EventMathValidator {
             this.timelines.set(stmt.intoName, true);
           }
           break;
+        case 'SpinStmt':
+          if (stmt.intoName) {
+            // torus is a new kind — register as a known symbol
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
       }
     }
   }

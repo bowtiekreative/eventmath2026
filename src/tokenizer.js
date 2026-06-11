@@ -28,6 +28,7 @@ const KEYWORDS = new Set([
   'sort', 'filter', 'find', 'count', 'where', 'descending',
   'predict', 'across', 'resolve',
   'zoom', 'show',
+  'spin', 'vibrate', 'cycle', 'resonate',
 ]);
 
 class Token {
@@ -129,6 +130,26 @@ class EventMathTokenizer {
     // show → show <markname>
     if (lead === 'show') {
       return this._show(words, lineNum);
+    }
+
+    // spin → spin <source> into <name>
+    if (lead === 'spin') {
+      return this._spinStmt(words, lineNum);
+    }
+
+    // vibrate → vibrate <torus> across <N>
+    if (lead === 'vibrate') {
+      return this._vibrateStmt(words, lineNum);
+    }
+
+    // cycle → cycle <torus>
+    if (lead === 'cycle') {
+      return this._cycleStmt(words, lineNum);
+    }
+
+    // resonate → resonate <X> and <Y>
+    if (lead === 'resonate') {
+      return this._resonateStmt(words, lineNum);
     }
 
     // when → when <condition>
@@ -462,6 +483,39 @@ class EventMathTokenizer {
       tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
     }
     return tokens;
+  }
+
+  // spin <source> into <name>
+  _spinStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) return [new Token('KEYWORD', 'spin', lineNum)];
+    const sourceName = words.slice(1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SPIN_STMT', { sourceName, intoName }, lineNum)];
+  }
+
+  // vibrate <torus> across <N>
+  _vibrateStmt(words, lineNum) {
+    const acrossIdx = this._indexOf(words, 'across');
+    if (acrossIdx < 0) return [new Token('KEYWORD', 'vibrate', lineNum)];
+    const torusName = words.slice(1, acrossIdx).join(' ');
+    const rings     = parseInt(words[acrossIdx + 1], 10) || 1;
+    return [new Token('VIBRATE_STMT', { torusName, rings }, lineNum)];
+  }
+
+  // cycle <torus>
+  _cycleStmt(words, lineNum) {
+    const torusName = words.slice(1).join(' ');
+    return [new Token('CYCLE_STMT', { torusName }, lineNum)];
+  }
+
+  // resonate <X> and <Y>
+  _resonateStmt(words, lineNum) {
+    const andIdx = this._indexOf(words, 'and');
+    if (andIdx < 0) return [new Token('KEYWORD', 'resonate', lineNum)];
+    const firstName  = words.slice(1, andIdx).join(' ');
+    const secondName = words.slice(andIdx + 1).join(' ');
+    return [new Token('RESONATE_STMT', { firstName, secondName }, lineNum)];
   }
 
   _when(words, lineNum) {

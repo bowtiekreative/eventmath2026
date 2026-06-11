@@ -416,6 +416,166 @@
   /**
    * Global default timeline for auto-tracked events.
    */
+  // ── Torus ────────────────────────────────────────────────
+  //
+  // The shape that emerges when you map all controls.
+  // Not a sphere — a torus. The nucleus switches (present/absent)
+  // because it is the hole the torus passes through.
+  //
+  // Ring structure: each ring adds 4 points (square → diamond →
+  // square → diamond ...). At every completion point the total
+  // including the nucleus hits a Fibonacci number.
+  //
+  //   Ring 1:  4 outer  → +nucleus = 5  ← Fibonacci ✓
+  //   Ring 2:  8 outer  → +nucleus = 9
+  //   Ring 3: 12 outer  → +nucleus = 13 ← Fibonacci ✓
+  //   Ring 4: 16 outer  → +nucleus = 17
+  //   Ring 5: 20 outer  → +nucleus = 21 ← Fibonacci ✓
+  //   Ring 6: 24 outer  → +nucleus = 25
+  //   Ring 7: 28 outer  → +nucleus = 29
+  //   Ring 8: 32 outer  → +nucleus = 33
+  //   Ring 9: 36 outer  → +nucleus = 37
+  //  Ring 12: 48 outer  → +nucleus = 49
+  //  Ring 12: 52 outer  → +nucleus = 53
+  //  Ring 13: 56 outer  → +nucleus = 57 (not Fib)
+  //   ...
+  //  total=34: Fibonacci ✓  (outer=33, +nucleus=34)
+  //
+  // The switch: the nucleus is always structurally present but
+  // COUNTS as a point only when total+1 lands on a Fibonacci number.
+  // This is Ryan's insight — the nucleus is what makes the count Fibonacci.
+
+  var FIB = [1,1,2,3,5,8,13,21,34,55,89,144,233,377,610,987];
+
+  function isFibonacci(n) {
+    return FIB.indexOf(n) !== -1;
+  }
+
+  function EventMathTorus(name) {
+    if (!(this instanceof EventMathTorus)) {
+      return new EventMathTorus(name);
+    }
+    this.name        = name || '';
+    this.sourceName  = '';          // name of the seed object
+    this.zoomLevel   = 1;           // one above source zoom level
+    this.rings       = [];          // array of ring descriptors
+    this.totalOuter  = 0;           // running outer point count
+    this.resonances  = [];          // cross-level connections
+    this.cycleComplete = false;
+    this.completionEvent = null;
+  }
+
+  EventMathTorus.prototype.spinFrom = function (source) {
+    this.sourceName = source
+      ? (source.name || source.id || String(source))
+      : '';
+    this.zoomLevel = ((source && source.zoomLevel) || 1) + 1;
+    return this;
+  };
+
+  // Add N rings (4 outer points each, alternating square/diamond).
+  EventMathTorus.prototype.expand = function (n) {
+    for (var i = 0; i < n; i++) {
+      var ringNum   = this.rings.length + 1;
+      var shape     = ringNum % 2 === 1 ? 'square' : 'diamond';
+      // Rotation angle for this ring in the stacking-squares model
+      var rotation  = ((ringNum - 1) * 45 / 2) % 360;
+      this.totalOuter += 4;
+      var withNucleus = this.totalOuter + 1;
+      this.rings.push({
+        ring:        ringNum,
+        shape:       shape,
+        rotation:    rotation,
+        count:       4,
+        total_outer: this.totalOuter,
+        with_nucleus: withNucleus,
+        fibonacci:   isFibonacci(withNucleus)
+      });
+    }
+    return this;
+  };
+
+  // Nucleus state: present (COUNTED) when total+1 is Fibonacci.
+  EventMathTorus.prototype.nucleusPresent = function () {
+    return isFibonacci(this.totalOuter + 1);
+  };
+
+  // Mark cycle completion — the return to 1, one level up.
+  // The completion event itself is the point that makes the total Fibonacci.
+  // After N rings: outer + nucleus = total. The cycle adds +1 (the return point)
+  // bringing the count to the next Fibonacci number.
+  EventMathTorus.prototype.complete = function () {
+    var beforeCycle = this.totalOuter + 1; // outer + nucleus
+    var withCycle   = beforeCycle + 1;     // + the return-to-1 point
+    this.cycleComplete = true;
+    this.completionEvent = new EventMathEvent(
+      'cycle_complete_' + Date.now(),
+      'completion',
+      {
+        outer_points:    this.totalOuter,
+        nucleus:         1,
+        cycle_point:     1,
+        total:           withCycle,
+        fibonacci_hit:   isFibonacci(withCycle),
+        rings:           this.rings.length,
+        description:     'cycle complete — outer ' + this.totalOuter +
+                         ' + nucleus 1 + return 1 = ' + withCycle +
+                         (isFibonacci(withCycle) ? '  ← Fibonacci ✓' : '')
+      }
+    );
+    return this.completionEvent;
+  };
+
+  EventMathTorus.prototype.addResonance = function (otherName, label) {
+    this.resonances.push({ name: otherName, label: label || 'resonance' });
+    return this;
+  };
+
+  EventMathTorus.prototype.render = function () {
+    var lines = ['── Torus: ' + this.name + ' ──'];
+    lines.push('  Source: ' + (this.sourceName || 'unknown') +
+               '  (zoom level ' + (this.zoomLevel - 1) + ' → torus level ' + this.zoomLevel + ')');
+
+    var nucleusState = this.nucleusPresent() ? '● PRESENT' : '○ ABSENT';
+    lines.push('  Nucleus: ' + nucleusState +
+               (this.nucleusPresent() ? '  (switch ON — total is Fibonacci)' : '  (switch OFF)'));
+    lines.push('');
+
+    for (var i = 0; i < this.rings.length; i++) {
+      var r = this.rings[i];
+      var fib = r.fibonacci ? '  ← Fibonacci: ' + r.with_nucleus + ' ✓' : '';
+      lines.push('  Ring ' + r.ring + '  [' + r.shape + ', ' + r.rotation + '°]' +
+                 '  4 pts  →  outer: ' + r.total_outer + '  +nucleus = ' + r.with_nucleus + fib);
+    }
+
+    if (this.rings.length > 0) {
+      lines.push('');
+      lines.push('  Total outer: ' + this.totalOuter + '  +nucleus: 1  =  ' +
+                 (this.totalOuter + 1) +
+                 (isFibonacci(this.totalOuter + 1) ? '  ← Fibonacci ✓' : ''));
+    }
+
+    if (this.resonances.length > 0) {
+      lines.push('');
+      lines.push('  Resonances:');
+      for (var j = 0; j < this.resonances.length; j++) {
+        lines.push('    ↔ ' + this.resonances[j].name);
+      }
+    }
+
+    if (this.cycleComplete && this.completionEvent) {
+      var m = this.completionEvent.matter;
+      lines.push('');
+      lines.push('  Cycle: COMPLETE');
+      lines.push('    outer ' + m.outer_points + '  +nucleus 1  +return 1  =  ' +
+                 m.total + (m.fibonacci_hit ? '  ← Fibonacci ✓  (the ' + m.total + 'th point IS the return to 1)' : ''));
+    }
+
+    return lines.join('\n');
+  };
+
+  // ── Default Timeline ─────────────────────────────────────
+
   var defaultTimeline = new EventMathTimeline('default');
 
   function getDefaultTimeline() {
@@ -428,9 +588,11 @@
     EventMathEvent: EventMathEvent,
     EventMathLayer: EventMathLayer,
     EventMathTimeline: EventMathTimeline,
+    EventMathTorus: EventMathTorus,
     TimelineEntry: TimelineEntry,
     getDefaultTimeline: getDefaultTimeline,
     SNAPSHOT_INTERVAL: SNAPSHOT_INTERVAL,
+    isFibonacci: isFibonacci,
   };
 
 });

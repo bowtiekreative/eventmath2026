@@ -84,6 +84,10 @@ class EventMathFormatter {
       case 'ZoomOut':      return this._formatZoomOut(stmt);
       case 'ZoomOpposite': return this._formatZoomOpposite(stmt);
       case 'ZoomMeta':     return this._formatZoomMeta(stmt);
+      case 'SpinStmt':     return this._formatSpinStmt(stmt);
+      case 'VibrateStmt':  return this._formatVibrateStmt(stmt);
+      case 'CycleStmt':    return this._formatCycleStmt(stmt);
+      case 'ResonateStmt': return this._formatResonateStmt(stmt);
     }
   }
 
@@ -531,6 +535,22 @@ class EventMathFormatter {
   _formatZoomMeta(stmt) {
     const subjects = stmt.subjects.join(' and ');
     this._line(`zoom meta on ${subjects} into ${stmt.intoName}`);
+  }
+
+  _formatSpinStmt(stmt) {
+    this._line(`spin ${stmt.sourceName} into ${stmt.intoName}`);
+  }
+
+  _formatVibrateStmt(stmt) {
+    this._line(`vibrate ${stmt.torusName} across ${stmt.rings}`);
+  }
+
+  _formatCycleStmt(stmt) {
+    this._line(`cycle ${stmt.torusName}`);
+  }
+
+  _formatResonateStmt(stmt) {
+    this._line(`resonate ${stmt.firstName} and ${stmt.secondName}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────
