@@ -25,6 +25,7 @@ const KEYWORDS = new Set([
   'by', 'with', 'into', 'times', 'past', 'present', 'future', 'stop',
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
+  'sort', 'filter', 'find', 'count', 'where', 'descending',
 ]);
 
 class Token {
@@ -164,6 +165,26 @@ class EventMathTokenizer {
       return this._merge(words, lineNum);
     }
 
+    // sort → sort layer <name> by matter <field> [descending]
+    if (lead === 'sort') {
+      return this._sortLayer(words, lineNum);
+    }
+
+    // filter → filter layer <name> where <condition> into <newname>
+    if (lead === 'filter') {
+      return this._filterLayer(words, lineNum);
+    }
+
+    // find → find in <name> where <condition> into <markname>
+    if (lead === 'find') {
+      return this._findInLayer(words, lineNum);
+    }
+
+    // count → count in <name> where <condition> into <markname>
+    if (lead === 'count') {
+      return this._countInLayer(words, lineNum);
+    }
+
     // stop
     if (lead === 'stop') {
       return [new Token('KEYWORD', 'stop', lineNum)];
@@ -293,6 +314,12 @@ class EventMathTokenizer {
       return [new Token('KEYWORD', 'length of', lineNum), new Token('NAME', subject, lineNum)];
     }
 
+    // ── Built-in operations (before arithmetic check) ────────────
+    const builtinOp = this._findBuiltinOp(words);
+    if (builtinOp) {
+      return [new Token('BUILTIN', builtinOp, lineNum)];
+    }
+
     const segments = [];
     const operators = [];
     let current = [];
@@ -314,6 +341,8 @@ class EventMathTokenizer {
       if (!raw) return [];
       if (/^\d+(\.\d+)?$/.test(raw)) return [new Token('NUMBER', raw, lineNum)];
       if (raw === 'true' || raw === 'false') return [new Token('BOOL', raw, lineNum)];
+      // Quoted string literal: "value" → LITERAL token with unquoted content
+      if (/^"[^"]*"$/.test(raw)) return [new Token('LITERAL', raw.slice(1, -1), lineNum)];
       return [new Token('NAME', raw, lineNum)];
     }
 
@@ -712,6 +741,220 @@ class EventMathTokenizer {
       if (phrase.every((w, j) => words[i + j] === w)) return i;
     }
     return -1;
+  }
+
+  /**
+   * Detect built-in operations in a word array.
+   * Returns { kind, ... } or null.
+   */
+  _findBuiltinOp(words) {
+    if (!words || words.length === 0) return null;
+
+    const w0 = words[0];
+    const w1 = words[1];
+
+    // today (single word)
+    if (w0 === 'today' && words.length === 1) {
+      return { kind: 'today' };
+    }
+
+    // now (single word)
+    if (w0 === 'now' && words.length === 1) {
+      return { kind: 'now' };
+    }
+
+    // round of X
+    if (w0 === 'round' && w1 === 'of') {
+      return { kind: 'round', a: words.slice(2) };
+    }
+
+    // floor of X
+    if (w0 === 'floor' && w1 === 'of') {
+      return { kind: 'floor', a: words.slice(2) };
+    }
+
+    // ceiling of X
+    if (w0 === 'ceiling' && w1 === 'of') {
+      return { kind: 'ceiling', a: words.slice(2) };
+    }
+
+    // absolute of X
+    if (w0 === 'absolute' && w1 === 'of') {
+      return { kind: 'absolute', a: words.slice(2) };
+    }
+
+    // minimum of X and Y
+    if (w0 === 'minimum' && w1 === 'of') {
+      const rest = words.slice(2);
+      const andIdx = this._indexOf(rest, 'and');
+      if (andIdx >= 0) {
+        return { kind: 'min', a: rest.slice(0, andIdx), b: rest.slice(andIdx + 1) };
+      }
+    }
+
+    // maximum of X and Y
+    if (w0 === 'maximum' && w1 === 'of') {
+      const rest = words.slice(2);
+      const andIdx = this._indexOf(rest, 'and');
+      if (andIdx >= 0) {
+        return { kind: 'max', a: rest.slice(0, andIdx), b: rest.slice(andIdx + 1) };
+      }
+    }
+
+    // random between X and Y
+    if (w0 === 'random' && w1 === 'between') {
+      const rest = words.slice(2);
+      const andIdx = this._indexOf(rest, 'and');
+      if (andIdx >= 0) {
+        return { kind: 'random', a: rest.slice(0, andIdx), b: rest.slice(andIdx + 1) };
+      }
+    }
+
+    // days between X and Y
+    if (w0 === 'days' && w1 === 'between') {
+      const rest = words.slice(2);
+      const andIdx = this._indexOf(rest, 'and');
+      if (andIdx >= 0) {
+        return { kind: 'days_between', a: rest.slice(0, andIdx), b: rest.slice(andIdx + 1) };
+      }
+    }
+
+    // X trimmed (last word is 'trimmed')
+    if (words.length >= 2 && words[words.length - 1] === 'trimmed') {
+      return { kind: 'trimmed', a: words.slice(0, -1) };
+    }
+
+    // X repeated N times
+    // Pattern: <subject words> repeated <N> times
+    if (words.length >= 4 && words[words.length - 1] === 'times') {
+      const repeatedIdx = this._indexOfFrom(words, 'repeated', 0);
+      if (repeatedIdx > 0) {
+        // subject is before 'repeated', N is between 'repeated' and 'times'
+        const subject = words.slice(0, repeatedIdx);
+        const nWords = words.slice(repeatedIdx + 1, -1); // strip 'times' at end
+        return { kind: 'repeated', a: subject, n: nWords };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Sort layer statement: sort layer <name> by matter <field> [descending]
+   */
+  _sortLayer(words, lineNum) {
+    // words[0] = 'sort', words[1] should be 'layer'
+    const tokens = [new Token('KEYWORD', 'sort', lineNum)];
+    if (words.length < 2 || words[1] !== 'layer') return tokens;
+    tokens.push(new Token('KEYWORD', 'layer', lineNum));
+
+    // Find 'by' keyword
+    const byIdx = this._indexOf(words, 'by');
+    if (byIdx < 0) return tokens;
+
+    const name = words.slice(2, byIdx).join(' ');
+    tokens.push(new Token('NAME', name, lineNum));
+    tokens.push(new Token('KEYWORD', 'by', lineNum));
+
+    // After 'by': 'matter' <field> [descending]
+    const afterBy = words.slice(byIdx + 1);
+    if (afterBy[0] === 'matter') {
+      tokens.push(new Token('KEYWORD', 'matter', lineNum));
+      const remaining = afterBy.slice(1);
+      // Check for 'descending' at the end
+      if (remaining.length > 0 && remaining[remaining.length - 1] === 'descending') {
+        tokens.push(new Token('NAME', remaining.slice(0, -1).join(' '), lineNum));
+        tokens.push(new Token('KEYWORD', 'descending', lineNum));
+      } else {
+        tokens.push(new Token('NAME', remaining.join(' '), lineNum));
+      }
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Filter layer statement: filter layer <name> where <condition> into <newname>
+   */
+  _filterLayer(words, lineNum) {
+    // words[0] = 'filter', words[1] = 'layer'
+    const tokens = [new Token('KEYWORD', 'filter', lineNum)];
+    if (words.length < 2 || words[1] !== 'layer') return tokens;
+    tokens.push(new Token('KEYWORD', 'layer', lineNum));
+
+    // Find 'where' and 'into'
+    const whereIdx = this._indexOf(words, 'where');
+    const intoIdx = this._indexOf(words, 'into');
+    if (whereIdx < 0 || intoIdx < 0 || intoIdx <= whereIdx) return tokens;
+
+    const name = words.slice(2, whereIdx).join(' ');
+    tokens.push(new Token('NAME', name, lineNum));
+    tokens.push(new Token('KEYWORD', 'where', lineNum));
+
+    // Condition: words between 'where' and 'into'
+    const condWords = words.slice(whereIdx + 1, intoIdx);
+    tokens.push(new Token('NAME', condWords.join(' '), lineNum));
+
+    tokens.push(new Token('KEYWORD', 'into', lineNum));
+    const newName = words.slice(intoIdx + 1).join(' ');
+    tokens.push(new Token('NAME', newName, lineNum));
+
+    return tokens;
+  }
+
+  /**
+   * Find in layer statement: find in <name> where <condition> into <markname>
+   */
+  _findInLayer(words, lineNum) {
+    // words[0] = 'find', words[1] = 'in'
+    const tokens = [new Token('KEYWORD', 'find', lineNum)];
+    if (words.length < 2 || words[1] !== 'in') return tokens;
+    // 'in' is consumed structurally; not emitted as a token
+
+    // Find 'where' and 'into'
+    const whereIdx = this._indexOf(words, 'where');
+    const intoIdx = this._indexOf(words, 'into');
+    if (whereIdx < 0 || intoIdx < 0 || intoIdx <= whereIdx) return tokens;
+
+    const name = words.slice(2, whereIdx).join(' ');
+    tokens.push(new Token('NAME', name, lineNum));
+    tokens.push(new Token('KEYWORD', 'where', lineNum));
+
+    const condWords = words.slice(whereIdx + 1, intoIdx);
+    tokens.push(new Token('NAME', condWords.join(' '), lineNum));
+
+    tokens.push(new Token('KEYWORD', 'into', lineNum));
+    const markName = words.slice(intoIdx + 1).join(' ');
+    tokens.push(new Token('NAME', markName, lineNum));
+
+    return tokens;
+  }
+
+  /**
+   * Count in layer statement: count in <name> where <condition> into <markname>
+   */
+  _countInLayer(words, lineNum) {
+    // words[0] = 'count', words[1] = 'in'
+    const tokens = [new Token('KEYWORD', 'count', lineNum)];
+    if (words.length < 2 || words[1] !== 'in') return tokens;
+
+    // Find 'where' and 'into'
+    const whereIdx = this._indexOf(words, 'where');
+    const intoIdx = this._indexOf(words, 'into');
+    if (whereIdx < 0 || intoIdx < 0 || intoIdx <= whereIdx) return tokens;
+
+    const name = words.slice(2, whereIdx).join(' ');
+    tokens.push(new Token('NAME', name, lineNum));
+    tokens.push(new Token('KEYWORD', 'where', lineNum));
+
+    const condWords = words.slice(whereIdx + 1, intoIdx);
+    tokens.push(new Token('NAME', condWords.join(' '), lineNum));
+
+    tokens.push(new Token('KEYWORD', 'into', lineNum));
+    const markName = words.slice(intoIdx + 1).join(' ');
+    tokens.push(new Token('NAME', markName, lineNum));
+
+    return tokens;
   }
 
   /**

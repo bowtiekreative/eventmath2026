@@ -73,6 +73,10 @@ class EventMathFormatter {
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
       case 'Check':        return this._formatCheck(stmt);
       case 'Use':          return this._formatUse(stmt);
+      case 'SortLayer':    return this._formatSortLayer(stmt);
+      case 'FilterLayer':  return this._formatFilterLayer(stmt);
+      case 'FindInLayer':  return this._formatFindInLayer(stmt);
+      case 'CountInLayer': return this._formatCountInLayer(stmt);
     }
   }
 
@@ -193,8 +197,28 @@ class EventMathFormatter {
     return '';
   }
 
+  _formatBuiltinExpr(op) {
+    if (!op || !op.kind) return '';
+    const { kind } = op;
+    if (kind === 'today') return 'today';
+    if (kind === 'now') return 'now';
+    if (kind === 'round') return `round of ${op.a ? op.a.join(' ') : ''}`;
+    if (kind === 'floor') return `floor of ${op.a ? op.a.join(' ') : ''}`;
+    if (kind === 'ceiling') return `ceiling of ${op.a ? op.a.join(' ') : ''}`;
+    if (kind === 'absolute') return `absolute of ${op.a ? op.a.join(' ') : ''}`;
+    if (kind === 'min') return `minimum of ${op.a ? op.a.join(' ') : ''} and ${op.b ? op.b.join(' ') : ''}`;
+    if (kind === 'max') return `maximum of ${op.a ? op.a.join(' ') : ''} and ${op.b ? op.b.join(' ') : ''}`;
+    if (kind === 'random') return `random between ${op.a ? op.a.join(' ') : ''} and ${op.b ? op.b.join(' ') : ''}`;
+    if (kind === 'days_between') return `days between ${op.a ? op.a.join(' ') : ''} and ${op.b ? op.b.join(' ') : ''}`;
+    if (kind === 'trimmed') return `${op.a ? op.a.join(' ') : ''} trimmed`;
+    if (kind === 'repeated') return `${op.a ? op.a.join(' ') : ''} repeated ${op.n ? op.n.join(' ') : ''} times`;
+    return '';
+  }
+
   _formatMark(stmt) {
-    if (stmt.stringOp) {
+    if (stmt.builtinExpr) {
+      this._line(`mark ${stmt.name} as ${this._formatBuiltinExpr(stmt.builtinExpr)}`);
+    } else if (stmt.stringOp) {
       this._line(`mark ${stmt.name} as ${this._formatStringOp(stmt)}`);
     } else if (stmt.expr !== undefined && stmt.expr !== null) {
       this._line(`mark ${stmt.name} as ${this._formatExpr(stmt.expr)}`);
@@ -204,7 +228,9 @@ class EventMathFormatter {
   }
 
   _formatSet(stmt) {
-    if (stmt.stringOp) {
+    if (stmt.builtinExpr) {
+      this._line(`set ${stmt.name} to ${this._formatBuiltinExpr(stmt.builtinExpr)}`);
+    } else if (stmt.stringOp) {
       this._line(`set ${stmt.name} to ${this._formatStringOp(stmt)}`);
     } else if (stmt.expr !== undefined && stmt.expr !== null) {
       this._line(`set ${stmt.name} to ${this._formatExpr(stmt.expr)}`);
@@ -431,6 +457,28 @@ class EventMathFormatter {
 
   _formatUse(stmt) {
     this._line(`use ${stmt.name} from ${stmt.from}`);
+  }
+
+  // ── Layer operations ──────────────────────────────────────
+
+  _formatSortLayer(stmt) {
+    if (stmt.direction === 'descending') {
+      this._line(`sort layer ${stmt.name} by matter ${stmt.field} descending`);
+    } else {
+      this._line(`sort layer ${stmt.name} by matter ${stmt.field}`);
+    }
+  }
+
+  _formatFilterLayer(stmt) {
+    this._line(`filter layer ${stmt.name} where ${stmt.condition} into ${stmt.into}`);
+  }
+
+  _formatFindInLayer(stmt) {
+    this._line(`find in ${stmt.name} where ${stmt.condition} into ${stmt.into}`);
+  }
+
+  _formatCountInLayer(stmt) {
+    this._line(`count in ${stmt.name} where ${stmt.condition} into ${stmt.into}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

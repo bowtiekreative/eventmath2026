@@ -116,6 +116,10 @@ class EventMathParser {
       case 'broken':   return this._parseBrokenEvent();
       case 'check':    return this._parseCheck();
       case 'use':      return this._parseUse();
+      case 'sort':     return this._parseSortLayer();
+      case 'filter':   return this._parseFilterLayer();
+      case 'find':     return this._parseFindInLayer();
+      case 'count':    return this._parseCountInLayer();
       default:         return this._parseBodyName();
     }
   }
@@ -291,6 +295,12 @@ class EventMathParser {
 
     const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by']);
 
+    // Handle BUILTIN token — emitted by _findBuiltinOp in tokenizer
+    if (firstTok.type === 'BUILTIN') {
+      this.advance();
+      return { builtinExpr: firstTok.value };
+    }
+
     // Handle 'length of' — emitted as KEYWORD before the NAME
     if (firstTok.type === 'KEYWORD' && firstTok.value === 'length of') {
       this.advance(); // consume 'length of'
@@ -363,6 +373,9 @@ class EventMathParser {
     this.expect('KEYWORD', 'as');
 
     const parsed = this._parseExprOrValue();
+    if (parsed.builtinExpr !== undefined) {
+      return ast('Mark', { name: nameToken.value, value: null, expr: null, builtinExpr: parsed.builtinExpr });
+    }
     if (parsed.stringOp !== undefined) {
       return ast('Mark', { name: nameToken.value, value: null, expr: null, stringOp: parsed.stringOp, left: parsed.left, right: parsed.right, subject: parsed.subject });
     }
@@ -381,6 +394,9 @@ class EventMathParser {
     this.expect('KEYWORD', 'to');
 
     const parsed = this._parseExprOrValue();
+    if (parsed.builtinExpr !== undefined) {
+      return ast('Set', { name: nameToken.value, value: null, expr: null, builtinExpr: parsed.builtinExpr });
+    }
     if (parsed.stringOp !== undefined) {
       return ast('Set', { name: nameToken.value, value: null, expr: null, stringOp: parsed.stringOp, left: parsed.left, right: parsed.right, subject: parsed.subject });
     }
@@ -727,6 +743,66 @@ class EventMathParser {
     this.expect('KEYWORD', 'check');
     const condition = this._parseCondition();
     return ast('Check', { condition });
+  }
+
+  // ── Layer operations ─────────────────────────────────────────────
+
+  _parseSortLayer() {
+    this.expect('KEYWORD', 'sort');
+    this.expect('KEYWORD', 'layer');
+    const nameToken = this.expect('NAME');
+    this.expect('KEYWORD', 'by');
+    this.expect('KEYWORD', 'matter');
+    const fieldToken = this.expect('NAME');
+    const direction = this.match('KEYWORD', 'descending') ? 'descending' : 'ascending';
+    return ast('SortLayer', {
+      name: nameToken ? nameToken.value : '',
+      field: fieldToken ? fieldToken.value : '',
+      direction,
+    });
+  }
+
+  _parseFilterLayer() {
+    this.expect('KEYWORD', 'filter');
+    this.expect('KEYWORD', 'layer');
+    const nameToken = this.expect('NAME');
+    this.expect('KEYWORD', 'where');
+    const condToken = this.expect('NAME'); // raw condition string
+    this.expect('KEYWORD', 'into');
+    const intoToken = this.expect('NAME');
+    return ast('FilterLayer', {
+      name: nameToken ? nameToken.value : '',
+      condition: condToken ? condToken.value : '',
+      into: intoToken ? intoToken.value : '',
+    });
+  }
+
+  _parseFindInLayer() {
+    this.expect('KEYWORD', 'find');
+    const nameToken = this.expect('NAME');
+    this.expect('KEYWORD', 'where');
+    const condToken = this.expect('NAME');
+    this.expect('KEYWORD', 'into');
+    const intoToken = this.expect('NAME');
+    return ast('FindInLayer', {
+      name: nameToken ? nameToken.value : '',
+      condition: condToken ? condToken.value : '',
+      into: intoToken ? intoToken.value : '',
+    });
+  }
+
+  _parseCountInLayer() {
+    this.expect('KEYWORD', 'count');
+    const nameToken = this.expect('NAME');
+    this.expect('KEYWORD', 'where');
+    const condToken = this.expect('NAME');
+    this.expect('KEYWORD', 'into');
+    const intoToken = this.expect('NAME');
+    return ast('CountInLayer', {
+      name: nameToken ? nameToken.value : '',
+      condition: condToken ? condToken.value : '',
+      into: intoToken ? intoToken.value : '',
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

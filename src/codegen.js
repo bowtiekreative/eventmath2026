@@ -168,7 +168,9 @@ class EventMathCodeGen {
         case 'Mark':
           if (!this._vars.has(stmt.name)) {
             this._vars.add(stmt.name);
-            if (stmt.stringOp) {
+            if (stmt.builtinExpr) {
+              this._varDecls.push({ name: stmt.name, rawExpr: this._genBuiltinExpr(stmt.builtinExpr) });
+            } else if (stmt.stringOp) {
               this._varDecls.push({ name: stmt.name, rawExpr: this._genStringOp(stmt) });
             } else if (stmt.expr) {
               this._varDecls.push({ name: stmt.name, rawExpr: this._genExpr(stmt.expr) });
@@ -187,6 +189,24 @@ class EventMathCodeGen {
           this._useStmts.push(stmt);
           // Mark the imported name as a known symbol so references don't error
           this._importedNames.add(stmt.name);
+          break;
+        case 'FilterLayer':
+          if (stmt.into && !this._vars.has(stmt.into)) {
+            this._vars.add(stmt.into);
+            this._layerNames.add(stmt.into);
+          }
+          break;
+        case 'FindInLayer':
+          if (stmt.into && !this._vars.has(stmt.into)) {
+            this._vars.add(stmt.into);
+            // Find targets are not full layers — don't add to _layerNames
+          }
+          break;
+        case 'CountInLayer':
+          if (stmt.into && !this._vars.has(stmt.into)) {
+            this._vars.add(stmt.into);
+            // Count targets are numeric marks
+          }
           break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
@@ -239,6 +259,10 @@ class EventMathCodeGen {
       case 'Check':          return this._genCheck(stmt);
       case 'Use':            return; // handled in first pass emit
       case 'NameRef':        return null; // standalone names are no-ops
+      case 'SortLayer':      return this._genSortLayer(stmt);
+      case 'FilterLayer':    return this._genFilterLayer(stmt);
+      case 'FindInLayer':    return this._genFindInLayer(stmt);
+      case 'CountInLayer':   return this._genCountInLayer(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -383,6 +407,7 @@ class EventMathCodeGen {
   _genMark(stmt) {
     // Declaration was already hoisted during first pass
     // No need to emit let — just the initial value is inline in the hoist
+    // (builtinExpr, stringOp, expr, and value are all handled in firstPass)
   }
 
   _typedValueFromString(str) {
@@ -396,7 +421,9 @@ class EventMathCodeGen {
   _genSet(stmt) {
     const varName = this._safeName(stmt.name);
     // Declaration was already hoisted during first pass
-    if (stmt.stringOp) {
+    if (stmt.builtinExpr) {
+      this._line(`${varName} = ${this._genBuiltinExpr(stmt.builtinExpr)};`);
+    } else if (stmt.stringOp) {
       this._line(`${varName} = ${this._genStringOp(stmt)};`);
     } else if (stmt.expr) {
       this._line(`${varName} = ${this._genExpr(stmt.expr)};`);
@@ -433,6 +460,144 @@ class EventMathCodeGen {
     if (stringOp === 'in lowercase') return `String(${this._safeRef(stmt.subject.value)}).toLowerCase()`;
     if (stringOp === 'length of')    return `String(${this._safeRef(stmt.subject.value)}).length`;
     return '""';
+  }
+
+  // ── Built-in expressions ─────────────────────────────────────────
+
+  /**
+   * Resolve a word array operand to a JS expression string.
+   * Single word: mark reference or number/string literal.
+   * Multi-word: joined as a mark reference.
+   */
+  _resolveOperand(words) {
+    if (!words || words.length === 0) return '""';
+    const raw = words.join(' ');
+    if (!raw) return '""';
+    // Number literal
+    if (/^\d+(\.\d+)?$/.test(raw)) return raw;
+    // String literal (quoted)
+    if (/^".*"$/.test(raw)) return raw;
+    // Mark reference — convert to safe JS identifier
+    return this._safeName(raw);
+  }
+
+  /**
+   * Generate JS for a BuiltinExpr op object.
+   */
+  _genBuiltinExpr(op) {
+    if (!op || !op.kind) return '""';
+    const { kind } = op;
+
+    if (kind === 'today') {
+      return '(new Date().toISOString().slice(0,10))';
+    }
+    if (kind === 'now') {
+      return '(new Date().toISOString())';
+    }
+    if (kind === 'round') {
+      const a = this._resolveOperand(op.a);
+      return `Math.round(${a})`;
+    }
+    if (kind === 'floor') {
+      const a = this._resolveOperand(op.a);
+      return `Math.floor(${a})`;
+    }
+    if (kind === 'ceiling') {
+      const a = this._resolveOperand(op.a);
+      return `Math.ceil(${a})`;
+    }
+    if (kind === 'absolute') {
+      const a = this._resolveOperand(op.a);
+      return `Math.abs(${a})`;
+    }
+    if (kind === 'min') {
+      const a = this._resolveOperand(op.a);
+      const b = this._resolveOperand(op.b);
+      return `Math.min(${a}, ${b})`;
+    }
+    if (kind === 'max') {
+      const a = this._resolveOperand(op.a);
+      const b = this._resolveOperand(op.b);
+      return `Math.max(${a}, ${b})`;
+    }
+    if (kind === 'random') {
+      const a = this._resolveOperand(op.a);
+      const b = this._resolveOperand(op.b);
+      return `(Math.floor(Math.random() * (${b} - ${a} + 1)) + ${a})`;
+    }
+    if (kind === 'days_between') {
+      const a = this._resolveOperand(op.a);
+      const b = this._resolveOperand(op.b);
+      return `(Math.round(Math.abs(new Date(${b}) - new Date(${a})) / 86400000))`;
+    }
+    if (kind === 'trimmed') {
+      const a = this._resolveOperand(op.a);
+      return `String(${a}).trim()`;
+    }
+    if (kind === 'repeated') {
+      const a = this._resolveOperand(op.a);
+      const n = this._resolveOperand(op.n);
+      return `String(${a}).repeat(${n})`;
+    }
+    return '""';
+  }
+
+  // ── Layer operations (sort/filter/find/count) ────────────────────
+
+  /**
+   * Parse a simple "field is value" condition string for layer operations.
+   * Returns a JS expression string using evt.matter.<field>.
+   */
+  _genLayerCondition(condStr) {
+    if (!condStr) return 'true';
+    // Simple "field is value" pattern
+    const isIdx = condStr.indexOf(' is ');
+    if (isIdx >= 0) {
+      const field = condStr.slice(0, isIdx).trim();
+      const value = condStr.slice(isIdx + 4).trim();
+      const safeField = this._safeName(field);
+      // Value: number, bool, or string literal
+      let jsVal;
+      if (/^\d+(\.\d+)?$/.test(value)) jsVal = value;
+      else if (value === 'true' || value === 'false') jsVal = value;
+      else jsVal = `"${this._escape(value)}"`;
+      return `evt.matter.${safeField} === ${jsVal}`;
+    }
+    return 'true';
+  }
+
+  _genSortLayer(stmt) {
+    const varName = this._safeName(stmt.name);
+    const field = this._safeName(stmt.field);
+    if (stmt.direction === 'descending') {
+      this._line(`${varName}.events.sort((a, b) =>`);
+      this._line(`  String(b.matter.${field} || '').localeCompare(String(a.matter.${field} || '')));`);
+    } else {
+      this._line(`${varName}.events.sort((a, b) =>`);
+      this._line(`  String(a.matter.${field} || '').localeCompare(String(b.matter.${field} || '')));`);
+    }
+  }
+
+  _genFilterLayer(stmt) {
+    const varName = this._safeName(stmt.name);
+    const intoName = this._safeName(stmt.into);
+    const cond = this._genLayerCondition(stmt.condition);
+    this._line(`const ${intoName} = new EM.EventMathLayer("${this._escape(stmt.into)}",`);
+    this._line(`  ${varName}.events.filter(evt => ${cond}));`);
+  }
+
+  _genFindInLayer(stmt) {
+    const varName = this._safeName(stmt.name);
+    const intoName = this._safeName(stmt.into);
+    const cond = this._genLayerCondition(stmt.condition);
+    this._line(`let ${intoName} = ${varName}.events.find(evt => ${cond}) || null;`);
+  }
+
+  _genCountInLayer(stmt) {
+    const varName = this._safeName(stmt.name);
+    const intoName = this._safeName(stmt.into);
+    const cond = this._genLayerCondition(stmt.condition);
+    this._line(`let ${intoName} = ${varName}.events.filter(evt => ${cond}).length;`);
   }
 
   // ── Arithmetic expressions ───────────────────────────────────────

@@ -115,6 +115,24 @@ const cases = [
     expectCompiles: true,
     compiledContains: "require('./events.em.js')",
   },
+  {
+    name: 'round of expression parses as BuiltinExpr',
+    source: 'mark x as round of 3 plus 1',
+    expectCompiles: true,
+    compiledContains: 'Math.round',
+  },
+  {
+    name: 'minimum of X and Y compiles correctly',
+    source: 'mark x as minimum of 5 and 10',
+    expectCompiles: true,
+    compiledContains: 'Math.min',
+  },
+  {
+    name: 'filter layer statement parses',
+    source: 'event item one\ncategory test\nmatter\n  status is done\nend\nend\nlayer items\n  item one\nend\nfilter layer items where status is done into done items',
+    expectCompiles: true,
+    compiledContains: 'filter(evt =>',
+  },
 ];
 
 let passed = 0;
