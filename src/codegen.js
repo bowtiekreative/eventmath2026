@@ -196,6 +196,12 @@ class EventMathCodeGen {
             this._layerNames.add(stmt.into);
           }
           break;
+        case 'PredictStmt':
+          if (stmt.intoLayer && !this._vars.has(stmt.intoLayer)) {
+            this._vars.add(stmt.intoLayer);
+            this._layerNames.add(stmt.intoLayer);
+          }
+          break;
         case 'FindInLayer':
           if (stmt.into && !this._vars.has(stmt.into)) {
             this._vars.add(stmt.into);
@@ -263,6 +269,8 @@ class EventMathCodeGen {
       case 'FilterLayer':    return this._genFilterLayer(stmt);
       case 'FindInLayer':    return this._genFindInLayer(stmt);
       case 'CountInLayer':   return this._genCountInLayer(stmt);
+      case 'PredictStmt':    return this._genPredictStmt(stmt);
+      case 'ResolveStmt':    return this._genResolveStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -539,7 +547,123 @@ class EventMathCodeGen {
       const n = this._resolveOperand(op.n);
       return `String(${a}).repeat(${n})`;
     }
+    if (kind === 'accuracy_of') {
+      const layerName = this._safeName(op.layer.join(' '));
+      const condStr = (op.condition || []).join(' ');
+      const cond = this._genMatterCondition(condStr, '_p');
+      return `(function() {\n  const _resolved = ${layerName}.events.filter(_p => _p.matter.resolved === true && (${cond}));\n  const _correct = _resolved.filter(_p => _p.matter.correct === true);\n  return _resolved.length > 0 ? Math.round((_correct.length / _resolved.length) * 100) / 100 : 0;\n})()`;
+    }
     return '""';
+  }
+
+  // ── Prediction statements ────────────────────────────────────────
+
+  _genPredictStmt(stmt) {
+    const intoName = this._safeName(stmt.intoLayer);
+    const dirName = this._safeName(stmt.directionsLayer);
+    const lensName = this._safeName(stmt.lensesLayer);
+    const qtyName = this._safeName(stmt.quantitiesLayer);
+    const subject = this._escape(stmt.subject);
+
+    this._line(`// predict: "${this._escape(stmt.subject)}" → ${this._escape(stmt.intoLayer)}`);
+    this._line(`const ${intoName} = new EM.EventMathLayer('${this._escape(stmt.intoLayer)}', []);`);
+    this._line(`${dirName}.events.forEach(_dir => {`);
+    this.indent++;
+    this._line(`${lensName}.events.forEach(_lens => {`);
+    this.indent++;
+    this._line(`${qtyName}.events.forEach(_qty => {`);
+    this.indent++;
+    this._line(`${intoName}.events.push(new EM.EventMathEvent(`);
+    this.indent++;
+    this._line(`'prediction_' + Date.now() + '_' + Math.random().toString(36).slice(2),`);
+    this._line(`'prediction',`);
+    this._line(`{`);
+    this.indent++;
+    this._line(`subject: '${subject}',`);
+    this._line(`direction: _dir.matter ? _dir.matter.name : String(_dir.id),`);
+    this._line(`lens: _lens.matter ? _lens.matter.name : String(_lens.id),`);
+    this._line(`quantity: _qty.matter ? _qty.matter.name : String(_qty.id),`);
+    this._line(`predicted_state: (_dir.matter ? _dir.matter.name : '') + ' change through ' + (_lens.matter ? _lens.matter.name : '') + ' lens affecting ' + (_qty.matter ? _qty.matter.name : ''),`);
+    this._line(`confidence: 0.5,`);
+    this._line(`resolved: false,`);
+    this._line(`correct: null`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`));`);
+    this.indent--;
+    this._line(`});`);
+    this.indent--;
+    this._line(`});`);
+    this.indent--;
+    this._line(`});`);
+    this._line('');
+  }
+
+  _genResolveStmt(stmt) {
+    const layerName = this._safeName(stmt.layer);
+    const outcomeVal = stmt.outcome === 'incorrect' ? 'false' : 'true';
+    const cond = this._genMatterCondition(null, '_p', stmt.condition);
+    this._line(`// resolve: ${this._escape(stmt.layer)}`);
+    this._line(`${layerName}.events = ${layerName}.events.map(_p => {`);
+    this.indent++;
+    this._line(`if (${cond}) {`);
+    this.indent++;
+    this._line(`return new EM.EventMathEvent(_p.id, _p.cat, Object.assign({}, _p.matter, { resolved: true, correct: ${outcomeVal} }));`);
+    this.indent--;
+    this._line(`}`);
+    this._line(`return _p;`);
+    this.indent--;
+    this._line(`});`);
+  }
+
+  /**
+   * Generate a JS boolean expression checking _p.matter fields from a condition node or string.
+   * condStr: raw "field is value and field2 is value2" string  (for accuracy_of)
+   * condNode: parsed Condition/CompoundCondition AST node      (for resolve)
+   */
+  _genMatterCondition(condStr, varName, condNode) {
+    const v = varName || '_p';
+    if (condNode) {
+      return this._genMatterConditionNode(condNode, v);
+    }
+    if (!condStr) return 'true';
+    // Parse simple "field is value [and field is value ...]" string
+    const parts = condStr.split(' and ');
+    const exprs = parts.map(part => {
+      const isIdx = part.indexOf(' is ');
+      if (isIdx >= 0) {
+        const field = part.slice(0, isIdx).trim();
+        const value = part.slice(isIdx + 4).trim();
+        const safeField = this._safeName(field);
+        let jsVal;
+        if (/^\d+(\.\d+)?$/.test(value)) jsVal = value;
+        else if (value === 'true' || value === 'false') jsVal = value;
+        else jsVal = `"${this._escape(value)}"`;
+        return `${v}.matter.${safeField} === ${jsVal}`;
+      }
+      return 'true';
+    });
+    return exprs.join(' && ');
+  }
+
+  _genMatterConditionNode(cond, v) {
+    if (!cond) return 'true';
+    if (cond.type === 'CompoundCondition') {
+      const left = this._genMatterConditionNode(cond.left, v);
+      const right = this._genMatterConditionNode(cond.right, v);
+      const op = cond.op === 'and' ? '&&' : '||';
+      return `(${left}) ${op} (${right})`;
+    }
+    // Simple condition
+    const field = this._safeName(cond.left);
+    const rightVal = cond.right || '';
+    let jsVal;
+    if (rightVal === 'true') jsVal = 'true';
+    else if (rightVal === 'false') jsVal = 'false';
+    else if (/^\d+(\.\d+)?$/.test(rightVal)) jsVal = rightVal;
+    else jsVal = `"${this._escape(rightVal)}"`;
+    return `${v}.matter.${field} === ${jsVal}`;
   }
 
   // ── Layer operations (sort/filter/find/count) ────────────────────

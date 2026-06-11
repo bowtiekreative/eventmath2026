@@ -77,6 +77,8 @@ class EventMathFormatter {
       case 'FilterLayer':  return this._formatFilterLayer(stmt);
       case 'FindInLayer':  return this._formatFindInLayer(stmt);
       case 'CountInLayer': return this._formatCountInLayer(stmt);
+      case 'PredictStmt':  return this._formatPredictStmt(stmt);
+      case 'ResolveStmt':  return this._formatResolveStmt(stmt);
     }
   }
 
@@ -479,6 +481,21 @@ class EventMathFormatter {
 
   _formatCountInLayer(stmt) {
     this._line(`count in ${stmt.name} where ${stmt.condition} into ${stmt.into}`);
+  }
+
+  // ── Prediction statements ─────────────────────────────────
+
+  _formatPredictStmt(stmt) {
+    this._line(`predict ${stmt.subject}`);
+    this._line(`across ${stmt.directionsLayer}`);
+    this._line(`and ${stmt.lensesLayer}`);
+    this._line(`and ${stmt.quantitiesLayer}`);
+    this._line(`into ${stmt.intoLayer}`);
+  }
+
+  _formatResolveStmt(stmt) {
+    const cond = this._formatCondition(stmt.condition);
+    this._line(`resolve ${stmt.layer} where ${cond} as ${stmt.outcome}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

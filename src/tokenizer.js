@@ -26,6 +26,7 @@ const KEYWORDS = new Set([
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
   'sort', 'filter', 'find', 'count', 'where', 'descending',
+  'predict', 'across', 'resolve',
 ]);
 
 class Token {
@@ -185,6 +186,35 @@ class EventMathTokenizer {
       return this._countInLayer(words, lineNum);
     }
 
+    // predict → predict <subject> across <dir> and <lens> and <qty> into <out>
+    if (lead === 'predict') {
+      return this._tokenizePredictStmt(words, lineNum);
+    }
+
+    // resolve → resolve <layer> where <condition> as correct|incorrect
+    if (lead === 'resolve') {
+      return this._tokenizeResolveStmt(words, lineNum);
+    }
+
+    // across → continuation of predict statement (multi-line syntax)
+    if (lead === 'across') {
+      const tokens = [new Token('KEYWORD', 'across', lineNum)];
+      if (words.length > 1) {
+        tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    // into → continuation of predict statement (multi-line syntax)
+    // Only emit as bare continuation if no other keyword context handles it
+    if (lead === 'into') {
+      const tokens = [new Token('KEYWORD', 'into', lineNum)];
+      if (words.length > 1) {
+        tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
     // stop
     if (lead === 'stop') {
       return [new Token('KEYWORD', 'stop', lineNum)];
@@ -214,9 +244,14 @@ class EventMathTokenizer {
       return this._note(words, lineNum);
     }
 
-    // and — bare track separator in overlap block
+    // and — track separator in overlap block, or layer name in predict multi-line
     if (lead === 'and') {
-      return [new Token('KEYWORD', 'and', lineNum)];
+      const tokens = [new Token('KEYWORD', 'and', lineNum)];
+      if (words.length > 1) {
+        // Multi-line predict continuation: "and <layer name>"
+        tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+      }
+      return tokens;
     }
 
     // ── Action call: <name> with <key> is <value> and ... ────
@@ -836,6 +871,17 @@ class EventMathTokenizer {
       }
     }
 
+    // accuracy of <layer> where <condition>
+    if (w0 === 'accuracy' && w1 === 'of') {
+      const rest = words.slice(2);
+      const whereIdx = this._indexOf(rest, 'where');
+      if (whereIdx >= 0) {
+        const layer = rest.slice(0, whereIdx);
+        const condition = rest.slice(whereIdx + 1);
+        return { kind: 'accuracy_of', layer, condition };
+      }
+    }
+
     return null;
   }
 
@@ -953,6 +999,91 @@ class EventMathTokenizer {
     tokens.push(new Token('KEYWORD', 'into', lineNum));
     const markName = words.slice(intoIdx + 1).join(' ');
     tokens.push(new Token('NAME', markName, lineNum));
+
+    return tokens;
+  }
+
+  /**
+   * Predict statement: predict <subject> [across <dir> and <lens> and <qty> into <out>]
+   * words[0] = 'predict'
+   *
+   * Supports both single-line and multi-line forms:
+   *   Single: predict price across directions and lenses and quantities into results
+   *   Multi:  predict price          (just emits KEYWORD + NAME for subject)
+   *           across directions      (handled by 'across' branch in _tokenizeLine)
+   *           and lenses             (handled by bare 'and' branch)
+   *           and quantities
+   *           into results           (handled by 'into' branch)
+   */
+  _tokenizePredictStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'predict', lineNum)];
+    const acrossIdx = this._indexOf(words, 'across');
+
+    if (acrossIdx > 0) {
+      // Single-line form: everything on one line
+      const subject = words.slice(1, acrossIdx).join(' ');
+      tokens.push(new Token('NAME', subject, lineNum));
+      tokens.push(new Token('KEYWORD', 'across', lineNum));
+
+      const afterAcross = words.slice(acrossIdx + 1);
+      const firstAndIdx = this._indexOf(afterAcross, 'and');
+      if (firstAndIdx < 0) return tokens;
+
+      const directionsLayer = afterAcross.slice(0, firstAndIdx).join(' ');
+      tokens.push(new Token('NAME', directionsLayer, lineNum));
+      tokens.push(new Token('KEYWORD', 'and', lineNum));
+
+      const afterFirstAnd = afterAcross.slice(firstAndIdx + 1);
+      const secondAndIdx = this._indexOf(afterFirstAnd, 'and');
+      const intoInAfter = this._indexOf(afterFirstAnd, 'into');
+      if (secondAndIdx < 0 || intoInAfter < 0) return tokens;
+
+      const lensesLayer = afterFirstAnd.slice(0, secondAndIdx).join(' ');
+      tokens.push(new Token('NAME', lensesLayer, lineNum));
+      tokens.push(new Token('KEYWORD', 'and', lineNum));
+
+      const afterSecondAnd = afterFirstAnd.slice(secondAndIdx + 1);
+      const intoInAfterSecond = this._indexOf(afterSecondAnd, 'into');
+      if (intoInAfterSecond < 0) return tokens;
+
+      const quantitiesLayer = afterSecondAnd.slice(0, intoInAfterSecond).join(' ');
+      tokens.push(new Token('NAME', quantitiesLayer, lineNum));
+      tokens.push(new Token('KEYWORD', 'into', lineNum));
+
+      const intoLayer = afterSecondAnd.slice(intoInAfterSecond + 1).join(' ');
+      tokens.push(new Token('NAME', intoLayer, lineNum));
+    } else {
+      // Multi-line form: just emit subject on this line; rest follows on subsequent lines
+      const subject = words.slice(1).join(' ');
+      if (subject) tokens.push(new Token('NAME', subject, lineNum));
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Resolve statement: resolve <layer> where <condition> as correct|incorrect
+   * words[0] = 'resolve'
+   */
+  _tokenizeResolveStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'resolve', lineNum)];
+    const whereIdx = this._indexOf(words, 'where');
+    const asIdx = this._indexOf(words, 'as');
+    if (whereIdx < 0 || asIdx < 0 || asIdx <= whereIdx) return tokens;
+
+    const layerName = words.slice(1, whereIdx).join(' ');
+    tokens.push(new Token('NAME', layerName, lineNum));
+    tokens.push(new Token('KEYWORD', 'where', lineNum));
+
+    // Condition tokens between 'where' and 'as'
+    const condWords = words.slice(whereIdx + 1, asIdx);
+    tokens.push(...this._tokenizeCondition(condWords, lineNum));
+
+    tokens.push(new Token('KEYWORD', 'as', lineNum));
+
+    // outcome: last word(s) after 'as'
+    const outcome = words.slice(asIdx + 1).join(' ');
+    tokens.push(new Token('NAME', outcome, lineNum));
 
     return tokens;
   }

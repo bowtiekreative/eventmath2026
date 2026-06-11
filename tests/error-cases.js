@@ -133,6 +133,18 @@ const cases = [
     expectCompiles: true,
     compiledContains: 'filter(evt =>',
   },
+  {
+    name: 'predict statement parses correctly',
+    source: 'event dir a\ncategory test\nmatter\n  name is direct\nend\nend\nlayer test directions\n  dir a\nend\nevent lens a\ncategory test\nmatter\n  name is who\nend\nend\nlayer test lenses\n  lens a\nend\nevent qty a\ncategory test\nmatter\n  name is all\nend\nend\nlayer test quantities\n  qty a\nend\npredict price of product\nacross test directions\nand test lenses\nand test quantities\ninto price predictions',
+    expectCompiles: true,
+    compiledContains: '.forEach(',
+  },
+  {
+    name: 'resolve statement parses correctly',
+    source: 'mark x as 1\nresolve some layer where direction is direct as correct',
+    expectCompiles: true,
+    compiledContains: '.map(',
+  },
 ];
 
 let passed = 0;

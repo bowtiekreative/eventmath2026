@@ -120,6 +120,8 @@ class EventMathParser {
       case 'filter':   return this._parseFilterLayer();
       case 'find':     return this._parseFindInLayer();
       case 'count':    return this._parseCountInLayer();
+      case 'predict':  return this._parsePredictStmt();
+      case 'resolve':  return this._parseResolveStmt();
       default:         return this._parseBodyName();
     }
   }
@@ -802,6 +804,42 @@ class EventMathParser {
       name: nameToken ? nameToken.value : '',
       condition: condToken ? condToken.value : '',
       into: intoToken ? intoToken.value : '',
+    });
+  }
+
+  // ── Predict / Resolve ────────────────────────────────────────────
+
+  _parsePredictStmt() {
+    this.expect('KEYWORD', 'predict');
+    const subjectTok = this.expect('NAME');
+    this.expect('KEYWORD', 'across');
+    const dirTok = this.expect('NAME');
+    this.expect('KEYWORD', 'and');
+    const lensTok = this.expect('NAME');
+    this.expect('KEYWORD', 'and');
+    const qtyTok = this.expect('NAME');
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.expect('NAME');
+    return ast('PredictStmt', {
+      subject: subjectTok ? subjectTok.value : '',
+      directionsLayer: dirTok ? dirTok.value : '',
+      lensesLayer: lensTok ? lensTok.value : '',
+      quantitiesLayer: qtyTok ? qtyTok.value : '',
+      intoLayer: intoTok ? intoTok.value : '',
+    });
+  }
+
+  _parseResolveStmt() {
+    this.expect('KEYWORD', 'resolve');
+    const layerTok = this.expect('NAME');
+    this.expect('KEYWORD', 'where');
+    const condition = this._parseCondition();
+    this.expect('KEYWORD', 'as');
+    const outcomeTok = this.expect('NAME');
+    return ast('ResolveStmt', {
+      layer: layerTok ? layerTok.value : '',
+      condition,
+      outcome: outcomeTok ? outcomeTok.value : 'correct',
     });
   }
 
