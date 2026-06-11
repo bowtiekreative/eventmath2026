@@ -90,7 +90,9 @@ class EventMathFormatter {
       case 'ResonateStmt': return this._formatResonateStmt(stmt);
       case 'WeightStmt':   return this._formatWeightStmt(stmt);
       case 'ExplainStmt':  return this._formatExplainStmt(stmt);
-      case 'AnalogyStmt':  return this._formatAnalogyStmt(stmt);
+      case 'AnalogyStmt':   return this._formatAnalogyStmt(stmt);
+      case 'LandscapeStmt': return this._formatLandscapeStmt(stmt);
+      case 'ForecastStmt':  return this._formatForecastStmt(stmt);
     }
   }
 
@@ -541,7 +543,8 @@ class EventMathFormatter {
   }
 
   _formatSpinStmt(stmt) {
-    this._line(`spin ${stmt.sourceName} into ${stmt.intoName}`);
+    const dim = stmt.dimension && stmt.dimension > 2 ? ` at dimension ${stmt.dimension}` : '';
+    this._line(`spin ${stmt.sourceName} into ${stmt.intoName}${dim}`);
   }
 
   _formatVibrateStmt(stmt) {
@@ -566,6 +569,15 @@ class EventMathFormatter {
 
   _formatAnalogyStmt(stmt) {
     this._line(`analogy ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatLandscapeStmt(stmt) {
+    const sources = (stmt.sources || []).join(' and ');
+    this._line(`landscape from ${sources} into ${stmt.intoName}`);
+  }
+
+  _formatForecastStmt(stmt) {
+    this._line(`forecast from ${stmt.landscapeName} into ${stmt.intoName}`);
   }
 
   // ── Broken Event ──────────────────────────────────────────

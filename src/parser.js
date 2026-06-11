@@ -104,7 +104,9 @@ class EventMathParser {
     if (t.type === 'RESONATE_STMT') return this._parseResonateStmt();
     if (t.type === 'WEIGHT_STMT')   return this._parseWeightStmt();
     if (t.type === 'EXPLAIN_STMT')  return this._parseExplainStmt();
-    if (t.type === 'ANALOGY_STMT')  return this._parseAnalogyStmt();
+    if (t.type === 'ANALOGY_STMT')   return this._parseAnalogyStmt();
+    if (t.type === 'LANDSCAPE_STMT') return this._parseLandscapeStmt();
+    if (t.type === 'FORECAST_STMT')  return this._parseForecastStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -898,7 +900,11 @@ class EventMathParser {
   _parseSpinStmt() {
     const t = this.advance();
     if (!t || !t.value) return null;
-    return ast('SpinStmt', { sourceName: t.value.sourceName, intoName: t.value.intoName });
+    return ast('SpinStmt', {
+      sourceName: t.value.sourceName,
+      intoName:   t.value.intoName,
+      dimension:  t.value.dimension || 2
+    });
   }
 
   _parseVibrateStmt() {
@@ -942,6 +948,24 @@ class EventMathParser {
       firstName:  t.value.firstName,
       secondName: t.value.secondName,
       intoName:   t.value.intoName
+    });
+  }
+
+  _parseLandscapeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('LandscapeStmt', {
+      sources:  t.value.sources,
+      intoName: t.value.intoName
+    });
+  }
+
+  _parseForecastStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ForecastStmt', {
+      landscapeName: t.value.landscapeName,
+      intoName:      t.value.intoName
     });
   }
 

@@ -109,6 +109,16 @@ class EventMathValidator {
             this.marks.set(stmt.intoName, true);
           }
           break;
+        case 'LandscapeStmt':
+          if (stmt.intoName) {
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
+        case 'ForecastStmt':
+          if (stmt.intoName) {
+            this.events.set(stmt.intoName, true);
+          }
+          break;
       }
     }
   }

@@ -416,34 +416,54 @@
   /**
    * Global default timeline for auto-tracked events.
    */
-  // ── Torus ────────────────────────────────────────────────
+
+  // ── Torus + Landscape ────────────────────────────────────
   //
-  // The shape that emerges when you map all controls.
-  // Not a sphere — a torus. The nucleus switches (present/absent)
-  // because it is the hole the torus passes through.
+  // Dimension determines the cross-section polygon and Fibonacci variant:
   //
-  // Ring structure: each ring adds 4 points (square → diamond →
-  // square → diamond ...). At every completion point the total
-  // including the nucleus hits a Fibonacci number.
-  //
-  //   Ring 1:  4 outer  → +nucleus = 5  ← Fibonacci ✓
-  //   Ring 2:  8 outer  → +nucleus = 9
-  //   Ring 3: 12 outer  → +nucleus = 13 ← Fibonacci ✓
-  //   Ring 4: 16 outer  → +nucleus = 17
-  //   Ring 5: 20 outer  → +nucleus = 21 ← Fibonacci ✓
-  //   Ring 6: 24 outer  → +nucleus = 25
-  //   Ring 7: 28 outer  → +nucleus = 29
-  //   Ring 8: 32 outer  → +nucleus = 33
-  //   Ring 9: 36 outer  → +nucleus = 37
-  //  Ring 12: 48 outer  → +nucleus = 49
-  //  Ring 12: 52 outer  → +nucleus = 53
-  //  Ring 13: 56 outer  → +nucleus = 57 (not Fib)
+  //   D=2  square     → standard Fibonacci  (1,1,2,3,5,8,13,21,34...)
+  //   D=3  triangle   → tribonacci           (1,1,1,3,5,9,17,31,57...)
+  //   D=4  square     → tetranacci           (1,1,1,1,4,7,13,25,49...)
+  //   D=5  pentagon   → pentanacci           (1,1,1,1,1,5,9,17,31...)
   //   ...
-  //  total=34: Fibonacci ✓  (outer=33, +nucleus=34)
+  //   D=13 tridecagon → 13-step Fibonacci
   //
-  // The switch: the nucleus is always structurally present but
-  // COUNTS as a point only when total+1 lands on a Fibonacci number.
-  // This is Ryan's insight — the nucleus is what makes the count Fibonacci.
+  // Each dimension D: pointsPerRing = D (except D=2 → 4 for back-compat)
+  // Rotation per ring = 90 / pointsPerRing degrees
+  // Nucleus switch fires when (totalOuter + 1) is in the D-step Fibonacci sequence.
+  // Space between two toruses at D1 and D2 auto-generates a bridge at max(D1,D2)+1.
+
+  var SHAPE_NAMES = {
+    2:  'square',      3:  'triangle',  4:  'square',      5:  'pentagon',
+    6:  'hexagon',     7:  'heptagon',  8:  'octagon',     9:  'nonagon',
+    10: 'decagon',     11: 'hendecagon', 12: 'dodecagon',  13: 'tridecagon'
+  };
+
+  function getShapeName(D) {
+    return SHAPE_NAMES[D] || (D + '-gon');
+  }
+
+  // D-step Fibonacci: starts with D ones; each next term = sum of previous D terms.
+  function nStepFib(D, maxVal) {
+    D = D || 2;
+    maxVal = maxVal || 10000;
+    var seq = [];
+    for (var s = 0; s < D; s++) seq.push(1);
+    while (true) {
+      var next = 0;
+      for (var j = seq.length - D; j < seq.length; j++) next += seq[j];
+      if (next > maxVal) break;
+      seq.push(next);
+    }
+    return seq;
+  }
+
+  function isNStepFib(n, D) {
+    if (!n || n < 1) return false;
+    D = D || 2;
+    var seq = nStepFib(D, Math.max(n * 2, 200));
+    return seq.indexOf(n) !== -1;
+  }
 
   var FIB = [1,1,2,3,5,8,13,21,34,55,89,144,233,377,610,987];
 
@@ -455,72 +475,82 @@
     if (!(this instanceof EventMathTorus)) {
       return new EventMathTorus(name);
     }
-    this.name        = name || '';
-    this.sourceName  = '';          // name of the seed object
-    this.zoomLevel   = 1;           // one above source zoom level
-    this.rings       = [];          // array of ring descriptors
-    this.totalOuter  = 0;           // running outer point count
-    this.resonances  = [];          // cross-level connections
+    this.name          = name || '';
+    this.sourceName    = '';
+    this.zoomLevel     = 1;
+    this.dimension     = 2;
+    this.rings         = [];
+    this.totalOuter    = 0;
+    this.resonances    = [];
     this.cycleComplete = false;
     this.completionEvent = null;
   }
 
-  EventMathTorus.prototype.spinFrom = function (source) {
+  // spinFrom(source, dimension) — dimension 2-13, defaults to 2.
+  EventMathTorus.prototype.spinFrom = function (source, dimension) {
     this.sourceName = source
       ? (source.name || source.id || String(source))
       : '';
     this.zoomLevel = ((source && source.zoomLevel) || 1) + 1;
+    this.dimension = (typeof dimension === 'number' && dimension >= 2 && dimension <= 13)
+      ? Math.floor(dimension)
+      : 2;
     return this;
   };
 
-  // Add N rings (4 outer points each, alternating square/diamond).
+  // Add N rings. Points per ring = D (except D=2 → 4).
   EventMathTorus.prototype.expand = function (n) {
+    var D       = this.dimension || 2;
+    var pts     = D < 3 ? 4 : D;
+    var rotStep = 90 / pts;
+    var base    = getShapeName(D);
+
     for (var i = 0; i < n; i++) {
-      var ringNum   = this.rings.length + 1;
-      var shape     = ringNum % 2 === 1 ? 'square' : 'diamond';
-      // Rotation angle for this ring in the stacking-squares model
-      var rotation  = ((ringNum - 1) * 45 / 2) % 360;
-      this.totalOuter += 4;
+      var ringNum  = this.rings.length + 1;
+      var rotation = Math.round(((ringNum - 1) * rotStep) % 360 * 100) / 100;
+      var shape;
+      if (D === 2)      { shape = ringNum % 2 === 1 ? 'square'   : 'diamond';   }
+      else if (D === 3) { shape = ringNum % 2 === 1 ? 'triangle' : 'tri-star';  }
+      else              { shape = ringNum % 2 === 1 ? base       : base + '*';  }
+
+      this.totalOuter += pts;
       var withNucleus = this.totalOuter + 1;
       this.rings.push({
-        ring:        ringNum,
-        shape:       shape,
-        rotation:    rotation,
-        count:       4,
-        total_outer: this.totalOuter,
+        ring:         ringNum,
+        shape:        shape,
+        rotation:     rotation,
+        count:        pts,
+        total_outer:  this.totalOuter,
         with_nucleus: withNucleus,
-        fibonacci:   isFibonacci(withNucleus)
+        fibonacci:    isNStepFib(withNucleus, D)
       });
     }
     return this;
   };
 
-  // Nucleus state: present (COUNTED) when total+1 is Fibonacci.
   EventMathTorus.prototype.nucleusPresent = function () {
-    return isFibonacci(this.totalOuter + 1);
+    return isNStepFib(this.totalOuter + 1, this.dimension || 2);
   };
 
-  // Mark cycle completion — the return to 1, one level up.
-  // The completion event itself is the point that makes the total Fibonacci.
-  // After N rings: outer + nucleus = total. The cycle adds +1 (the return point)
-  // bringing the count to the next Fibonacci number.
   EventMathTorus.prototype.complete = function () {
-    var beforeCycle = this.totalOuter + 1; // outer + nucleus
-    var withCycle   = beforeCycle + 1;     // + the return-to-1 point
+    var D           = this.dimension || 2;
+    var beforeCycle = this.totalOuter + 1;
+    var withCycle   = beforeCycle + 1;
     this.cycleComplete = true;
     this.completionEvent = new EventMathEvent(
       'cycle_complete_' + Date.now(),
       'completion',
       {
-        outer_points:    this.totalOuter,
-        nucleus:         1,
-        cycle_point:     1,
-        total:           withCycle,
-        fibonacci_hit:   isFibonacci(withCycle),
-        rings:           this.rings.length,
-        description:     'cycle complete — outer ' + this.totalOuter +
-                         ' + nucleus 1 + return 1 = ' + withCycle +
-                         (isFibonacci(withCycle) ? '  ← Fibonacci ✓' : '')
+        outer_points:  this.totalOuter,
+        nucleus:       1,
+        cycle_point:   1,
+        total:         withCycle,
+        dimension:     D,
+        fibonacci_hit: isNStepFib(withCycle, D),
+        rings:         this.rings.length,
+        description:   'cycle complete — outer ' + this.totalOuter +
+                       ' + nucleus 1 + return 1 = ' + withCycle +
+                       (isNStepFib(withCycle, D) ? '  ← D' + D + '-Fibonacci ✓' : '')
       }
     );
     return this.completionEvent;
@@ -532,27 +562,33 @@
   };
 
   EventMathTorus.prototype.render = function () {
-    var lines = ['── Torus: ' + this.name + ' ──'];
-    lines.push('  Source: ' + (this.sourceName || 'unknown') +
-               '  (zoom level ' + (this.zoomLevel - 1) + ' → torus level ' + this.zoomLevel + ')');
+    var D         = this.dimension || 2;
+    var pts       = D < 3 ? 4 : D;
+    var shapeName = getShapeName(D);
+    var fibLabel  = D === 2 ? 'Fibonacci' : 'D' + D + '-Fibonacci';
+    var nucState  = this.nucleusPresent() ? '● PRESENT' : '○ ABSENT';
 
-    var nucleusState = this.nucleusPresent() ? '● PRESENT' : '○ ABSENT';
-    lines.push('  Nucleus: ' + nucleusState +
-               (this.nucleusPresent() ? '  (switch ON — total is Fibonacci)' : '  (switch OFF)'));
+    var lines = ['── Torus: ' + this.name + '  [D' + D + ' / ' + shapeName + '] ──'];
+    lines.push('  Source: ' + (this.sourceName || 'unknown') +
+               '  (zoom ' + (this.zoomLevel - 1) + ' → torus level ' + this.zoomLevel + ')');
+    lines.push('  ' + pts + ' pts/ring   ' + (90 / pts) + '°/ring   ' + fibLabel);
+    lines.push('  Nucleus: ' + nucState +
+               (this.nucleusPresent() ? '  (switch ON)' : '  (switch OFF)'));
     lines.push('');
 
     for (var i = 0; i < this.rings.length; i++) {
-      var r = this.rings[i];
-      var fib = r.fibonacci ? '  ← Fibonacci: ' + r.with_nucleus + ' ✓' : '';
+      var r   = this.rings[i];
+      var hit = r.fibonacci ? '  ← ' + fibLabel + ': ' + r.with_nucleus + ' ✓' : '';
       lines.push('  Ring ' + r.ring + '  [' + r.shape + ', ' + r.rotation + '°]' +
-                 '  4 pts  →  outer: ' + r.total_outer + '  +nucleus = ' + r.with_nucleus + fib);
+                 '  ' + pts + ' pts  →  outer: ' + r.total_outer +
+                 '  +nucleus = ' + r.with_nucleus + hit);
     }
 
     if (this.rings.length > 0) {
       lines.push('');
       lines.push('  Total outer: ' + this.totalOuter + '  +nucleus: 1  =  ' +
                  (this.totalOuter + 1) +
-                 (isFibonacci(this.totalOuter + 1) ? '  ← Fibonacci ✓' : ''));
+                 (this.nucleusPresent() ? '  ← ' + fibLabel + ' ✓' : ''));
     }
 
     if (this.resonances.length > 0) {
@@ -568,9 +604,159 @@
       lines.push('');
       lines.push('  Cycle: COMPLETE');
       lines.push('    outer ' + m.outer_points + '  +nucleus 1  +return 1  =  ' +
-                 m.total + (m.fibonacci_hit ? '  ← Fibonacci ✓  (the ' + m.total + 'th point IS the return to 1)' : ''));
+                 m.total + (m.fibonacci_hit ? '  ← ' + fibLabel + ' ✓' : ''));
     }
 
+    return lines.join('\n');
+  };
+
+  // ── Landscape ────────────────────────────────────────────
+  //
+  // A multi-torus prediction field.
+  // Adding a torus auto-creates bridges to every existing torus at dim max(D1,D2)+1.
+  // forecast() finds the next Fibonacci switch across all dimensions and detects
+  // cross-dimensional resonances (two toruses switching at the same ring offset).
+
+  function EventMathLandscape(name) {
+    if (!(this instanceof EventMathLandscape)) {
+      return new EventMathLandscape(name);
+    }
+    this.name    = name || '';
+    this.toruses = [];
+    this.bridges = [];
+  }
+
+  EventMathLandscape.prototype.addTorus = function (torus) {
+    for (var i = 0; i < this.toruses.length; i++) {
+      var existing  = this.toruses[i];
+      var bridgeDim = Math.min(13, Math.max(existing.dimension || 2, torus.dimension || 2) + 1);
+      this.bridges.push({ from: existing.name, to: torus.name, dimension: bridgeDim });
+    }
+    this.toruses.push(torus);
+    return this;
+  };
+
+  EventMathLandscape.prototype.forecast = function () {
+    if (this.toruses.length === 0) {
+      return new EventMathEvent('forecast_empty', 'forecast',
+        { prediction: 'no toruses in landscape', forecast: true });
+    }
+
+    var predictions = [];
+    for (var i = 0; i < this.toruses.length; i++) {
+      var t   = this.toruses[i];
+      var D   = t.dimension || 2;
+      var pts = D < 3 ? 4 : D;
+      var seq = nStepFib(D, 10000);
+      var cur = t.totalOuter + 1;
+      var nextFib = null;
+      for (var k = 0; k < seq.length; k++) {
+        if (seq[k] > cur) { nextFib = seq[k]; break; }
+      }
+      var ringsTo = nextFib !== null ? Math.ceil((nextFib - cur) / pts) : null;
+      predictions.push({ torus: t.name, dimension: D, currentOuter: t.totalOuter,
+                         nextFibAt: nextFib, ringsToSwitch: ringsTo });
+    }
+
+    // Cross-dimensional resonances
+    var resonances = [];
+    for (var a = 0; a < predictions.length; a++) {
+      for (var b = a + 1; b < predictions.length; b++) {
+        if (predictions[a].ringsToSwitch !== null &&
+            predictions[a].ringsToSwitch === predictions[b].ringsToSwitch) {
+          resonances.push(
+            '"' + predictions[a].torus + '" D' + predictions[a].dimension +
+            ' ↔ "' + predictions[b].torus + '" D' + predictions[b].dimension +
+            ' (+' + predictions[a].ringsToSwitch + ' rings)'
+          );
+        }
+      }
+    }
+
+    var valid = predictions.filter(function (p) { return p.ringsToSwitch !== null; });
+    valid.sort(function (a, b) { return a.ringsToSwitch - b.ringsToSwitch; });
+    var soonest = valid[0] || null;
+
+    var totalDim = 0;
+    for (var m = 0; m < this.toruses.length; m++) totalDim += (this.toruses[m].dimension || 2);
+
+    return new EventMathEvent('forecast_' + Date.now(), 'forecast', {
+      prediction: soonest
+        ? 'Fibonacci switch in "' + soonest.torus + '" (D' + soonest.dimension + ') in ' +
+          soonest.ringsToSwitch + ' ring' + (soonest.ringsToSwitch === 1 ? '' : 's')
+        : 'all toruses have completed their cycles',
+      rings_until_switch:           soonest ? soonest.ringsToSwitch : 0,
+      next_switch_torus:            soonest ? soonest.torus : 'none',
+      next_switch_dimension:        soonest ? soonest.dimension : 0,
+      cross_dimensional_resonances: resonances.length,
+      resonance_detail:             resonances.length > 0 ? resonances.join('; ') : 'none',
+      total_dimensional_signature:  totalDim,
+      total_toruses:                this.toruses.length,
+      total_bridges:                this.bridges.length,
+      forecast:                     true
+    });
+  };
+
+  EventMathLandscape.prototype.render = function () {
+    var lines = [];
+    lines.push('══════════════════════════════════════════════════');
+    lines.push('EventMath Landscape: ' + this.name);
+
+    var totalDim = 0, dimParts = [];
+    for (var i = 0; i < this.toruses.length; i++) {
+      var d = this.toruses[i].dimension || 2;
+      totalDim += d;
+      dimParts.push('D' + d);
+    }
+    lines.push('Dimensional signature: ' + totalDim + '  (' + dimParts.join(' + ') + ')');
+    lines.push('══════════════════════════════════════════════════');
+    lines.push('');
+
+    for (var j = 0; j < this.toruses.length; j++) {
+      var t       = this.toruses[j];
+      var D       = t.dimension || 2;
+      var pts     = D < 3 ? 4 : D;
+      var shp     = getShapeName(D);
+      var fibLbl  = D === 2 ? 'Fibonacci' : 'D' + D + '-Fibonacci';
+      var seq     = nStepFib(D, 10000);
+      var cur     = t.totalOuter + 1;
+      var nextFib = null;
+      for (var k = 0; k < seq.length; k++) {
+        if (seq[k] > cur) { nextFib = seq[k]; break; }
+      }
+      var ringsTo = nextFib !== null ? Math.ceil((nextFib - cur) / pts) : 'complete';
+
+      var hits = [];
+      for (var r = 0; r < t.rings.length; r++) {
+        if (t.rings[r].fibonacci) hits.push(t.rings[r].with_nucleus + ' ✓');
+      }
+
+      lines.push('  D' + D + ' — ' + t.name + '  [' + shp + ', ' + pts + ' pts/ring]');
+      lines.push('    rings: ' + t.rings.length + '   outer: ' + t.totalOuter + '   nucleus: ' + (t.nucleusPresent() ? '●' : '○'));
+      if (hits.length > 0) lines.push('    ' + fibLbl + ' hits: ' + hits.join('  '));
+      lines.push('    next switch: +' + ringsTo + ' rings  →  ' + (nextFib || 'N/A'));
+      lines.push('');
+    }
+
+    if (this.bridges.length > 0) {
+      lines.push('  Auto-bridges:');
+      for (var b = 0; b < this.bridges.length; b++) {
+        var br = this.bridges[b];
+        lines.push('    ' + br.from + ' ↔ ' + br.to + '  [D' + br.dimension + ']');
+      }
+      lines.push('');
+    }
+
+    var fc = this.forecast();
+    var fm = fc.matter;
+    lines.push('  Forecast:');
+    lines.push('    ' + fm.prediction);
+    if (fm.cross_dimensional_resonances > 0) {
+      lines.push('    Cross-dim resonance: ' + fm.resonance_detail);
+    }
+    lines.push('    Signature: D' + fm.total_dimensional_signature + '  (' + this.toruses.length + ' toruses, ' + this.bridges.length + ' bridges)');
+    lines.push('');
+    lines.push('══════════════════════════════════════════════════');
     return lines.join('\n');
   };
 
@@ -585,14 +771,18 @@
   // ── Exports ──────────────────────────────────────────────
 
   return {
-    EventMathEvent: EventMathEvent,
-    EventMathLayer: EventMathLayer,
-    EventMathTimeline: EventMathTimeline,
-    EventMathTorus: EventMathTorus,
-    TimelineEntry: TimelineEntry,
+    EventMathEvent:     EventMathEvent,
+    EventMathLayer:     EventMathLayer,
+    EventMathTimeline:  EventMathTimeline,
+    EventMathTorus:     EventMathTorus,
+    EventMathLandscape: EventMathLandscape,
+    TimelineEntry:      TimelineEntry,
     getDefaultTimeline: getDefaultTimeline,
-    SNAPSHOT_INTERVAL: SNAPSHOT_INTERVAL,
-    isFibonacci: isFibonacci,
+    SNAPSHOT_INTERVAL:  SNAPSHOT_INTERVAL,
+    isFibonacci:        isFibonacci,
+    isNStepFib:         isNStepFib,
+    nStepFib:           nStepFib,
+    getShapeName:       getShapeName,
   };
 
 });

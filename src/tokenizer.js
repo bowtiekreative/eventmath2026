@@ -30,6 +30,7 @@ const KEYWORDS = new Set([
   'zoom', 'show',
   'spin', 'vibrate', 'cycle', 'resonate',
   'weight', 'explain', 'analogy',
+  'landscape', 'forecast', 'dimension',
 ]);
 
 class Token {
@@ -166,6 +167,16 @@ class EventMathTokenizer {
     // analogy → analogy <X> and <Y> into <Z>   (analogical)
     if (lead === 'analogy') {
       return this._analogyStmt(words, lineNum);
+    }
+
+    // landscape → landscape from <T1> and <T2> ... into <name>
+    if (lead === 'landscape') {
+      return this._landscapeStmt(words, lineNum);
+    }
+
+    // forecast → forecast from <landscape> into <result>
+    if (lead === 'forecast') {
+      return this._forecastStmt(words, lineNum);
     }
 
     // when → when <condition>
@@ -501,13 +512,44 @@ class EventMathTokenizer {
     return tokens;
   }
 
-  // spin <source> into <name>
+  // spin <source> into <name> [at dimension N]
   _spinStmt(words, lineNum) {
     const intoIdx = this._indexOf(words, 'into');
     if (intoIdx < 0) return [new Token('KEYWORD', 'spin', lineNum)];
     const sourceName = words.slice(1, intoIdx).join(' ');
-    const intoName   = words.slice(intoIdx + 1).join(' ');
-    return [new Token('SPIN_STMT', { sourceName, intoName }, lineNum)];
+    // Check for 'at dimension N' after the into-name
+    const atIdx  = this._indexOfFrom(words, 'at', intoIdx + 1);
+    const dimIdx = atIdx >= 0 ? this._indexOfFrom(words, 'dimension', atIdx) : -1;
+    let intoName, dimension;
+    if (atIdx >= 0 && dimIdx === atIdx + 1) {
+      intoName  = words.slice(intoIdx + 1, atIdx).join(' ');
+      dimension = parseInt(words[dimIdx + 1], 10) || 2;
+    } else {
+      intoName  = words.slice(intoIdx + 1).join(' ');
+      dimension = 2;
+    }
+    return [new Token('SPIN_STMT', { sourceName, intoName, dimension }, lineNum)];
+  }
+
+  // landscape from <T1> and <T2> [and <TN>] into <name>
+  _landscapeStmt(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    if (fromIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'landscape', lineNum)];
+    const middle  = words.slice(fromIdx + 1, intoIdx).join(' ');
+    const sources = middle.split(' and ').map(s => s.trim()).filter(Boolean);
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('LANDSCAPE_STMT', { sources, intoName }, lineNum)];
+  }
+
+  // forecast from <landscape> into <result>
+  _forecastStmt(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const intoIdx = this._indexOf(words, 'into');
+    if (fromIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'forecast', lineNum)];
+    const landscapeName = words.slice(fromIdx + 1, intoIdx).join(' ');
+    const intoName      = words.slice(intoIdx + 1).join(' ');
+    return [new Token('FORECAST_STMT', { landscapeName, intoName }, lineNum)];
   }
 
   // vibrate <torus> across <N>
@@ -886,6 +928,13 @@ class EventMathTokenizer {
     return -1;
   }
 
+  _lastIndexOf(words, target) {
+    for (let i = words.length - 1; i >= 0; i--) {
+      if (words[i] === target) return i;
+    }
+    return -1;
+  }
+
   // indexOf starting from a given index
   _indexOfFrom(words, target, from) {
     for (let i = from; i < words.length; i++) {
@@ -1020,6 +1069,11 @@ class EventMathTokenizer {
     // zoom level of <target>
     if (w0 === 'zoom' && w1 === 'level' && words[2] === 'of') {
       return { kind: 'zoom_level_of', target: words.slice(3).join(' ') };
+    }
+
+    // dimension of <target>
+    if (w0 === 'dimension' && w1 === 'of') {
+      return { kind: 'dimension_of', target: words.slice(2).join(' ') };
     }
 
     return null;

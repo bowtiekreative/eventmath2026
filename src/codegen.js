@@ -268,7 +268,18 @@ class EventMathCodeGen {
         case 'AnalogyStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
-            this._vars.add(stmt.intoName); // numeric mark
+          }
+          break;
+        case 'LandscapeStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'ForecastStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
         // Recurse into blocks so nested marks/sets are hoisted
@@ -340,6 +351,8 @@ class EventMathCodeGen {
       case 'WeightStmt':     return this._genWeightStmt(stmt);
       case 'ExplainStmt':    return this._genExplainStmt(stmt);
       case 'AnalogyStmt':    return this._genAnalogyStmt(stmt);
+      case 'LandscapeStmt':  return this._genLandscapeStmt(stmt);
+      case 'ForecastStmt':   return this._genForecastStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -634,6 +647,10 @@ class EventMathCodeGen {
       const targetName = this._safeName(op.target);
       return `(${targetName}.zoomLevel || 1)`;
     }
+    if (kind === 'dimension_of') {
+      const targetName = this._safeName(op.target);
+      return `(${targetName}.dimension || 2)`;
+    }
     if (kind === 'weighted_accuracy_of') {
       const layerName = this._safeName(op.layer.join(' '));
       const condStr = (op.condition || []).join(' ');
@@ -875,9 +892,11 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     const srcEsc    = this._escape(stmt.sourceName);
 
-    this._line(`// spin ${srcEsc} into ${intoEsc}`);
+    const dim = (stmt.dimension && stmt.dimension >= 2 && stmt.dimension <= 13)
+      ? stmt.dimension : 2;
+    this._line(`// spin ${srcEsc} into ${intoEsc}  [D${dim}]`);
     this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
-    this._line(`${torusVar}.spinFrom(${sourceVar});`);
+    this._line(`${torusVar}.spinFrom(${sourceVar}, ${dim});`);
     this._line('');
   }
 
@@ -1028,6 +1047,32 @@ class EventMathCodeGen {
     this._line(`return Math.round((__matterSim * 0.6 + __structSim * 0.4) * 100) / 100;`);
     this.indent--;
     this._line(`})();`);
+    this._line('');
+  }
+
+  // ── v1.7 Multi-dimensional landscape ────────────────────────────
+
+  // landscape from T1 and T2 and ... into L
+  _genLandscapeStmt(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const intoEsc = this._escape(stmt.intoName);
+    this._line(`// landscape: ${intoEsc}`);
+    this._line(`${intoVar} = new EM.EventMathLandscape('${intoEsc}');`);
+    for (const src of (stmt.sources || [])) {
+      const srcVar = this._safeName(src);
+      const srcEsc = this._escape(src);
+      this._line(`if (typeof ${srcVar} !== 'undefined' && ${srcVar} && typeof ${srcVar}.dimension !== 'undefined') { ${intoVar}.addTorus(${srcVar}); }`);
+    }
+    this._line('');
+  }
+
+  // forecast from L into F
+  _genForecastStmt(stmt) {
+    const landVar = this._safeName(stmt.landscapeName);
+    const intoVar = this._safeName(stmt.intoName);
+    const intoEsc = this._escape(stmt.intoName);
+    this._line(`// forecast from ${this._escape(stmt.landscapeName)} into ${intoEsc}`);
+    this._line(`${intoVar} = ${landVar}.forecast();`);
     this._line('');
   }
 
