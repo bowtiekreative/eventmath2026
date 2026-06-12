@@ -465,6 +465,26 @@ class EventMathCodeGen {
       case 'EarthStmt':           return this._genEarthStmt(stmt);
       case 'TravelStmt':          return this._genTravelStmt(stmt);
       case 'MapStmt':             return this._genMapStmt(stmt);
+      // v2.12
+      case 'GuardStmt':         return this._genGuardStmt(stmt);
+      case 'MatchStmt':         return this._genMatchStmt(stmt);
+      case 'ObserveStmt':       return this._genObserveStmt(stmt);
+      case 'EveryStmt':         return this._genEveryStmt(stmt);
+      case 'ClearStmt':         return this._genClearStmt(stmt);
+      case 'OnLifecycleStmt':   return this._genOnLifecycleStmt(stmt);
+      case 'OnEventStmt':       return this._genOnEventStmt(stmt);
+      case 'OffStmt':           return this._genOffStmt(stmt);
+      case 'TriggerStmt':       return this._genTriggerStmt(stmt);
+      case 'EmitStmt':          return this._genEmitStmt(stmt);
+      case 'PullStmt':          return this._genPullStmt(stmt);
+      case 'RaindropStmt':      return this._genRaindropStmt(stmt);
+      case 'GroundStmt':        return this._genGroundStmt(stmt);
+      case 'NewStmt':           return this._genNewStmt(stmt);
+      case 'AwaitStmt':         return this._genAwaitStmt(stmt);
+      case 'SlotStmt':          return this._genSlotStmt(stmt);
+      case 'BurstStmt':         return this._genBurstStmt(stmt);
+      case 'EscapeStmt':        this._line('break;'); return;
+      case 'SkipStmt':          this._line('continue;'); return;
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -2300,6 +2320,193 @@ class EventMathCodeGen {
     this._line(`// map: route definitions`);
     this._line(`var __router = new EM.EventMathRouter({ ${routeObj} });`);
     this._line('');
+  }
+  // ── v2.12 codegen methods ─────────────────────────────────────────
+
+  _toJsValue(v) {
+    if (!v || v === 'void') return 'null';
+    if (v === 'true' || v === 'false') return v;
+    if (/^-?\d+(\.\d+)?$/.test(v)) return v;
+    if (v.startsWith('"') || v.startsWith("'")) return v;
+    return this._safeName(v);
+  }
+
+  _genGuardStmt(stmt) {
+    const cond = this._safeName(stmt.condition || 'false');
+    const fallback = this._toJsValue(stmt.fallback);
+    this._line(`if (!${cond}) { return ${fallback}; }`);
+  }
+
+  _genMatchStmt(stmt) {
+    const subject = this._safeName(stmt.subject);
+    this._line(`switch (${subject}) {`);
+    this.indent++;
+    for (const arm of (stmt.arms || [])) {
+      const p = arm.pattern;
+      const lit = /^-?\d+(\.\d+)?$/.test(p) ? p : `'${this._escape(p)}'`;
+      this._line(`case ${lit}:`);
+      this.indent++;
+      for (const s of (arm.body || [])) this._genStatement(s);
+      this._line('break;');
+      this.indent--;
+    }
+    if (stmt.defaultBody && stmt.defaultBody.length > 0) {
+      this._line('default:');
+      this.indent++;
+      for (const s of stmt.defaultBody) this._genStatement(s);
+      this.indent--;
+    }
+    this.indent--;
+    this._line('}');
+    this._line('');
+  }
+
+  _genObserveStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    this._line(`// observe: ${this._escape(stmt.name)}`);
+    this._line(`(function __observe_${v}() {`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  _genEveryStmt(stmt) {
+    const interval = stmt.interval || '1000';
+    const fn = this._safeName(stmt.cloudName);
+    if (stmt.intoName) {
+      const v = this._safeName(stmt.intoName);
+      this._line(`var ${v} = setInterval(function() { ${fn}(); }, ${interval});`);
+    } else {
+      this._line(`setInterval(function() { ${fn}(); }, ${interval});`);
+    }
+  }
+
+  _genClearStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    this._line(`clearInterval(${v}); clearTimeout(${v});`);
+  }
+
+  _genOnLifecycleStmt(stmt) {
+    const async_ = stmt.isAsync ? 'async ' : '';
+    const phase  = stmt.phase;
+    this._line(`// lifecycle: ${phase}`);
+    if (phase === 'death') {
+      this._line(`window.addEventListener('unload', ${async_}function __death() {`);
+      this.indent++;
+      for (const s of (stmt.body || [])) this._genStatement(s);
+      this.indent--;
+      this._line(`});`);
+    } else {
+      this._line(`(${async_}function __${phase}() {`);
+      this.indent++;
+      for (const s of (stmt.body || [])) this._genStatement(s);
+      this.indent--;
+      this._line(`})();`);
+    }
+    this._line('');
+  }
+
+  _genOnEventStmt(stmt) {
+    const async_  = stmt.isAsync ? 'async ' : '';
+    const evtEsc  = this._escape(stmt.event);
+    this._line(`document.addEventListener('${evtEsc}', ${async_}function(__event) {`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this.indent--;
+    this._line(`});`);
+    this._line('');
+  }
+
+  _genOffStmt(stmt) {
+    const evtEsc = this._escape(stmt.event);
+    this._line(`document.removeEventListener('${evtEsc}', null);`);
+  }
+
+  _genTriggerStmt(stmt) {
+    const evtEsc = this._escape(stmt.event);
+    if (stmt.payload) {
+      const pv = this._safeName(stmt.payload);
+      this._line(`document.dispatchEvent(new CustomEvent('${evtEsc}', { detail: ${pv} }));`);
+    } else {
+      this._line(`document.dispatchEvent(new CustomEvent('${evtEsc}'));`);
+    }
+  }
+
+  _genEmitStmt(stmt) {
+    const nameEsc = this._escape(stmt.name);
+    const v       = this._safeName(stmt.name);
+    const key     = stmt.kind === 'default' ? 'default' : nameEsc;
+    this._line(`// emit: ${nameEsc}`);
+    this._line(`if (typeof module !== 'undefined') module.exports['${key}'] = ${v};`);
+    this._line('');
+  }
+
+  _genPullStmt(stmt) {
+    if (!stmt.names || !stmt.names.length || !stmt.path) return;
+    const pathEsc = this._escape(stmt.path);
+    const vars    = stmt.names.map(n => this._safeName(n)).join(', ');
+    this._line(`var { ${vars} } = require('./${pathEsc}');`);
+    this._line('');
+  }
+
+  _genRaindropStmt(stmt) {
+    const t = this._escape(stmt.rdType || 'text');
+    const n = this._escape(stmt.name || '');
+    this._line(`new EM.EventMathRaindrop('${t}', '${n}')`);
+  }
+
+  _genGroundStmt(stmt) {
+    const keyEsc = this._escape(stmt.key || '');
+    const op     = stmt.op;
+    if (op === 'set') {
+      const val = this._toJsValue(stmt.value);
+      this._line(`EM.EventMathGround.set('${keyEsc}', ${val});`);
+    } else if (op === 'get') {
+      if (stmt.intoName) {
+        const v = this._safeName(stmt.intoName);
+        this._line(`var ${v} = EM.EventMathGround.get('${keyEsc}');`);
+      } else {
+        this._line(`EM.EventMathGround.get('${keyEsc}');`);
+      }
+    } else if (op === 'remove') {
+      this._line(`EM.EventMathGround.remove('${keyEsc}');`);
+    }
+  }
+
+  _genNewStmt(stmt) {
+    const schema = stmt.schema || 'Object';
+    if (stmt.intoName) {
+      const v = this._safeName(stmt.intoName);
+      this._line(`var ${v} = new ${schema}({});`);
+    } else {
+      this._line(`new ${schema}({});`);
+    }
+  }
+
+  _genAwaitStmt(stmt) {
+    const expr = this._safeName(stmt.expression);
+    if (stmt.intoName) {
+      const v = this._safeName(stmt.intoName);
+      this._line(`var ${v} = await ${expr}();`);
+    } else {
+      this._line(`await ${expr}();`);
+    }
+  }
+
+  _genSlotStmt(stmt) {
+    const nameEsc = this._escape(stmt.name || 'children');
+    const v       = this._safeName(stmt.name || 'children');
+    this._line(`// slot: ${nameEsc}`);
+    this._line(`if (typeof ${v} === 'function') ${v}();`);
+  }
+
+  _genBurstStmt(stmt) {
+    if (!stmt.intoName || !stmt.sources || !stmt.sources.length) return;
+    const v       = this._safeName(stmt.intoName);
+    const spreads = stmt.sources.map(s => `...${this._safeName(s)}`).join(', ');
+    this._line(`var ${v} = { ${spreads} };`);
   }
 }
 

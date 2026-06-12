@@ -2898,6 +2898,47 @@
     return lines.join('\n');
   };
 
+  // ── v2.12 — EventMathGround (localStorage wrapper) ──────────────
+
+  var EventMathGround = (function() {
+    function _get(key) {
+      try { return (typeof localStorage !== 'undefined') ? localStorage.getItem(key) : null; }
+      catch(_) { return null; }
+    }
+    function _set(key, value) {
+      try {
+        if (typeof localStorage !== 'undefined')
+          localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+      } catch(_) {}
+    }
+    function _remove(key) {
+      try { if (typeof localStorage !== 'undefined') localStorage.removeItem(key); } catch(_) {}
+    }
+    function _clear() {
+      try { if (typeof localStorage !== 'undefined') localStorage.clear(); } catch(_) {}
+    }
+    return { get: _get, set: _set, remove: _remove, clear: _clear };
+  })();
+
+  // ── v2.12 — EventMathRaindrop (form input descriptor) ───────────
+
+  function EventMathRaindrop(type, name, props) {
+    this.rdType = type;
+    this.name   = name;
+    this.props  = props || {};
+  }
+  EventMathRaindrop.prototype.render = function() {
+    var t = this.rdType;
+    var n = this.name;
+    var p = this.props;
+    var attrs = 'type="' + t + '" name="' + n + '"';
+    if (p.placeholder) attrs += ' placeholder="' + p.placeholder + '"';
+    if (p.required)    attrs += ' required';
+    if (p.disabled)    attrs += ' disabled';
+    if (p.label)       return '<label>' + p.label + '<input ' + attrs + '></label>';
+    return '<input ' + attrs + '>';
+  };
+
   // ── Exports ──────────────────────────────────────────────
 
   return {
@@ -2936,6 +2977,8 @@
     EventMathCloud:         EventMathCloud,
     EventMathEarth:         EventMathEarth,
     EventMathRouter:        EventMathRouter,
+    EventMathGround:        EventMathGround,
+    EventMathRaindrop:      EventMathRaindrop,
   };
 
 });

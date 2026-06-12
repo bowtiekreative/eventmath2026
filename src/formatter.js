@@ -134,6 +134,26 @@ class EventMathFormatter {
       case 'EarthStmt':          return this._formatEarthStmt(stmt);
       case 'TravelStmt':         return this._formatTravelStmt(stmt);
       case 'MapStmt':            return this._formatMapStmt(stmt);
+      // v2.12
+      case 'GuardStmt':         return this._formatGuardStmt(stmt);
+      case 'MatchStmt':         return this._formatMatchStmt(stmt);
+      case 'ObserveStmt':       return this._formatObserveStmt(stmt);
+      case 'EveryStmt':         return this._formatEveryStmt(stmt);
+      case 'ClearStmt':         return this._formatClearStmt(stmt);
+      case 'OnLifecycleStmt':   return this._formatOnLifecycleStmt(stmt);
+      case 'OnEventStmt':       return this._formatOnEventStmt(stmt);
+      case 'OffStmt':           return this._formatOffStmt(stmt);
+      case 'TriggerStmt':       return this._formatTriggerStmt(stmt);
+      case 'EmitStmt':          return this._formatEmitStmt(stmt);
+      case 'PullStmt':          return this._formatPullStmt(stmt);
+      case 'RaindropStmt':      return this._formatRaindropStmt(stmt);
+      case 'GroundStmt':        return this._formatGroundStmt(stmt);
+      case 'NewStmt':           return this._formatNewStmt(stmt);
+      case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
+      case 'SlotStmt':          return this._formatSlotStmt(stmt);
+      case 'BurstStmt':         return this._formatBurstStmt(stmt);
+      case 'EscapeStmt':        return this._line('escape');
+      case 'SkipStmt':          return this._line('skip');
     }
   }
 
@@ -860,6 +880,109 @@ class EventMathFormatter {
   _formatEarthStmt(stmt) {
     const body = stmt.bodyName ? ` with ${stmt.bodyName}` : '';
     this._line(`earth ${stmt.method} ${stmt.path}${body} into ${stmt.intoName}`);
+  }
+
+  // ── v2.12 format methods ──────────────────────────────────────────
+
+  _formatGuardStmt(stmt) {
+    const fallback = stmt.fallback ? ` else reflect ${stmt.fallback}` : '';
+    this._line(`guard ${stmt.condition}${fallback}`);
+  }
+
+  _formatMatchStmt(stmt) {
+    this._line(`match ${stmt.subject}`);
+    this.indent++;
+    for (const arm of (stmt.arms || [])) {
+      this._line(`arm ${arm.pattern}`);
+      this.indent++;
+      for (const s of (arm.body || [])) this._formatStatement(s);
+      this.indent--;
+    }
+    if (stmt.defaultBody && stmt.defaultBody.length > 0) {
+      this._line('arm else');
+      this.indent++;
+      for (const s of stmt.defaultBody) this._formatStatement(s);
+      this.indent--;
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatObserveStmt(stmt) {
+    this._line(`observe ${stmt.name}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatEveryStmt(stmt) {
+    const into = stmt.intoName ? ` into ${stmt.intoName}` : '';
+    this._line(`every ${stmt.interval} ${stmt.cloudName}${into}`);
+  }
+
+  _formatClearStmt(stmt)     { this._line(`clear ${stmt.name}`); }
+
+  _formatOnLifecycleStmt(stmt) {
+    const prefix = stmt.isAsync ? 'expand ' : '';
+    this._line(`${prefix}on ${stmt.phase}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatOnEventStmt(stmt) {
+    const prefix = stmt.isAsync ? 'expand ' : '';
+    this._line(`${prefix}on ${stmt.event}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatOffStmt(stmt)       { this._line(`off ${stmt.event}`); }
+
+  _formatTriggerStmt(stmt) {
+    const with_ = stmt.payload ? ` with ${stmt.payload}` : '';
+    this._line(`trigger ${stmt.event}${with_}`);
+  }
+
+  _formatEmitStmt(stmt) {
+    const kind = stmt.kind !== 'value' ? `${stmt.kind} ` : '';
+    this._line(`emit ${kind}${stmt.name}`);
+  }
+
+  _formatPullStmt(stmt) {
+    const names = (stmt.names || []).join(' and ');
+    this._line(`pull ${names} from ${stmt.path}`);
+  }
+
+  _formatRaindropStmt(stmt)  { this._line(`raindrop ${stmt.rdType} ${stmt.name}`); }
+
+  _formatGroundStmt(stmt) {
+    const op = stmt.op;
+    if (op === 'set')    { this._line(`ground set ${stmt.key} is ${stmt.value}`); return; }
+    if (op === 'get')    { this._line(`ground get ${stmt.key}${stmt.intoName ? ' into ' + stmt.intoName : ''}`); return; }
+    if (op === 'remove') { this._line(`ground remove ${stmt.key}`); return; }
+  }
+
+  _formatNewStmt(stmt) {
+    const into = stmt.intoName ? ` into ${stmt.intoName}` : '';
+    this._line(`new ${stmt.schema}${into}`);
+  }
+
+  _formatAwaitStmt(stmt) {
+    const into = stmt.intoName ? ` into ${stmt.intoName}` : '';
+    this._line(`await ${stmt.expression}${into}`);
+  }
+
+  _formatSlotStmt(stmt)      { this._line(`slot ${stmt.name || 'children'}`); }
+
+  _formatBurstStmt(stmt) {
+    const sources = (stmt.sources || []).join(' and ');
+    const into    = stmt.intoName ? ` into ${stmt.intoName}` : '';
+    this._line(`burst ${sources}${into}`);
   }
 }
 
