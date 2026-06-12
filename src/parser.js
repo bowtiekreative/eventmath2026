@@ -145,6 +145,26 @@ class EventMathParser {
     if (t.type === 'TRAVEL_STMT')           return this._parseTravelStmt();
     if (t.value === 'attempt')              return this._parseAttemptStmt();
     if (t.value === 'map')                  return this._parseMapStmt();
+    // v2.12
+    if (t.type === 'GUARD_STMT')         return this._parseGuardStmt();
+    if (t.type === 'MATCH_STMT')         return this._parseMatchStmt();
+    if (t.type === 'OBSERVE_STMT')       return this._parseObserveStmt();
+    if (t.type === 'EVERY_STMT')         return this._parseEveryStmt();
+    if (t.type === 'CLEAR_STMT')         return this._parseClearStmt();
+    if (t.type === 'ON_LIFECYCLE_STMT')  return this._parseOnLifecycleStmt();
+    if (t.type === 'ON_EVENT_STMT')      return this._parseOnEventStmt();
+    if (t.type === 'OFF_STMT')           return this._parseOffStmt();
+    if (t.type === 'TRIGGER_STMT')       return this._parseTriggerStmt();
+    if (t.type === 'EMIT_STMT')          return this._parseEmitStmt();
+    if (t.type === 'PULL_STMT')          return this._parsePullStmt();
+    if (t.type === 'RAINDROP_STMT')      return this._parseRaindropStmt();
+    if (t.type === 'GROUND_STMT')        return this._parseGroundStmt();
+    if (t.type === 'NEW_STMT')           return this._parseNewStmt();
+    if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
+    if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
+    if (t.type === 'BURST_STMT')         return this._parseBurstStmt();
+    if (t.value === 'escape')            { this.advance(); return ast('EscapeStmt', {}); }
+    if (t.value === 'skip')              { this.advance(); return ast('SkipStmt', {}); }
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1486,6 +1506,133 @@ class EventMathParser {
     }
     this.expect('KEYWORD', 'end');
     return ast('MapStmt', { routes });
+  }
+
+  // ── v2.12 parse methods ──────────────────────────────────────────
+
+  _parseGuardStmt() {
+    const t = this.advance();
+    return ast('GuardStmt', { condition: t.value.condition, fallback: t.value.fallback });
+  }
+
+  _parseMatchStmt() {
+    const t = this.advance(); // MATCH_STMT
+    const subject = t.value.subject;
+    const arms = [];
+    let defaultBody = null;
+
+    while (this.peek() && !(this.peek().type === 'KEYWORD' && this.peek().value === 'end')) {
+      const curr = this.peek();
+      if (!curr || curr.type !== 'ARM_STMT') { this.advance(); continue; }
+      this.advance(); // consume ARM_STMT
+      const pattern = curr.value.pattern;
+      const body = [];
+      while (this.peek() &&
+             !(this.peek().type === 'KEYWORD' && this.peek().value === 'end') &&
+             this.peek().type !== 'ARM_STMT') {
+        const s = this._parseStatement();
+        if (s) body.push(s);
+      }
+      if (pattern === 'else' || pattern === '_') { defaultBody = body; }
+      else { arms.push({ pattern, body }); }
+    }
+    if (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'end') this.advance();
+    return ast('MatchStmt', { subject, arms, defaultBody });
+  }
+
+  _parseObserveStmt() {
+    const t = this.advance(); // OBSERVE_STMT
+    const name = t.value.name;
+    const body = [];
+    while (this.peek() && !(this.peek().type === 'KEYWORD' && this.peek().value === 'end')) {
+      const s = this._parseStatement(); if (s) body.push(s);
+    }
+    if (this.peek()) this.advance(); // end
+    return ast('ObserveStmt', { name, body });
+  }
+
+  _parseEveryStmt() {
+    const t = this.advance();
+    return ast('EveryStmt', { interval: t.value.interval, cloudName: t.value.cloudName, intoName: t.value.intoName });
+  }
+
+  _parseClearStmt() {
+    const t = this.advance();
+    return ast('ClearStmt', { name: t.value.name });
+  }
+
+  _parseOnLifecycleStmt() {
+    const t = this.advance(); // ON_LIFECYCLE_STMT
+    const phase = t.value.phase;
+    const isAsync = t.value.isAsync;
+    const body = [];
+    while (this.peek() && !(this.peek().type === 'KEYWORD' && this.peek().value === 'end')) {
+      const s = this._parseStatement(); if (s) body.push(s);
+    }
+    if (this.peek()) this.advance(); // end
+    return ast('OnLifecycleStmt', { phase, isAsync, body });
+  }
+
+  _parseOnEventStmt() {
+    const t = this.advance(); // ON_EVENT_STMT
+    const event = t.value.event;
+    const isAsync = t.value.isAsync;
+    const body = [];
+    while (this.peek() && !(this.peek().type === 'KEYWORD' && this.peek().value === 'end')) {
+      const s = this._parseStatement(); if (s) body.push(s);
+    }
+    if (this.peek()) this.advance(); // end
+    return ast('OnEventStmt', { event, isAsync, body });
+  }
+
+  _parseOffStmt() {
+    const t = this.advance();
+    return ast('OffStmt', { event: t.value.event });
+  }
+
+  _parseTriggerStmt() {
+    const t = this.advance();
+    return ast('TriggerStmt', { event: t.value.event, payload: t.value.payload });
+  }
+
+  _parseEmitStmt() {
+    const t = this.advance();
+    return ast('EmitStmt', { kind: t.value.kind, name: t.value.name });
+  }
+
+  _parsePullStmt() {
+    const t = this.advance();
+    return ast('PullStmt', { names: t.value.names, path: t.value.path });
+  }
+
+  _parseRaindropStmt() {
+    const t = this.advance();
+    return ast('RaindropStmt', { rdType: t.value.rdType, name: t.value.name });
+  }
+
+  _parseGroundStmt() {
+    const t = this.advance();
+    return ast('GroundStmt', { op: t.value.op, key: t.value.key, value: t.value.value, intoName: t.value.intoName });
+  }
+
+  _parseNewStmt() {
+    const t = this.advance();
+    return ast('NewStmt', { schema: t.value.schema, intoName: t.value.intoName });
+  }
+
+  _parseAwaitStmt() {
+    const t = this.advance();
+    return ast('AwaitStmt', { expression: t.value.expression, intoName: t.value.intoName });
+  }
+
+  _parseSlotStmt() {
+    const t = this.advance();
+    return ast('SlotStmt', { name: t.value.name });
+  }
+
+  _parseBurstStmt() {
+    const t = this.advance();
+    return ast('BurstStmt', { sources: t.value.sources, intoName: t.value.intoName });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

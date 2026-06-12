@@ -52,6 +52,10 @@ const KEYWORDS = new Set([
   'attempt', 'collapse', 'always',
   'cloud', 'reflect', 'node', 'atmosphere', 'field', 'style', 'route',
   'earth', 'travel', 'map', 'expand',
+  // v2.12 — core language completion
+  'void', 'guard', 'match', 'arm', 'escape', 'skip', 'observe',
+  'every', 'clear', 'on', 'off', 'trigger', 'emit', 'pull',
+  'raindrop', 'ground', 'new', 'await', 'slot', 'burst',
 ]);
 
 class Token {
@@ -249,6 +253,26 @@ class EventMathTokenizer {
     if (lead === 'travel')     return this._tokenizeTravelStmt(words, lineNum);
     if (lead === 'map')        return [new Token('KEYWORD', 'map', lineNum)];
     if (lead === 'route')      return this._tokenizeRouteLine(words, lineNum);
+    if (lead === 'void')      return [new Token('KEYWORD', 'void', lineNum)];
+    if (lead === 'escape')    return [new Token('KEYWORD', 'escape', lineNum)];
+    if (lead === 'skip')      return [new Token('KEYWORD', 'skip', lineNum)];
+    if (lead === 'guard')     return this._tokenizeGuardStmt(words, lineNum);
+    if (lead === 'match')     return this._tokenizeMatchStmt(words, lineNum);
+    if (lead === 'arm')       return this._tokenizeArmStmt(words, lineNum);
+    if (lead === 'observe')   return this._tokenizeObserveStmt(words, lineNum);
+    if (lead === 'every')     return this._tokenizeEveryStmt(words, lineNum);
+    if (lead === 'clear')     return this._tokenizeClearStmt(words, lineNum);
+    if (lead === 'on')        return this._tokenizeOnStmt(words, lineNum, false);
+    if (lead === 'off')       return this._tokenizeOffStmt(words, lineNum);
+    if (lead === 'trigger')   return this._tokenizeTriggerStmt(words, lineNum);
+    if (lead === 'emit')      return this._tokenizeEmitStmt(words, lineNum);
+    if (lead === 'pull')      return this._tokenizePullStmt(words, lineNum);
+    if (lead === 'raindrop')  return this._tokenizeRaindropStmt(words, lineNum);
+    if (lead === 'ground')    return this._tokenizeGroundStmt(words, lineNum);
+    if (lead === 'new')       return this._tokenizeNewStmt(words, lineNum);
+    if (lead === 'await')     return this._tokenizeAwaitStmt(words, lineNum);
+    if (lead === 'slot')      return this._tokenizeSlotStmt(words, lineNum);
+    if (lead === 'burst')     return this._tokenizeBurstStmt(words, lineNum);
 
     // category, cat → consume category name
     // But if the next word is "is" or "from", this is a matter field key, not a declaration
@@ -2070,12 +2094,15 @@ class EventMathTokenizer {
     return [new Token('LENS_STMT', { name, expression }, lineNum)];
   }
 
-  // expand cloud NAME / expand action NAME — async modifier
+  // expand cloud NAME / expand on birth/death/shift/EVENT — async modifier
   _tokenizeExpandStmt(words, lineNum) {
     const target = words[1];
     if (target === 'cloud') {
       const name = words.slice(2).join(' ');
       return [new Token('CLOUD_STMT', { name, isAsync: true }, lineNum)];
+    }
+    if (target === 'on') {
+      return this._tokenizeOnStmt(words.slice(1), lineNum, true);
     }
     return [new Token('KEYWORD', 'expand', lineNum)];
   }
@@ -2140,6 +2167,136 @@ class EventMathTokenizer {
     const cloudName = words.slice(asIdx + 1).join(' ');
     const path      = words.slice(2, asIdx).join(' ');
     return [new Token('ROUTE_LINE', { name, path, cloudName }, lineNum)];
+  }
+
+  // v2.12 tokenizer methods
+
+  _tokenizeGuardStmt(words, lineNum) {
+    const elseIdx = this._indexOf(words, 'else');
+    const condition = words.slice(1, elseIdx >= 0 ? elseIdx : words.length).join(' ');
+    let fallback = null;
+    if (elseIdx >= 0) {
+      const rest = words.slice(elseIdx + 1);
+      fallback = rest[0] === 'reflect' ? rest.slice(1).join(' ') : rest.join(' ');
+    }
+    return [new Token('GUARD_STMT', { condition, fallback }, lineNum)];
+  }
+
+  _tokenizeMatchStmt(words, lineNum) {
+    const subject = words.slice(1).join(' ');
+    return [new Token('MATCH_STMT', { subject }, lineNum)];
+  }
+
+  _tokenizeArmStmt(words, lineNum) {
+    const pattern = words.slice(1).join(' ') || 'else';
+    return [new Token('ARM_STMT', { pattern }, lineNum)];
+  }
+
+  _tokenizeObserveStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('OBSERVE_STMT', { name }, lineNum)];
+  }
+
+  _tokenizeEveryStmt(words, lineNum) {
+    const interval = words[1] || '1000';
+    const intoIdx  = this._indexOf(words, 'into');
+    const cloudName = words.slice(2, intoIdx >= 0 ? intoIdx : words.length).join(' ');
+    const intoName  = intoIdx >= 0 ? words.slice(intoIdx + 1).join(' ') : null;
+    return [new Token('EVERY_STMT', { interval, cloudName, intoName }, lineNum)];
+  }
+
+  _tokenizeClearStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('CLEAR_STMT', { name }, lineNum)];
+  }
+
+  _tokenizeOnStmt(words, lineNum, isAsync) {
+    const phase = words[1];
+    if (phase === 'birth' || phase === 'death' || phase === 'shift') {
+      return [new Token('ON_LIFECYCLE_STMT', { phase, isAsync: !!isAsync }, lineNum)];
+    }
+    const event = words.slice(1).join(' ');
+    return [new Token('ON_EVENT_STMT', { event, isAsync: !!isAsync }, lineNum)];
+  }
+
+  _tokenizeOffStmt(words, lineNum) {
+    const event = words.slice(1).join(' ');
+    return [new Token('OFF_STMT', { event }, lineNum)];
+  }
+
+  _tokenizeTriggerStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    const event   = words.slice(1, withIdx >= 0 ? withIdx : words.length).join(' ');
+    const payload  = withIdx >= 0 ? words.slice(withIdx + 1).join(' ') : null;
+    return [new Token('TRIGGER_STMT', { event, payload }, lineNum)];
+  }
+
+  _tokenizeEmitStmt(words, lineNum) {
+    const second = words[1];
+    if (second === 'default') return [new Token('EMIT_STMT', { kind: 'default', name: words.slice(2).join(' ') }, lineNum)];
+    if (second === 'cloud')   return [new Token('EMIT_STMT', { kind: 'cloud',   name: words.slice(2).join(' ') }, lineNum)];
+    if (second === 'star')    return [new Token('EMIT_STMT', { kind: 'star',    name: words.slice(2).join(' ') }, lineNum)];
+    return [new Token('EMIT_STMT', { kind: 'value', name: words.slice(1).join(' ') }, lineNum)];
+  }
+
+  _tokenizePullStmt(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const path    = fromIdx >= 0 ? words.slice(fromIdx + 1).join(' ') : null;
+    const namesPart = words.slice(1, fromIdx >= 0 ? fromIdx : words.length);
+    const names   = namesPart.join(' ').split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
+    return [new Token('PULL_STMT', { names, path }, lineNum)];
+  }
+
+  _tokenizeRaindropStmt(words, lineNum) {
+    const rdType = words[1] || 'text';
+    const name   = words.slice(2).join(' ');
+    return [new Token('RAINDROP_STMT', { rdType, name }, lineNum)];
+  }
+
+  _tokenizeGroundStmt(words, lineNum) {
+    const op = words[1] || 'get';
+    if (op === 'set') {
+      const isIdx = this._indexOf(words, 'is');
+      const key   = words.slice(2, isIdx >= 0 ? isIdx : words.length).join(' ');
+      const value = isIdx >= 0 ? words.slice(isIdx + 1).join(' ') : null;
+      return [new Token('GROUND_STMT', { op, key, value, intoName: null }, lineNum)];
+    }
+    if (op === 'get') {
+      const intoIdx = this._indexOf(words, 'into');
+      const key     = words.slice(2, intoIdx >= 0 ? intoIdx : words.length).join(' ');
+      const intoName = intoIdx >= 0 ? words.slice(intoIdx + 1).join(' ') : null;
+      return [new Token('GROUND_STMT', { op, key, value: null, intoName }, lineNum)];
+    }
+    // remove
+    const key = words.slice(2).join(' ');
+    return [new Token('GROUND_STMT', { op, key, value: null, intoName: null }, lineNum)];
+  }
+
+  _tokenizeNewStmt(words, lineNum) {
+    const schema  = words[1] || 'Object';
+    const intoIdx = this._indexOf(words, 'into');
+    const intoName = intoIdx >= 0 ? words.slice(intoIdx + 1).join(' ') : null;
+    return [new Token('NEW_STMT', { schema, intoName }, lineNum)];
+  }
+
+  _tokenizeAwaitStmt(words, lineNum) {
+    const intoIdx   = this._indexOf(words, 'into');
+    const expression = words.slice(1, intoIdx >= 0 ? intoIdx : words.length).join(' ');
+    const intoName  = intoIdx >= 0 ? words.slice(intoIdx + 1).join(' ') : null;
+    return [new Token('AWAIT_STMT', { expression, intoName }, lineNum)];
+  }
+
+  _tokenizeSlotStmt(words, lineNum) {
+    const name = words.slice(1).join(' ') || 'children';
+    return [new Token('SLOT_STMT', { name }, lineNum)];
+  }
+
+  _tokenizeBurstStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    const intoName = intoIdx >= 0 ? words.slice(intoIdx + 1).join(' ') : null;
+    const sourcesPart = words.slice(1, intoIdx >= 0 ? intoIdx : words.length);
+    const sources = sourcesPart.join(' ').split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
+    return [new Token('BURST_STMT', { sources, intoName }, lineNum)];
   }
 
   /**
