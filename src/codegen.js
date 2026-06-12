@@ -298,6 +298,13 @@ class EventMathCodeGen {
         case 'SatisfyStmt':
         case 'EvaluateStmt':
         case 'DimensionalStmt':
+        case 'DiagnoseStmt':
+        case 'ChallengeStmt':
+        case 'CompareStmt':
+        case 'ConflictStmt':
+        case 'WeighStmt':
+        case 'DeepenStmt':
+        case 'TraceStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -405,6 +412,13 @@ class EventMathCodeGen {
       case 'SatisfyStmt':         return this._genSatisfyStmt(stmt);
       case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
       case 'DimensionalStmt':     return this._genDimensionalStmt(stmt);
+      case 'DiagnoseStmt':        return this._genDiagnoseStmt(stmt);
+      case 'ChallengeStmt':       return this._genChallengeStmt(stmt);
+      case 'CompareStmt':         return this._genCompareStmt(stmt);
+      case 'ConflictStmt':        return this._genConflictStmt(stmt);
+      case 'WeighStmt':           return this._genWeighStmt(stmt);
+      case 'DeepenStmt':          return this._genDeepenStmt(stmt);
+      case 'TraceStmt':           return this._genTraceStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -731,20 +745,46 @@ class EventMathCodeGen {
   // ── Prediction statements ────────────────────────────────────────
 
   _genPredictStmt(stmt) {
-    const intoName = this._safeName(stmt.intoLayer);
-    const dirName = this._safeName(stmt.directionsLayer);
-    const lensName = this._safeName(stmt.lensesLayer);
-    const qtyName = this._safeName(stmt.quantitiesLayer);
-    const subject = this._escape(stmt.subject);
+    // Resolve the dimension list — support both new (dimensions[]) and old (dir/lens/qty) forms
+    const dims = (stmt.dimensions && stmt.dimensions.length > 0)
+      ? stmt.dimensions
+      : [stmt.directionsLayer, stmt.lensesLayer, stmt.quantitiesLayer].filter(Boolean);
 
-    this._line(`// predict: "${this._escape(stmt.subject)}" → ${this._escape(stmt.intoLayer)}`);
+    const intoName   = this._safeName(stmt.intoLayer);
+    const subject    = this._escape(stmt.subject);
+    const dimCount   = dims.length;
+    const fractalVar = stmt.fractalName ? this._safeName(stmt.fractalName) : null;
+    const fractalEsc = stmt.fractalName ? this._escape(stmt.fractalName) : '';
+
+    const tierNote = fractalVar
+      ? `${dimCount} dimensions through "${fractalEsc}" (surface D±13 → system D±26 → root D±39)`
+      : `${dimCount} dimensions (flat — add 'through FRACTAL' to route through the three tiers)`;
+    this._line(`// predict: "${subject}" → ${this._escape(stmt.intoLayer)} — ${tierNote}`);
     this._line(`const ${intoName} = new EM.EventMathLayer('${this._escape(stmt.intoLayer)}', []);`);
-    this._line(`${dirName}.events.forEach(_dir => {`);
-    this.indent++;
-    this._line(`${lensName}.events.forEach(_lens => {`);
-    this.indent++;
-    this._line(`${qtyName}.events.forEach(_qty => {`);
-    this.indent++;
+
+    // Emit N nested forEach loops
+    const varNames = dims.map((_, i) => `_dim_${i}`);
+    for (let i = 0; i < dimCount; i++) {
+      const layerVar = this._safeName(dims[i]);
+      const axisEsc  = this._escape(dims[i]);
+      this._line(`${layerVar}.events.forEach(function(${varNames[i]}) { // axis: ${axisEsc}`);
+      this.indent++;
+    }
+
+    // Fractal tier routing context
+    if (fractalVar) {
+      this._line(`var _tierCtx = typeof ${fractalVar} !== 'undefined' && ${fractalVar} ? {`);
+      this.indent++;
+      this._line(`fractal: '${fractalEsc}',`);
+      this._line(`tier1: (${fractalVar}.posDim || 0) >= 13,`);
+      this._line(`tier2: (${fractalVar}.posDim || 0) >= 26,`);
+      this._line(`tier3: (${fractalVar}.posDim || 0) >= 39,`);
+      this._line(`active_tiers: [(${fractalVar}.posDim || 0) >= 13, (${fractalVar}.posDim || 0) >= 26, (${fractalVar}.posDim || 0) >= 39].filter(Boolean).length`);
+      this.indent--;
+      this._line(`} : null;`);
+    }
+
+    // Build the prediction event
     this._line(`${intoName}.events.push(new EM.EventMathEvent(`);
     this.indent++;
     this._line(`'prediction_' + Date.now() + '_' + Math.random().toString(36).slice(2),`);
@@ -752,10 +792,25 @@ class EventMathCodeGen {
     this._line(`{`);
     this.indent++;
     this._line(`subject: '${subject}',`);
-    this._line(`direction: _dir.matter ? _dir.matter.name : String(_dir.id),`);
-    this._line(`lens: _lens.matter ? _lens.matter.name : String(_lens.id),`);
-    this._line(`quantity: _qty.matter ? _qty.matter.name : String(_qty.id),`);
-    this._line(`predicted_state: (_dir.matter ? _dir.matter.name : '') + ' change through ' + (_lens.matter ? _lens.matter.name : '') + ' lens affecting ' + (_qty.matter ? _qty.matter.name : ''),`);
+
+    // Backward compat fields for 3-dim predict
+    if (dimCount >= 1) this._line(`direction: ${varNames[0]}.matter ? ${varNames[0]}.matter.name : String(${varNames[0]}.id),`);
+    if (dimCount >= 2) this._line(`lens:      ${varNames[1]}.matter ? ${varNames[1]}.matter.name : String(${varNames[1]}.id),`);
+    if (dimCount >= 3) this._line(`quantity:  ${varNames[2]}.matter ? ${varNames[2]}.matter.name : String(${varNames[2]}.id),`);
+
+    // N-dim array (canonical form)
+    const dimEntries = varNames.map((v, i) =>
+      `{ axis: '${this._escape(dims[i])}', matter: ${v}.matter }`
+    ).join(', ');
+    this._line(`dimensions: [${dimEntries}],`);
+
+    // predicted_state: all dimension names joined with ×
+    const stateExpr = varNames.map(v =>
+      `(${v}.matter ? ${v}.matter.name || String(${v}.id) : String(${v}.id))`
+    ).join(` + ' × ' + `);
+    this._line(`predicted_state: ${stateExpr},`);
+
+    if (fractalVar) this._line(`tier_routing: _tierCtx,`);
     this._line(`confidence: 0.5,`);
     this._line(`resolved: false,`);
     this._line(`correct: null`);
@@ -763,12 +818,12 @@ class EventMathCodeGen {
     this._line(`}`);
     this.indent--;
     this._line(`));`);
-    this.indent--;
-    this._line(`});`);
-    this.indent--;
-    this._line(`});`);
-    this.indent--;
-    this._line(`});`);
+
+    // Close all N forEach loops
+    for (let i = dimCount - 1; i >= 0; i--) {
+      this.indent--;
+      this._line(`}); // end axis: ${this._escape(dims[i])}`);
+    }
     this._line('');
   }
 
@@ -1925,6 +1980,78 @@ class EventMathCodeGen {
     const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
     this._line(`// dimensional: [${desireLabel}] against "${this._escape(stmt.chainName)}" across fractal "${this._escape(stmt.fractalName)}"`);
     this._line(`${intoVar} = new EM.EventMathDimensionalReport('${intoEsc}', [${desireVarList}], ${chainVar}, ${fractalVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genDiagnoseStmt(stmt) {
+    const desireVar = this._safeName(stmt.desireName);
+    const chainVar  = this._safeName(stmt.chainName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// diagnose: why "${this._escape(stmt.desireName)}" is not satisfied in "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathDiagnosis('${intoEsc}', ${desireVar}, ${chainVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genChallengeStmt(stmt) {
+    const assumptionVar = this._safeName(stmt.assumptionName);
+    const reportVar     = this._safeName(stmt.reportName);
+    const intoVar       = this._safeName(stmt.intoName);
+    const intoEsc       = this._escape(stmt.intoName);
+    this._line(`// challenge: "${this._escape(stmt.assumptionName)}" in "${this._escape(stmt.reportName)}"`);
+    this._line(`${intoVar} = new EM.EventMathChallenge('${intoEsc}', '${this._escape(stmt.assumptionName)}', ${reportVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genCompareStmt(stmt) {
+    const chain1Var  = this._safeName(stmt.chain1Name);
+    const chain2Var  = this._safeName(stmt.chain2Name);
+    const desireVar  = this._safeName(stmt.desireName);
+    const intoVar    = this._safeName(stmt.intoName);
+    const intoEsc    = this._escape(stmt.intoName);
+    this._line(`// compare: "${this._escape(stmt.chain1Name)}" vs "${this._escape(stmt.chain2Name)}" for "${this._escape(stmt.desireName)}"`);
+    this._line(`${intoVar} = new EM.EventMathComparison('${intoEsc}', ${chain1Var}, ${chain2Var}, ${desireVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genConflictStmt(stmt) {
+    const desire1Var = this._safeName(stmt.desire1Name);
+    const desire2Var = this._safeName(stmt.desire2Name);
+    const chainVar   = this._safeName(stmt.chainName);
+    const intoVar    = this._safeName(stmt.intoName);
+    const intoEsc    = this._escape(stmt.intoName);
+    this._line(`// conflict: "${this._escape(stmt.desire1Name)}" vs "${this._escape(stmt.desire2Name)}" for "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathConflict('${intoEsc}', ${desire1Var}, ${desire2Var}, ${chainVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genWeighStmt(stmt) {
+    const conflictVar = this._safeName(stmt.conflictName);
+    const intoVar     = this._safeName(stmt.intoName);
+    const intoEsc     = this._escape(stmt.intoName);
+    this._line(`// weigh: "${this._escape(stmt.conflictName)}" into "${this._escape(stmt.intoName)}"`);
+    this._line(`${intoVar} = new EM.EventMathWeigh('${intoEsc}', ${conflictVar});`);
+    this._line('');
+  }
+
+  _genDeepenStmt(stmt) {
+    const axisVar  = this._safeName(stmt.axisName);
+    const negVar   = this._safeName(stmt.negName);
+    const posVar   = this._safeName(stmt.posName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    this._line(`// deepen: "${this._escape(stmt.axisName)}" + D±52 tori → "${this._escape(stmt.intoName)}"`);
+    this._line(`${axisVar}.deepen(${negVar}, ${posVar});`);
+    this._line(`${intoVar} = ${axisVar};`);
+    this._line('');
+  }
+
+  _genTraceStmt(stmt) {
+    const conflictVar = this._safeName(stmt.conflictName);
+    const intoVar     = this._safeName(stmt.intoName);
+    const intoEsc     = this._escape(stmt.intoName);
+    this._line(`// trace: priority curve for "${this._escape(stmt.conflictName)}"`);
+    this._line(`${intoVar} = new EM.EventMathTrace('${intoEsc}', ${conflictVar});`);
     this._line('');
   }
 }

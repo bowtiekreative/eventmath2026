@@ -495,7 +495,8 @@
     this.completionEvent = null;
   }
 
-  // spinFrom(source, dimension) — dimension 2-39 (positive) or -2 to -39 (negative/opposite polarity).
+  // spinFrom(source, dimension) — dimension 2–N (positive) or -(2–N) (negative/opposite polarity).
+  // Each structural tier adds 13: D±13 surface, D±26 system, D±39 root, D±52 emergence, D±65 ...
   // Negative dimensions spin clockwise; nucleus polarity is inverted.
   EventMathTorus.prototype.spinFrom = function (source, dimension) {
     this.sourceName = source
@@ -505,7 +506,6 @@
     var d = typeof dimension === 'number' ? Math.floor(dimension) : 2;
     var absD = Math.abs(d);
     if (absD < 2) absD = 2;
-    if (absD > 39) absD = 39;
     this.dimension = d < 0 ? -absD : absD;
     return this;
   };
@@ -1277,6 +1277,10 @@
     // "satisfied when" key may contain a space — access via bracket notation
     this.satisfiedWhen = m['satisfied when'] || m.satisfiedWhen || this.outcomeText || '';
     this._condition    = this._parseCondition(this.satisfiedWhen);
+    // priority for conflict resolution — matter field "priority is N", default 1
+    // Also accepts m.weight from direct API use (not via compiled .em files)
+    var w = parseFloat(m.priority || m['priority'] || m.weight || 1);
+    this.weight = (w > 0 && !isNaN(w)) ? w : 1;
   }
 
   EventMathDesire.prototype._parseCondition = function (text) {
@@ -1348,7 +1352,10 @@
       if (all.indexOf(f) === -1) all.push(f);
       if (all.indexOf(t) === -1) all.push(t);
       sourceSet[f] = true;
-      if (lk.value !== undefined) stateValues[t] = lk.value;
+      // For branching chains (multiple paths to the same node), take the strongest path value
+      if (lk.value !== undefined && (stateValues[t] === undefined || lk.value > stateValues[t])) {
+        stateValues[t] = lk.value;
+      }
     });
     var terminals = all.filter(function (s) { return !sourceSet[s]; });
     return { all: all, terminals: terminals, sources: Object.keys(sourceSet), stateValues: stateValues };
@@ -1373,12 +1380,15 @@
 
   EventMathSatisfactionEngine.prototype._resolveActualValue = function (subject, targetWords, stateValues) {
     var lookup = Object.keys(stateValues);
+    // Subject is the thing being measured; targetWords is the threshold.
+    // Searching by both causes false matches when target words appear in unrelated state names.
+    // Use subject words exclusively when available; fall back to targetWords only when subject is absent.
+    var subjectWords = subject ? subject.split(/\s+/) : [];
+    var searchWords  = subjectWords.length > 0 ? subjectWords : targetWords;
     for (var i = 0; i < lookup.length; i++) {
-      var stateName = lookup[i];
+      var stateName  = lookup[i];
       var stateWords = stateName.split(/\s+/);
-      // Match if any meaningful condition keyword appears in the state name
-      var condKeywords = (subject ? subject.split(/\s+/) : []).concat(targetWords);
-      var matched = condKeywords.some(function (w) {
+      var matched    = searchWords.some(function (w) {
         return w.length > 2 && stateWords.some(function (sw) { return sw.includes(w); });
       });
       if (matched) return stateValues[stateName];
@@ -1521,18 +1531,19 @@
   };
 
   EventMathSatisfactionEngine.prototype._evaluate = function () {
-    var self        = this;
-    var chainStates = this._extractChainStates();
-    var totalPartial = 0;
+    var self         = this;
+    var chainStates  = this._extractChainStates();
+    var weightedSum  = 0;
+    var totalWeight  = 0;
     this.desires.forEach(function (d) {
       var r = self._checkDesire(d, chainStates);
       self.results.push(r);
-      totalPartial += (r.partialScore || 0);
+      var w = (d && d.weight > 0) ? d.weight : 1;
+      weightedSum += (r.partialScore || 0) * w;
+      totalWeight += w;
       if (!r.satisfied) self.gaps.push(r);
     });
-    this.score = this.desires.length > 0
-      ? Math.round(totalPartial / this.desires.length)
-      : 0;
+    this.score = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
   };
 
   EventMathSatisfactionEngine.prototype.render = function () {
@@ -1657,10 +1668,23 @@
     }
   }
 
+  EventMathFractalAxis.prototype.deepen = function (negative52, positive52) {
+    var t4n = negative52 || null;
+    var t4p = positive52 || null;
+    if (!t4n) { t4n = new EventMathTorus(this.name + '_t4_neg'); t4n.spinFrom(null, -52); }
+    if (!t4p) { t4p = new EventMathTorus(this.name + '_t4_pos'); t4p.spinFrom(null,  52); }
+    this.tier4 = new EventMathAxis(this.name + '_tier4', t4n, t4p);
+    var parent = this.tier3 || this.tier2;
+    if (parent) this.tier4.bridge.fractalFrom = parent.grandAxis.name;
+    this.fractalDepth = 4;
+    this.dimension    = 52;
+    this.signature    = 'D±13 ⊂ D±26 ⊂ D±39 ⊂ D±52';
+  };
+
   EventMathFractalAxis.prototype.render = function () {
     var lines = [];
     var depth    = this.fractalDepth;
-    var topAxis  = this.tier3 || this.tier2;
+    var topAxis  = this.tier4 || this.tier3 || this.tier2;
     var nextDim  = this.dimension + 13;
     var layerCount = depth * 6;
 
@@ -1693,6 +1717,15 @@
       lines.push('  ' + '─'.repeat(50));
       var t3 = this.tier3.render().split('\n');
       for (var k = 0; k < t3.length; k++) lines.push('    ' + t3[k]);
+      lines.push('');
+    }
+
+    if (this.tier4) {
+      lines.push('  TIER 4  D±52  [Emergence — what this architecture makes possible]');
+      lines.push('  (Tier 3 grand axis feeds Tier 4 bridge — emergence layer)');
+      lines.push('  ' + '─'.repeat(50));
+      var t4 = this.tier4.render().split('\n');
+      for (var m = 0; m < t4.length; m++) lines.push('    ' + t4[m]);
       lines.push('');
     }
 
@@ -1731,9 +1764,12 @@
     this.tier1Score        = 0;
     this.tier2Score        = 0;
     this.tier3Score        = 0;
+    this.tier4Score        = 0;
     this.systemConfidence  = 1.0;
     this.rootConfidence    = 1.0;
+    this.emergeConfidence  = 1.0;
     this.systemAdjustments = [];
+    this.emergeAdjustments = [];
     this.rootAdjustments   = [];
     this.gradient          = '';
     this.correctionPath    = '';
@@ -1822,13 +1858,46 @@
       Math.round(this.tier2Score * this.rootConfidence)
     ));
 
+    // ── Tier 4: emergence D±52 — what the architecture makes possible ──
+    // Scales quadratically from root strength: t3² / 100.
+    // Weak roots (t3 < 50) yield little emergence; strong roots compound.
+    // Optional D±52 tori from 'deepen' modulate the confidence factor.
+    this.emergeConfidence  = 1.0;
+    this.emergeAdjustments = [];
+    var baseEmergence = this.tier3Score * this.tier3Score / 100;
+
+    if (this.fractal && this.fractal.tier4) {
+      var t4ax = this.fractal.tier4;
+      var negDim4 = t4ax.negative ? Math.abs(t4ax.negative.dimension || 0) : 0;
+      var posDim4 = t4ax.positive ? Math.abs(t4ax.positive.dimension || 0) : 0;
+      if (negDim4 >= 52) {
+        this.emergeConfidence *= 0.7;
+        this.emergeAdjustments.push('D-' + negDim4 + ' emergence noise  →  ×0.70 (shadow constraints)');
+      }
+      if (posDim4 >= 52) {
+        this.emergeConfidence *= 1.3;
+        this.emergeAdjustments.push('D+' + posDim4 + ' emergence signal  →  ×1.30 (unlocked potential)');
+      }
+    } else {
+      this.emergeAdjustments.push('no D±52 axis — emergence derived from root architecture (add "deepen" for explicit modulation)');
+    }
+
+    this.tier4Score = Math.min(100, Math.max(0,
+      Math.round(baseEmergence * this.emergeConfidence)
+    ));
+
     this._analyzeGradient();
   };
 
   EventMathDimensionalReport.prototype._analyzeGradient = function () {
-    var t1 = this.tier1Score, t2 = this.tier2Score, t3 = this.tier3Score;
+    var t1 = this.tier1Score, t2 = this.tier2Score, t3 = this.tier3Score, t4 = this.tier4Score;
 
-    if (t3 > t2 && t2 >= t1) {
+    if (t3 >= 80 && t4 >= 60) {
+      this.gradient = 'EMERGENCE READY';
+      this.correctionPath =
+        'All four tiers are aligned. The root architecture is generating emergence potential ' +
+        '(D±52: ' + t4 + '%). Expand the chain to capture what this foundation is already making possible.';
+    } else if (t3 > t2 && t2 >= t1) {
       this.gradient = 'ROOT STRONGER THAN SURFACE';
       this.correctionPath =
         'The root architecture is better than the surface chain suggests. ' +
@@ -1837,7 +1906,8 @@
     } else if (t1 >= 80 && t2 >= 70 && t3 >= 60) {
       this.gradient = 'ALIGNED';
       this.correctionPath =
-        'All three tiers support the desire. Surface, system, and root are in agreement. ' +
+        'Surface, system, and root are in agreement. ' +
+        'Root strength projects ' + t4 + '% emergence potential (D±52). ' +
         'This path is structurally sound.';
     } else if (t1 === 0) {
       this.gradient = 'BLOCKED';
@@ -1864,7 +1934,8 @@
       this.gradient = 'SURFACE VIABLE';
       this.correctionPath =
         'The surface chain is working but system and root tiers show friction. ' +
-        'Expand the fractal axis depth to unlock the full potential of this desire path.';
+        'Add a "deepen" statement with D±52 tori to unlock the emergence tier ' +
+        'and reveal what this architecture can make possible.';
     }
   };
 
@@ -1917,6 +1988,17 @@
       Math.round(this.rootConfidence * 100) / 100 + ')');
     lines.push('');
 
+    // Tier 4 — emergence
+    lines.push('  ── TIER 4  D±52  [Emergence — what this architecture makes possible] ──');
+    lines.push('  Emergence confidence: ' + Math.round(this.emergeConfidence * 100) + '%');
+    if (this.emergeAdjustments.length > 0) {
+      this.emergeAdjustments.forEach(function (a) { lines.push('    • ' + a); });
+    }
+    lines.push('  Score: ' + this.tier4Score + '%' +
+      '  (root² / 100 = ' + Math.round(this.tier3Score * this.tier3Score / 100) + '% base × ' +
+      Math.round(this.emergeConfidence * 100) / 100 + ')');
+    lines.push('');
+
     // Correction path
     lines.push('  ── Correction path ──');
     var words = this.correctionPath.split(' ');
@@ -1935,6 +2017,496 @@
     return lines.join('\n');
   };
 
+  // ── Diagnosis (backward satisfaction trace) ───────────────
+  //
+  // `why DESIRE is not satisfied in CHAIN into RESULT`
+  //
+  // Reverses the satisfaction engine: given a desire that is not met,
+  // walks the chain backward from the goal to find:
+  //   - blockingLink   — the link where value collapses to 0 (or below threshold)
+  //   - lastActiveLink — the last productive node before the collapse
+  //   - interventionPoint — the specific flip that would unblock the path
+  //   - tierAnalysis   — which structural tier the failure lives in
+  //
+  // Complements DimensionalReport: that asks "how well does the path hold?"
+  // Diagnosis asks "exactly where does it break, and what to change?"
+
+  function EventMathDiagnosis(name, desire, chain, assumptions) {
+    if (!(this instanceof EventMathDiagnosis)) {
+      return new EventMathDiagnosis(name, desire, chain, assumptions);
+    }
+    this.name        = name   || 'diagnosis';
+    this.desire      = desire || null;
+    this.chain       = chain  || null;
+    this.assumptions = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+
+    this.isSatisfied       = false;
+    this.currentScore      = 0;
+    this.backwardPath      = [];   // links from goal to root, in reverse
+    this.blockingLink      = null; // the link where value first hits 0
+    this.lastActiveLink    = null; // last productive node before collapse
+    this.interventionPoint = '';   // specific lever to pull
+    this.tierAnalysis      = [];   // which tier (surface/system/root) the failure lives in
+    this.fallacies         = [];   // structural fallacies in the chain
+    this.lever             = '';   // one-line recommendation
+
+    this._diagnose();
+  }
+
+  EventMathDiagnosis.prototype._diagnose = function () {
+    if (!this.desire || !this.chain) return;
+
+    // ── Step 1: run the satisfaction engine forward ───────────
+    var eng = new EventMathSatisfactionEngine('diagnosis', [this.desire], this.chain, this.assumptions);
+    this.currentScore = eng.score || 0;
+    this.isSatisfied  = this.currentScore >= 100;
+
+    if (this.isSatisfied) {
+      this.lever = 'Desire "' + this.desire.name + '" is already satisfied.';
+      return;
+    }
+
+    // ── Step 2: find the desire target in the chain ───────────
+    var cond        = this.desire._condition || { subject: '', operator: 'matches', target: '' };
+    var target      = (cond.target  || '').toLowerCase().trim();
+    var subject     = (cond.subject || '').toLowerCase().trim();
+    var links       = this.chain.links || [];
+    // Use all non-empty words so short names like "C" or "payment" are matched
+    var allWords = (target + ' ' + subject).split(/\s+/).filter(function (w) { return w.length > 0; });
+
+    // Find the terminal link whose "to" matches the desire target (search from end)
+    var terminalLink = null;
+    for (var i = links.length - 1; i >= 0; i--) {
+      var toLower = links[i].to.toLowerCase();
+      if (allWords.some(function (w) { return toLower.includes(w); })) {
+        terminalLink = links[i];
+        break;
+      }
+    }
+
+    if (!terminalLink) {
+      this.interventionPoint = 'Desire target "' + (target || subject) + '" not found in chain.';
+      this.lever = 'Add a link to the chain that leads to "' + (target || subject) + '".';
+      // fall through to tier analysis even when the target is absent from the chain
+    }
+
+    // ── Step 3: walk backward collecting the path ─────────────
+    if (!terminalLink) {
+      // Skip path analysis but continue to tier analysis below
+      this._runTierAnalysis(links, null, null, target, subject);
+      return;
+    }
+
+    var path    = [terminalLink];
+    var current = terminalLink.from.toLowerCase();
+    var visited = {};
+    visited[terminalLink.to.toLowerCase()] = true;
+    visited[current] = true;
+
+    for (var d = 0; d < links.length; d++) {
+      // For branching chains pick the highest-value predecessor (strongest path backward)
+      var found = null;
+      var foundVal = -Infinity;
+      for (var j = 0; j < links.length; j++) {
+        var lkTo = links[j].to.toLowerCase();
+        if (!visited[lkTo] &&
+            (lkTo === current || current.includes(lkTo) || lkTo.includes(current))) {
+          var lkVal = links[j].value !== undefined ? links[j].value : 0;
+          if (found === null || lkVal > foundVal) { found = links[j]; foundVal = lkVal; }
+        }
+      }
+      if (!found) break;
+      path.push(found);
+      visited[found.to.toLowerCase()] = true;
+      current = found.from.toLowerCase();
+      visited[current] = true;
+    }
+
+    this.backwardPath = path; // goal-first
+
+    // ── Step 4: find blocking link and last active link ────────
+    // "Blocking" = value is 0 (or null/undefined for numeric chains).
+    // Walk from goal backward; first zero link = blockingLink.
+    // Last non-zero link before the run of zeros = lastActiveLink.
+    var blockingLink   = null;
+    var lastActiveLink = null;
+    var hasNumericValues = links.some(function (l) { return l.value !== undefined; });
+
+    if (hasNumericValues) {
+      for (var k = 0; k < path.length; k++) {
+        var v = path[k].value;
+        var isZero = (v === 0 || v === null || v === undefined);
+        if (isZero && !blockingLink) {
+          blockingLink = path[k];
+        }
+        if (!isZero && v !== undefined) {
+          lastActiveLink = path[k];
+        }
+      }
+    } else {
+      // Non-numeric: blocking is the terminal with no outgoing links (end of chain)
+      blockingLink = terminalLink;
+    }
+
+    this.blockingLink   = blockingLink;
+    this.lastActiveLink = lastActiveLink;
+
+    // ── Step 5: identify the intervention ─────────────────────
+    if (blockingLink) {
+      var fromName = blockingLink.from;
+      var toName   = blockingLink.to;
+      var prevVal  = lastActiveLink ? lastActiveLink.value : null;
+      var prevNode = lastActiveLink ? lastActiveLink.from : null;
+
+      this.interventionPoint = '"' + fromName + '" → "' + toName + '"';
+
+      if (lastActiveLink && prevVal !== null) {
+        this.lever = 'Activate link "' + fromName + '" → "' + toName +
+          '" (currently value 0). ' +
+          'The chain produces "' + (lastActiveLink.to || prevNode) + '" at value ' + prevVal +
+          ' — this output is not reaching "' + toName + '". Connecting these unlocks the path.';
+      } else {
+        this.lever = 'Link "' + fromName + '" → "' + toName + '" produces no value (0). ' +
+          'Assign a positive value to this link to activate the downstream path.';
+      }
+    } else if (!hasNumericValues) {
+      this.lever = 'Chain reaches "' + terminalLink.to + '" but desire condition "' +
+        (target || subject) + '" is not met. ' +
+        'Add numeric values with "at value N" to enable precise gap analysis.';
+    }
+
+    // ── Step 6: tier analysis ──────────────────────────────────
+    this._runTierAnalysis(links, blockingLink, path, target, subject);
+  };
+
+  EventMathDiagnosis.prototype._runTierAnalysis = function (links, blockingLink, path, target, subject) {
+    // Tier 1 (surface D±13): where in the chain does the path break?
+    var chainLen   = links ? links.length : 0;
+    var breakDepth = (blockingLink && path) ? path.indexOf(blockingLink) : -1;
+    var breakStep  = breakDepth >= 0 ? (chainLen - breakDepth) : -1;
+
+    this.tierAnalysis.push({
+      tier: 1,
+      label: 'Surface D±13',
+      status: blockingLink ? 'BLOCKED' : (target || subject ? 'TARGET NOT IN CHAIN' : 'CLEAR'),
+      detail: blockingLink
+        ? 'Path breaks at step ' + (breakStep > 0 ? breakStep : '?') + ' of ' + chainLen +
+          ': "' + blockingLink.from + '" → "' + blockingLink.to + '" (value 0)'
+        : (target || subject)
+          ? 'Desire target "' + (target || subject) + '" not found in chain — add a link leading to it'
+          : 'Chain reaches desired state — surface tier is clear'
+    });
+
+    // Tier 2 (system D±26): what structural pattern causes this?
+    var detector   = new EventMathFallacyDetector(this.chain);
+    var fallacies  = detector.findings || [];
+    this.fallacies = fallacies;
+    var sysDetail  = fallacies.length > 0
+      ? fallacies.map(function (f) { return f.name; }).join(', ') + ' — chain structure is fragile'
+      : 'No structural fallacies detected';
+
+    this.tierAnalysis.push({
+      tier: 2,
+      label: 'System D±26',
+      status: fallacies.length > 0 ? 'FRAGILE' : 'SOUND',
+      detail: sysDetail
+    });
+
+    // Tier 3 (root D±39): fractal context not available without 'across fractal'
+    this.tierAnalysis.push({
+      tier: 3,
+      label: 'Root D±39',
+      status: 'REQUIRES FRACTAL',
+      detail: 'Root tier analysis requires a fractal axis. Use: why ' +
+        this.desire.name + ' is not satisfied in ' + this.chain.name +
+        ' across fractal MY AXIS into diagnosis'
+    });
+  };
+
+  EventMathDiagnosis.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ WHY: "' + this.desire.name + '" is not satisfied');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('  Chain: "' + (this.chain ? this.chain.name : '(none)') + '"');
+    lines.push('  Score: ' + this.currentScore + '/100');
+    lines.push('');
+
+    if (this.isSatisfied) {
+      lines.push('  ✓ Already satisfied — no intervention needed.');
+      return lines.join('\n');
+    }
+
+    // Backward path (goal → root)
+    if (this.backwardPath.length > 0) {
+      lines.push('  ── Causal path (goal → root) ──');
+      for (var i = 0; i < this.backwardPath.length; i++) {
+        var lk  = this.backwardPath[i];
+        var valStr = lk.value !== undefined ? '  [' + lk.value + ']' : '';
+        var marker = (this.blockingLink && lk === this.blockingLink) ? '  ← BLOCKED HERE' : '';
+        lines.push('  [' + (i + 1) + '] ' + lk.from + '  →  ' + lk.to + valStr + marker);
+      }
+      lines.push('');
+    }
+
+    // Intervention
+    if (this.interventionPoint) {
+      lines.push('  ── Minimum intervention ──');
+      lines.push('  Flip: ' + this.interventionPoint);
+      lines.push('  ' + this.lever);
+      lines.push('');
+    }
+
+    // Tier analysis
+    lines.push('  ── Tier analysis ──');
+    for (var t = 0; t < this.tierAnalysis.length; t++) {
+      var ta = this.tierAnalysis[t];
+      lines.push('  Tier ' + ta.tier + ' (' + ta.label + '): [' + ta.status + ']');
+      lines.push('    ' + ta.detail);
+    }
+
+    return lines.join('\n');
+  };
+
+  // ── Challenge (assumption sensitivity analysis) ───────────
+  //
+  // `challenge ASSUMPTION in REPORT into RESULT`
+  //
+  // Deactivates one assumption, re-runs the referenced report,
+  // and measures how much each tier score shifts.
+  // Labels the assumption: LOAD-BEARING (high sensitivity),
+  // SIGNIFICANT (medium), or RESILIENT (low / model holds without it).
+  //
+  // The `active` flag on EventMathAssumption was designed for this.
+
+  function EventMathChallenge(name, assumptionName, report, assumptions) {
+    if (!(this instanceof EventMathChallenge)) {
+      return new EventMathChallenge(name, assumptionName, report, assumptions);
+    }
+    this.name            = name           || 'challenge';
+    this.assumptionName  = assumptionName || '';
+    this.report          = report         || null;
+    this.assumptions     = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+
+    this.targetAssumption  = null;
+    this.originalScores    = { tier1: 0, tier2: 0, tier3: 0, gradient: '' };
+    this.challengedScores  = { tier1: 0, tier2: 0, tier3: 0, gradient: '' };
+    this.deltas            = { tier1: 0, tier2: 0, tier3: 0 };
+    this.maxDelta          = 0;
+    this.sensitivity       = 'UNKNOWN';
+    this.verdict           = '';
+    this.found             = false;
+
+    this._challenge();
+  }
+
+  EventMathChallenge.prototype._challenge = function () {
+    // Locate the target assumption
+    var lowerName = this.assumptionName.toLowerCase().trim();
+    for (var i = 0; i < this.assumptions.length; i++) {
+      if (this.assumptions[i].name.toLowerCase().trim() === lowerName) {
+        this.targetAssumption = this.assumptions[i];
+        break;
+      }
+    }
+
+    if (!this.targetAssumption) {
+      this.verdict = 'Assumption "' + this.assumptionName + '" not found. Check your assume statements.';
+      return;
+    }
+    this.found = true;
+
+    // Capture original scores
+    var r = this.report;
+    if (r && r.tier1Score !== undefined) {
+      this.originalScores = { tier1: r.tier1Score, tier2: r.tier2Score, tier3: r.tier3Score, gradient: r.gradient || '' };
+    } else if (r && r.score !== undefined) {
+      this.originalScores = { tier1: r.score, tier2: r.score, tier3: r.score, gradient: r.score >= 100 ? 'ALIGNED' : 'BLOCKED' };
+    }
+
+    // Deactivate and re-run
+    this.targetAssumption.active = false;
+
+    var ct1 = 0, ct2 = 0, ct3 = 0, cg = '';
+    if (r instanceof EventMathDimensionalReport) {
+      var cr = new EventMathDimensionalReport('challenged_' + (r.name || ''), r.desires, r.chain, r.fractal, this.assumptions);
+      ct1 = cr.tier1Score; ct2 = cr.tier2Score; ct3 = cr.tier3Score; cg = cr.gradient;
+    } else if (r instanceof EventMathSatisfactionEngine) {
+      var ce = new EventMathSatisfactionEngine('challenged', r.desires, r.chain, this.assumptions);
+      ct1 = ct2 = ct3 = ce.score;
+      cg = ce.score >= 100 ? 'ALIGNED' : 'BLOCKED';
+    } else if (r instanceof EventMathDiagnosis) {
+      var cd = new EventMathDiagnosis('challenged_' + (r.name || ''), r.desire, r.chain, this.assumptions);
+      ct1 = cd.isSatisfied ? 100 : 0; ct2 = ct1; ct3 = ct1;
+      cg = cd.isSatisfied ? 'ALIGNED' : 'BLOCKED';
+    }
+
+    // Reactivate
+    this.targetAssumption.active = true;
+
+    this.challengedScores = { tier1: ct1, tier2: ct2, tier3: ct3, gradient: cg };
+    this.deltas = {
+      tier1: ct1 - this.originalScores.tier1,
+      tier2: ct2 - this.originalScores.tier2,
+      tier3: ct3 - this.originalScores.tier3
+    };
+    this.maxDelta = Math.max(
+      Math.abs(this.deltas.tier1),
+      Math.abs(this.deltas.tier2),
+      Math.abs(this.deltas.tier3)
+    );
+
+    if (this.maxDelta > 20) {
+      this.sensitivity = 'HIGH';
+      this.verdict     = 'LOAD-BEARING — removing this assumption collapses the model by ' + this.maxDelta + ' points.';
+    } else if (this.maxDelta > 5) {
+      this.sensitivity = 'MEDIUM';
+      this.verdict     = 'SIGNIFICANT — this assumption matters but the model partially holds without it.';
+    } else {
+      this.sensitivity = 'LOW';
+      this.verdict     = 'RESILIENT — the model holds without this assumption (delta: ' + this.maxDelta + ').';
+    }
+  };
+
+  EventMathChallenge.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ CHALLENGE: "' + this.assumptionName + '"');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+
+    if (!this.found) {
+      lines.push('  ' + this.verdict);
+      return lines.join('\n');
+    }
+
+    var orig = this.originalScores;
+    var chal = this.challengedScores;
+
+    lines.push('  Assumption suspended: "' + this.assumptionName + '" = ' +
+      (this.targetAssumption ? this.targetAssumption.rawValue : '?'));
+    lines.push('');
+    lines.push('  ── Score comparison ──');
+    lines.push('                    Before   After    Δ');
+
+    function fmt(n) { return String(n).padStart(5); }
+    function fmtd(n) { var s = (n >= 0 ? '+' : '') + n; return s.padStart(5); }
+
+    lines.push('  Tier 1 (Surface): ' + fmt(orig.tier1) + '    ' + fmt(chal.tier1) + '    ' + fmtd(this.deltas.tier1));
+    lines.push('  Tier 2 (System):  ' + fmt(orig.tier2) + '    ' + fmt(chal.tier2) + '    ' + fmtd(this.deltas.tier2));
+    lines.push('  Tier 3 (Root):    ' + fmt(orig.tier3) + '    ' + fmt(chal.tier3) + '    ' + fmtd(this.deltas.tier3));
+    lines.push('');
+    lines.push('  Gradient:  ' + orig.gradient + '  →  ' + (chal.gradient || orig.gradient));
+    lines.push('');
+    lines.push('  Sensitivity: ' + this.sensitivity);
+    lines.push('  ' + this.verdict);
+    return lines.join('\n');
+  };
+
+  // ── Comparison (side-by-side chain evaluation) ────────────
+  //
+  // `compare CHAIN and CHAIN for DESIRE into RESULT`
+  //
+  // Runs the satisfaction engine against both chains for the same desire,
+  // applies system-tier fallacy penalties, and declares a winner at each tier.
+  // Shows performance gap and a clear recommendation.
+
+  function EventMathComparison(name, chain1, chain2, desire, assumptions) {
+    if (!(this instanceof EventMathComparison)) {
+      return new EventMathComparison(name, chain1, chain2, desire, assumptions);
+    }
+    this.name        = name        || 'comparison';
+    this.chain1      = chain1      || null;
+    this.chain2      = chain2      || null;
+    this.desire      = desire      || null;
+    this.assumptions = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+
+    this.result1   = null;
+    this.result2   = null;
+    this.winners   = {};
+    this.verdict   = '';
+
+    this._compare();
+  }
+
+  EventMathComparison.prototype._scoreChain = function (chain) {
+    var eng = new EventMathSatisfactionEngine('cmp', [this.desire], chain, this.assumptions);
+    var det = new EventMathFallacyDetector(chain);
+    var fallacyPenalty = 1.0;
+    det.findings.forEach(function (f) {
+      if (f.name === 'circular reasoning')  fallacyPenalty = Math.min(fallacyPenalty, 0.50);
+      else if (f.name === 'slippery slope risk') fallacyPenalty = Math.min(fallacyPenalty, 0.75);
+      else if (f.name === 'false dichotomy risk') fallacyPenalty = Math.min(fallacyPenalty, 0.85);
+    });
+    var s1 = eng.score;
+    var s2 = Math.round(s1 * fallacyPenalty);
+    return {
+      chain:     chain,
+      surface:   s1,
+      system:    s2,
+      gaps:      eng.gaps,
+      fallacies: det.findings,
+      penalty:   fallacyPenalty
+    };
+  };
+
+  EventMathComparison.prototype._compare = function () {
+    if (!this.chain1 || !this.chain2 || !this.desire) return;
+    this.result1 = this._scoreChain(this.chain1);
+    this.result2 = this._scoreChain(this.chain2);
+
+    var r1 = this.result1, r2 = this.result2;
+    this.winners = {
+      surface:  r1.surface >= r2.surface ? r1.chain.name : r2.chain.name,
+      system:   r1.system  >= r2.system  ? r1.chain.name : r2.chain.name,
+      overall:  (r1.surface + r1.system) >= (r2.surface + r2.system)
+                  ? r1.chain.name : r2.chain.name
+    };
+
+    var winner = this.winners.overall;
+    var gap    = Math.abs((r1.surface + r1.system) - (r2.surface + r2.system));
+    if (r1.surface === r2.surface && r1.system === r2.system) {
+      this.verdict = 'Both chains perform identically for "' + this.desire.name + '".';
+    } else {
+      this.verdict = 'Use "' + winner + '" — outperforms by ' + gap + ' combined tier points.';
+    }
+  };
+
+  EventMathComparison.prototype.render = function () {
+    if (!this.result1 || !this.result2) {
+      return '── Comparison: (incomplete — chain or desire missing) ──';
+    }
+    var r1 = this.result1, r2 = this.result2;
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ COMPARE for desire: "' + this.desire.name + '"');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+
+    function bar(n) { return '[' + '█'.repeat(Math.round(n / 5)) + '░'.repeat(20 - Math.round(n / 5)) + '] ' + n; }
+
+    lines.push('  Chain A: "' + r1.chain.name + '"');
+    lines.push('    Surface D±13:  ' + bar(r1.surface));
+    lines.push('    System  D±26:  ' + bar(r1.system) + (r1.penalty < 1 ? '  (×' + r1.penalty.toFixed(2) + ' fallacy penalty)' : ''));
+    if (r1.fallacies.length > 0) lines.push('    Fallacies: ' + r1.fallacies.map(function(f){ return f.name; }).join(', '));
+    if (r1.gaps.length > 0)      lines.push('    Gaps: ' + r1.gaps.map(function(g){ return g.desire; }).join(', '));
+    lines.push('');
+
+    lines.push('  Chain B: "' + r2.chain.name + '"');
+    lines.push('    Surface D±13:  ' + bar(r2.surface));
+    lines.push('    System  D±26:  ' + bar(r2.system) + (r2.penalty < 1 ? '  (×' + r2.penalty.toFixed(2) + ' fallacy penalty)' : ''));
+    if (r2.fallacies.length > 0) lines.push('    Fallacies: ' + r2.fallacies.map(function(f){ return f.name; }).join(', '));
+    if (r2.gaps.length > 0)      lines.push('    Gaps: ' + r2.gaps.map(function(g){ return g.desire; }).join(', '));
+    lines.push('');
+
+    lines.push('  ── Winners ──');
+    lines.push('  Surface tier: ' + this.winners.surface);
+    lines.push('  System tier:  ' + this.winners.system);
+    lines.push('  Overall:      ' + this.winners.overall);
+    lines.push('');
+    lines.push('  Recommendation: ' + this.verdict);
+    return lines.join('\n');
+  };
+
   // ── Default Timeline ─────────────────────────────────────
 
   var defaultTimeline = new EventMathTimeline('default');
@@ -1942,6 +2514,284 @@
   function getDefaultTimeline() {
     return defaultTimeline;
   }
+
+  // ── EventMathTrace ────────────────────────────────────────────────
+  // Priority sensitivity curve for a ConflictStmt result.
+  // Analytically computes the breakeven priority ratio at which the winner switches,
+  // then samples the trade-off curve at key ratio steps.
+
+  function EventMathTrace(name, conflict) {
+    if (!(this instanceof EventMathTrace)) {
+      return new EventMathTrace(name, conflict);
+    }
+    this.name     = name     || 'trace';
+    this.conflict = conflict || null;
+    this.curve    = [];
+    this.breakeven = null;
+    this.dominant  = null;
+    this._trace();
+  }
+
+  EventMathTrace.prototype._trace = function () {
+    if (!this.conflict || !this.conflict.desire1 || !this.conflict.desire2) return;
+    var d1 = this.conflict.desire1;
+    var d2 = this.conflict.desire2;
+    var s1 = this.conflict.score1;
+    var s2 = this.conflict.score2;
+
+    // Breakeven: ratio r where s1*r = s2 → r = s2/s1
+    if (s1 > 0 && s2 > 0) {
+      this.breakeven = Math.round((s2 / s1) * 100) / 100;
+    } else if (s1 === 0 && s2 > 0) {
+      this.breakeven = null;
+      this.dominant  = d2.name;
+    } else if (s2 === 0 && s1 > 0) {
+      this.breakeven = null;
+      this.dominant  = d1.name;
+    } else {
+      this.breakeven = null;
+      this.dominant  = null;
+    }
+
+    // Sample curve: vary desire1's priority ratio relative to desire2 (fixed at 1)
+    var ratios = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5, 10];
+    for (var i = 0; i < ratios.length; i++) {
+      var r   = ratios[i];
+      var ws1 = Math.round(s1 * r * 10) / 10;
+      var ws2 = s2;
+      this.curve.push({
+        ratio:  r,
+        ws1:    ws1,
+        ws2:    ws2,
+        winner: ws1 >= ws2 ? d1.name : d2.name,
+      });
+    }
+  };
+
+  EventMathTrace.prototype.render = function () {
+    if (!this.conflict) return '── Trace: (no conflict provided) ──';
+    var d1  = this.conflict.desire1;
+    var d2  = this.conflict.desire2;
+    var d1n = d1 ? d1.name : '?';
+    var d2n = d2 ? d2.name : '?';
+
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    var hdr = '  TRACE: ' + this.name;
+    lines.push('║' + hdr + ' '.repeat(Math.max(0, 58 - hdr.length)) + '║');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    lines.push('  Desire A: "' + d1n + '"  (score: ' + this.conflict.score1 + '%)');
+    lines.push('  Desire B: "' + d2n + '"  (score: ' + this.conflict.score2 + '%)');
+    lines.push('');
+
+    if (this.dominant) {
+      lines.push('  "' + this.dominant + '" always wins regardless of priority.');
+      lines.push('  The other desire has 0% satisfaction in this chain.');
+      lines.push('  Adjust the chain to open a path, not the priorities.');
+    } else if (this.conflict.score1 === 0 && this.conflict.score2 === 0) {
+      lines.push('  Both desires score 0% — the chain satisfies neither.');
+      lines.push('  Priorities are irrelevant. Rebuild the chain first.');
+    } else {
+      if (this.breakeven !== null) {
+        lines.push('  Breakeven:  priority ratio ' + this.breakeven + ':1  (A:B)');
+        lines.push('  Below ' + this.breakeven + '×:  "' + d2n + '" wins.');
+        lines.push('  Above ' + this.breakeven + '×:  "' + d1n + '" wins.');
+      }
+      lines.push('');
+      lines.push('  Priority A:B   Score A (weighted)   Score B (fixed)   Winner');
+      lines.push('  ' + '─'.repeat(54));
+      var be = this.breakeven;
+      for (var i = 0; i < this.curve.length; i++) {
+        var pt = this.curve[i];
+        var marker = (be !== null && i > 0 && this.curve[i - 1].winner !== pt.winner) ? ' ← switch' : '';
+        var ratioStr = String(pt.ratio).padEnd(7);
+        var ws1Str   = String(pt.ws1).padEnd(21);
+        var ws2Str   = String(pt.ws2).padEnd(18);
+        lines.push('  ' + ratioStr + '      ' + ws1Str + ws2Str + pt.winner + marker);
+      }
+    }
+    lines.push('');
+    return lines.join('\n');
+  };
+
+  // ── EventMathConflict ─────────────────────────────────────────────
+  // Detects tension between two desires evaluated against the same chain.
+  // Labels: ALIGNED (≤5 point loss), COMPETITIVE (≤35), OPPOSED (>35).
+
+  function EventMathConflict(name, desire1, desire2, chain, assumptions) {
+    if (!(this instanceof EventMathConflict)) {
+      return new EventMathConflict(name, desire1, desire2, chain, assumptions);
+    }
+    this.name        = name        || 'conflict';
+    this.desire1     = desire1     || null;
+    this.desire2     = desire2     || null;
+    this.chain       = chain       || null;
+    this.assumptions = Array.isArray(assumptions) ? assumptions : [];
+    this.score1      = 0;
+    this.score2      = 0;
+    this.scoreBoth   = 0;
+    this.tensionScore = 0;
+    this.label       = 'UNKNOWN';
+    this.verdict     = '';
+    this._detect();
+  }
+
+  EventMathConflict.prototype._detect = function () {
+    if (!this.desire1 || !this.desire2 || !this.chain) {
+      this.label   = 'UNKNOWN';
+      this.verdict = 'Conflict requires two desires and a chain.';
+      return;
+    }
+    var eng1 = new EventMathSatisfactionEngine('cf1', [this.desire1], this.chain, this.assumptions);
+    var eng2 = new EventMathSatisfactionEngine('cf2', [this.desire2], this.chain, this.assumptions);
+    var engB = new EventMathSatisfactionEngine('cfb', [this.desire1, this.desire2], this.chain, this.assumptions);
+    this.score1    = eng1.score;
+    this.score2    = eng2.score;
+    this.scoreBoth = engB.score;
+
+    // Expected combined score if desires were independent — use weights
+    var w1 = this.desire1.weight || 1;
+    var w2 = this.desire2.weight || 1;
+    var expectedWeighted = (this.score1 * w1 + this.score2 * w2) / (w1 + w2);
+    this.tensionScore = Math.max(0, Math.round(expectedWeighted - this.scoreBoth));
+
+    var d1n = this.desire1.name || 'desire 1';
+    var d2n = this.desire2.name || 'desire 2';
+    var minScore = Math.min(this.score1, this.score2);
+    var maxScore = Math.max(this.score1, this.score2);
+
+    if (minScore >= 80) {
+      // Both substantially satisfied — no conflict
+      this.label   = 'ALIGNED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are compatible in this chain. Both can be satisfied without trade-offs.';
+    } else if (maxScore === 0) {
+      // Chain satisfies neither desire — not an inter-desire conflict, a chain gap
+      this.label   = 'ALIGNED';
+      this.verdict = 'Neither "' + d1n + '" nor "' + d2n + '" is served by this chain. The gap is in the chain, not between the desires.';
+    } else if (minScore === 0) {
+      // One desire is completely blocked while the other succeeds — structurally opposed
+      this.label   = 'OPPOSED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are structurally opposed. One can be satisfied (' + maxScore + '%) while the other cannot (0%). Use "weigh" to find which to prioritize.';
+    } else if (this.tensionScore > 35) {
+      this.label   = 'OPPOSED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are structurally opposed. Satisfying both in this chain requires an explicit trade-off — use "weigh" to find the optimal path.';
+    } else if (this.tensionScore > 5) {
+      this.label   = 'COMPETITIVE';
+      this.verdict = 'Partial tension: pursuing both "' + d1n + '" and "' + d2n + '" costs ' + this.tensionScore + ' satisfaction points compared to pursuing each independently.';
+    } else {
+      this.label   = 'ALIGNED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are compatible in this chain. Both can be satisfied without trade-offs.';
+    }
+  };
+
+  EventMathConflict.prototype.render = function () {
+    var lines = [];
+    var d1n = this.desire1 ? this.desire1.name : '?';
+    var d2n = this.desire2 ? this.desire2.name : '?';
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    var hdr = '  CONFLICT: ' + this.name;
+    lines.push('║' + hdr + ' '.repeat(Math.max(0, 58 - hdr.length)) + '║');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    lines.push('  Desire A: "' + d1n + '"  (weight ' + (this.desire1 ? this.desire1.weight || 1 : 1) + ')  →  individual score: ' + this.score1 + '%');
+    lines.push('  Desire B: "' + d2n + '"  (weight ' + (this.desire2 ? this.desire2.weight || 1 : 1) + ')  →  individual score: ' + this.score2 + '%');
+    lines.push('');
+    lines.push('  Combined score:  ' + this.scoreBoth + '%');
+    lines.push('  Tension loss:    ' + this.tensionScore + ' points');
+    lines.push('');
+    lines.push('  Status: ' + this.label);
+    lines.push('  ' + this.verdict);
+    lines.push('');
+    return lines.join('\n');
+  };
+
+  // ── EventMathWeigh ─────────────────────────────────────────────────
+  // Optimal trade-off recommendation from a ConflictStmt result.
+  // Uses desire weights to determine which desire to prioritize.
+
+  function EventMathWeigh(name, conflict) {
+    if (!(this instanceof EventMathWeigh)) {
+      return new EventMathWeigh(name, conflict);
+    }
+    this.name           = name     || 'weigh';
+    this.conflict       = conflict || null;
+    this.winner         = '';
+    this.tradeoff       = '';
+    this.recommendation = '';
+    this.weightedScore1 = 0;
+    this.weightedScore2 = 0;
+    this._weigh();
+  }
+
+  EventMathWeigh.prototype._weigh = function () {
+    if (!this.conflict) {
+      this.recommendation = 'No conflict provided.';
+      return;
+    }
+    var d1 = this.conflict.desire1;
+    var d2 = this.conflict.desire2;
+    if (!d1 || !d2) {
+      this.recommendation = 'Conflict is missing one or both desires.';
+      return;
+    }
+    var w1 = d1.weight || 1;
+    var w2 = d2.weight || 1;
+    this.weightedScore1 = Math.round(this.conflict.score1 * w1);
+    this.weightedScore2 = Math.round(this.conflict.score2 * w2);
+
+    var weightsStr = (w1 !== 1 || w2 !== 1)
+      ? ' (weights: ' + d1.name + '×' + w1 + ', ' + d2.name + '×' + w2 + ')'
+      : '';
+
+    if (this.conflict.label === 'ALIGNED') {
+      this.winner         = 'both';
+      this.tradeoff       = 'none';
+      this.recommendation = 'Pursue both "' + d1.name + '" and "' + d2.name + '" — no trade-off required in this chain.';
+    } else if (this.weightedScore1 >= this.weightedScore2) {
+      this.winner         = d1.name;
+      this.tradeoff       = d2.name;
+      this.recommendation =
+        'Prioritize "' + d1.name + '" — weighted score ' + this.weightedScore1 + ' vs ' + this.weightedScore2 + weightsStr + '. ' +
+        'Accept partial satisfaction of "' + d2.name + '". ' +
+        'The tension cost is ' + this.conflict.tensionScore + ' points.';
+    } else {
+      this.winner         = d2.name;
+      this.tradeoff       = d1.name;
+      this.recommendation =
+        'Prioritize "' + d2.name + '" — weighted score ' + this.weightedScore2 + ' vs ' + this.weightedScore1 + weightsStr + '. ' +
+        'Accept partial satisfaction of "' + d1.name + '". ' +
+        'The tension cost is ' + this.conflict.tensionScore + ' points.';
+    }
+  };
+
+  EventMathWeigh.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    var hdr = '  WEIGH: ' + this.name;
+    lines.push('║' + hdr + ' '.repeat(Math.max(0, 58 - hdr.length)) + '║');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    if (this.conflict) {
+      var d1 = this.conflict.desire1;
+      var d2 = this.conflict.desire2;
+      if (d1) {
+        lines.push('  "' + d1.name + '"  weight×' + (d1.weight || 1) + '  score ' + this.conflict.score1 + '%  →  weighted ' + this.weightedScore1);
+      }
+      if (d2) {
+        lines.push('  "' + d2.name + '"  weight×' + (d2.weight || 1) + '  score ' + this.conflict.score2 + '%  →  weighted ' + this.weightedScore2);
+      }
+      lines.push('');
+      lines.push('  Conflict: ' + this.conflict.label + '  (tension: ' + this.conflict.tensionScore + ' pts)');
+      lines.push('');
+    }
+    lines.push('  Winner:    ' + this.winner);
+    lines.push('  Trade-off: ' + this.tradeoff);
+    lines.push('');
+    lines.push('  ' + this.recommendation);
+    lines.push('');
+    return lines.join('\n');
+  };
 
   // ── Exports ──────────────────────────────────────────────
 
@@ -1961,6 +2811,12 @@
     EventMathDesire:                EventMathDesire,
     EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
     EventMathDimensionalReport:     EventMathDimensionalReport,
+    EventMathDiagnosis:             EventMathDiagnosis,
+    EventMathChallenge:             EventMathChallenge,
+    EventMathComparison:            EventMathComparison,
+    EventMathConflict:              EventMathConflict,
+    EventMathWeigh:                 EventMathWeigh,
+    EventMathTrace:                 EventMathTrace,
     EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,

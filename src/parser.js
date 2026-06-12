@@ -117,6 +117,13 @@ class EventMathParser {
     if (t.type === 'SATISFY_STMT')          return this._parseSatisfyStmt();
     if (t.type === 'EVALUATE_STMT')         return this._parseEvaluateStmt();
     if (t.type === 'DIMENSIONAL_STMT')      return this._parseDimensionalStmt();
+    if (t.type === 'WHY_STMT')              return this._parseWhyStmt();
+    if (t.type === 'CHALLENGE_STMT')        return this._parseChallengeStmt();
+    if (t.type === 'COMPARE_STMT')          return this._parseCompareStmt();
+    if (t.type === 'CONFLICT_STMT')         return this._parseConflictStmt();
+    if (t.type === 'WEIGH_STMT')            return this._parseWeighStmt();
+    if (t.type === 'DEEPEN_STMT')           return this._parseDeepenStmt();
+    if (t.type === 'TRACE_STMT')            return this._parseTraceStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -852,20 +859,43 @@ class EventMathParser {
   _parsePredictStmt() {
     this.expect('KEYWORD', 'predict');
     const subjectTok = this.expect('NAME');
+    const subject = subjectTok ? subjectTok.value : '';
+
     this.expect('KEYWORD', 'across');
-    const dirTok = this.expect('NAME');
-    this.expect('KEYWORD', 'and');
-    const lensTok = this.expect('NAME');
-    this.expect('KEYWORD', 'and');
-    const qtyTok = this.expect('NAME');
+
+    // Collect N condition dimensions separated by 'and'
+    const dimensions = [];
+    const firstDim = this.expect('NAME');
+    if (firstDim) dimensions.push(firstDim.value);
+
+    while (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'and') {
+      this.advance(); // consume 'and'
+      const dimTok = this.expect('NAME');
+      if (dimTok) dimensions.push(dimTok.value);
+    }
+
+    // Optional 'through FRACTAL' — routes all condition dimensions through the
+    // fractal's three structural tiers (surface D±13, system D±26, root D±39).
+    // Without this, predict produces a flat cartesian product.
+    let fractalName = null;
+    if (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'through') {
+      this.advance(); // consume 'through'
+      const fractalTok = this.expect('NAME');
+      if (fractalTok) fractalName = fractalTok.value;
+    }
+
     this.expect('KEYWORD', 'into');
     const intoTok = this.expect('NAME');
+
     return ast('PredictStmt', {
-      subject: subjectTok ? subjectTok.value : '',
-      directionsLayer: dirTok ? dirTok.value : '',
-      lensesLayer: lensTok ? lensTok.value : '',
-      quantitiesLayer: qtyTok ? qtyTok.value : '',
+      subject,
+      dimensions,
+      fractalName,
       intoLayer: intoTok ? intoTok.value : '',
+      // backward compat aliases
+      directionsLayer: dimensions[0] || '',
+      lensesLayer:     dimensions[1] || '',
+      quantitiesLayer: dimensions[2] || '',
     });
   }
 
@@ -1133,6 +1163,77 @@ class EventMathParser {
       chainName:   t.value.chainName,
       fractalName: t.value.fractalName,
       intoName:    t.value.intoName
+    });
+  }
+
+  _parseWhyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('DiagnoseStmt', {
+      desireName: t.value.desireName,
+      chainName:  t.value.chainName,
+      intoName:   t.value.intoName,
+    });
+  }
+
+  _parseChallengeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ChallengeStmt', {
+      assumptionName: t.value.assumptionName,
+      reportName:     t.value.reportName,
+      intoName:       t.value.intoName,
+    });
+  }
+
+  _parseCompareStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('CompareStmt', {
+      chain1Name:  t.value.chain1,
+      chain2Name:  t.value.chain2,
+      desireName:  t.value.desireName,
+      intoName:    t.value.intoName,
+    });
+  }
+
+  _parseConflictStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ConflictStmt', {
+      desire1Name: t.value.desire1,
+      desire2Name: t.value.desire2,
+      chainName:   t.value.chainName,
+      intoName:    t.value.intoName,
+    });
+  }
+
+  _parseWeighStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('WeighStmt', {
+      conflictName: t.value.conflictName,
+      intoName:     t.value.intoName,
+    });
+  }
+
+  _parseDeepenStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('DeepenStmt', {
+      axisName: t.value.axisName,
+      negName:  t.value.negName,
+      posName:  t.value.posName,
+      intoName: t.value.intoName,
+    });
+  }
+
+  _parseTraceStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('TraceStmt', {
+      conflictName: t.value.conflictName,
+      intoName:     t.value.intoName,
     });
   }
 

@@ -26,7 +26,7 @@ const KEYWORDS = new Set([
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
   'sort', 'filter', 'find', 'count', 'where', 'descending',
-  'predict', 'across', 'resolve',
+  'predict', 'across', 'through', 'resolve',
   'zoom', 'show',
   'spin', 'vibrate', 'cycle', 'resonate',
   'weight', 'explain', 'analogy', 'bound',
@@ -37,6 +37,14 @@ const KEYWORDS = new Set([
   'fallacy', 'detect', 'dilemma', 'assume', 'fractal',
   // v2.2 — satisfaction engine
   'satisfy', 'evaluate', 'against',
+  // v2.6 — backward satisfaction diagnosis
+  'why', 'satisfied',
+  // v2.7 — sensitivity analysis + chain comparison
+  'challenge', 'compare', 'for',
+  // v2.8 — conflict detection + weighted trade-offs
+  'conflict', 'weigh',
+  // v2.9 — emergence tier + trace
+  'deepen', 'trace',
 ]);
 
 class Token {
@@ -149,6 +157,41 @@ class EventMathTokenizer {
     // evaluate <desire> [and <desire>...] against <chain> into <result>
     if (lead === 'evaluate') {
       return this._evaluateStmt(words, lineNum);
+    }
+
+    // why <desire> is not satisfied in <chain> into <result>
+    if (lead === 'why') {
+      return this._tokenizeWhyStmt(words, lineNum);
+    }
+
+    // challenge ASSUMPTION in REPORT into RESULT
+    if (lead === 'challenge') {
+      return this._tokenizeChallengeStmt(words, lineNum);
+    }
+
+    // compare CHAIN and CHAIN for DESIRE into RESULT
+    if (lead === 'compare') {
+      return this._tokenizeCompareStmt(words, lineNum);
+    }
+
+    // conflict DESIRE and DESIRE for CHAIN into RESULT
+    if (lead === 'conflict') {
+      return this._tokenizeConflictStmt(words, lineNum);
+    }
+
+    // weigh CONFLICT into RESULT
+    if (lead === 'weigh') {
+      return this._tokenizeWeighStmt(words, lineNum);
+    }
+
+    // deepen AXIS with NEG and POS into RESULT — attach D±52 tori to fractal axis
+    if (lead === 'deepen') {
+      return this._tokenizeDeepenStmt(words, lineNum);
+    }
+
+    // trace CONFLICT into RESULT — priority sensitivity curve
+    if (lead === 'trace') {
+      return this._tokenizeTraceStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -339,6 +382,16 @@ class EventMathTokenizer {
     // Only emit as bare continuation if no other keyword context handles it
     if (lead === 'into') {
       const tokens = [new Token('KEYWORD', 'into', lineNum)];
+      if (words.length > 1) {
+        tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    // through → continuation of predict statement (multi-line syntax)
+    // Routes condition dimensions through the fractal's three structural tiers
+    if (lead === 'through') {
+      const tokens = [new Token('KEYWORD', 'through', lineNum)];
       if (words.length > 1) {
         tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
       }
@@ -1434,54 +1487,65 @@ class EventMathTokenizer {
   }
 
   /**
-   * Predict statement: predict <subject> [across <dir> and <lens> and <qty> into <out>]
+   * Predict statement: predict <subject> across <d1> and <d2> ... [through <fractal>] into <out>
    * words[0] = 'predict'
    *
    * Supports both single-line and multi-line forms:
    *   Single: predict price across directions and lenses and quantities into results
+   *           predict blueprint across industry and price and awareness through leverage axis into predictions
    *   Multi:  predict price          (just emits KEYWORD + NAME for subject)
    *           across directions      (handled by 'across' branch in _tokenizeLine)
    *           and lenses             (handled by bare 'and' branch)
-   *           and quantities
+   *           and awareness
+   *           through leverage axis  (handled by 'through' branch in _tokenizeLine)
    *           into results           (handled by 'into' branch)
+   *
+   * All condition dimensions pass through the fractal's three structural tiers
+   * (surface D±13, system D±26, root D±39). Add 'through FRACTAL' to enforce
+   * dimensional routing. Without it, dimensions are a flat cartesian product.
    */
   _tokenizePredictStmt(words, lineNum) {
     const tokens = [new Token('KEYWORD', 'predict', lineNum)];
     const acrossIdx = this._indexOf(words, 'across');
 
     if (acrossIdx > 0) {
-      // Single-line form: everything on one line
+      // Single-line form: parse subject, then collect N dimensions, optional through, then into
       const subject = words.slice(1, acrossIdx).join(' ');
       tokens.push(new Token('NAME', subject, lineNum));
       tokens.push(new Token('KEYWORD', 'across', lineNum));
 
       const afterAcross = words.slice(acrossIdx + 1);
-      const firstAndIdx = this._indexOf(afterAcross, 'and');
-      if (firstAndIdx < 0) return tokens;
+      const intoIdx    = this._indexOf(afterAcross, 'into');
+      if (intoIdx < 0) return tokens;
 
-      const directionsLayer = afterAcross.slice(0, firstAndIdx).join(' ');
-      tokens.push(new Token('NAME', directionsLayer, lineNum));
-      tokens.push(new Token('KEYWORD', 'and', lineNum));
+      const throughIdx = this._indexOf(afterAcross, 'through');
+      const dimEnd     = throughIdx >= 0 && throughIdx < intoIdx ? throughIdx : intoIdx;
 
-      const afterFirstAnd = afterAcross.slice(firstAndIdx + 1);
-      const secondAndIdx = this._indexOf(afterFirstAnd, 'and');
-      const intoInAfter = this._indexOf(afterFirstAnd, 'into');
-      if (secondAndIdx < 0 || intoInAfter < 0) return tokens;
+      // Split dimension words by 'and' — supports multi-word names like "industry type"
+      const dimWords = afterAcross.slice(0, dimEnd);
+      let current = [];
+      for (const w of dimWords) {
+        if (w === 'and') {
+          if (current.length > 0) {
+            tokens.push(new Token('NAME', current.join(' '), lineNum));
+            tokens.push(new Token('KEYWORD', 'and', lineNum));
+            current = [];
+          }
+        } else {
+          current.push(w);
+        }
+      }
+      if (current.length > 0) tokens.push(new Token('NAME', current.join(' '), lineNum));
 
-      const lensesLayer = afterFirstAnd.slice(0, secondAndIdx).join(' ');
-      tokens.push(new Token('NAME', lensesLayer, lineNum));
-      tokens.push(new Token('KEYWORD', 'and', lineNum));
+      // Optional fractal routing
+      if (throughIdx >= 0 && throughIdx < intoIdx) {
+        tokens.push(new Token('KEYWORD', 'through', lineNum));
+        const fractalWords = afterAcross.slice(throughIdx + 1, intoIdx);
+        tokens.push(new Token('NAME', fractalWords.join(' '), lineNum));
+      }
 
-      const afterSecondAnd = afterFirstAnd.slice(secondAndIdx + 1);
-      const intoInAfterSecond = this._indexOf(afterSecondAnd, 'into');
-      if (intoInAfterSecond < 0) return tokens;
-
-      const quantitiesLayer = afterSecondAnd.slice(0, intoInAfterSecond).join(' ');
-      tokens.push(new Token('NAME', quantitiesLayer, lineNum));
       tokens.push(new Token('KEYWORD', 'into', lineNum));
-
-      const intoLayer = afterSecondAnd.slice(intoInAfterSecond + 1).join(' ');
-      tokens.push(new Token('NAME', intoLayer, lineNum));
+      tokens.push(new Token('NAME', afterAcross.slice(intoIdx + 1).join(' '), lineNum));
     } else {
       // Multi-line form: just emit subject on this line; rest follows on subsequent lines
       const subject = words.slice(1).join(' ');
@@ -1670,6 +1734,141 @@ class EventMathTokenizer {
     const chainName = middleWords.join(' ');
     const intoName  = words.slice(intoIdx + 1).join(' ');
     return [new Token('EVALUATE_STMT', { desireNames, chainName, intoName }, lineNum)];
+  }
+
+  /**
+   * Challenge statement: challenge ASSUMPTION in REPORT into RESULT
+   * Deactivates one assumption, re-runs the referenced report, shows the delta.
+   * Example: challenge market rate in leverage report into market sensitivity
+   */
+  _tokenizeChallengeStmt(words, lineNum) {
+    const inIdx   = this._indexOf(words, 'in');
+    const intoIdx = this._indexOf(words, 'into');
+    if (inIdx < 0 || intoIdx < 0 || intoIdx <= inIdx) {
+      return [new Token('KEYWORD', 'challenge', lineNum)];
+    }
+    const assumptionName = words.slice(1, inIdx).join(' ');
+    const reportName     = words.slice(inIdx + 1, intoIdx).join(' ');
+    const intoName       = words.slice(intoIdx + 1).join(' ');
+    return [new Token('CHALLENGE_STMT', { assumptionName, reportName, intoName }, lineNum)];
+  }
+
+  /**
+   * Compare statement: compare CHAIN and CHAIN for DESIRE into RESULT
+   * Side-by-side chain comparison: tier scores, fallacy penalties, winner per tier.
+   * Example: compare waiting chain and leverage chain for fair payment into path comparison
+   */
+  _tokenizeCompareStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const forIdx  = this._indexOf(words, 'for');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || forIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'compare', lineNum)];
+    }
+    const chain1     = words.slice(1, andIdx).join(' ');
+    const chain2     = words.slice(andIdx + 1, forIdx).join(' ');
+    const desireName = words.slice(forIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('COMPARE_STMT', { chain1, chain2, desireName, intoName }, lineNum)];
+  }
+
+  /**
+   * Conflict statement: conflict DESIRE and DESIRE for CHAIN into RESULT
+   * Detects ALIGNED / COMPETITIVE / OPPOSED tension between two desires in a chain.
+   * Example: conflict fair payment and creative freedom for leverage chain into tension report
+   */
+  _tokenizeConflictStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const forIdx  = this._indexOf(words, 'for');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || forIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'conflict', lineNum)];
+    }
+    const desire1   = words.slice(1, andIdx).join(' ');
+    const desire2   = words.slice(andIdx + 1, forIdx).join(' ');
+    const chainName = words.slice(forIdx + 1, intoIdx).join(' ');
+    const intoName  = words.slice(intoIdx + 1).join(' ');
+    return [new Token('CONFLICT_STMT', { desire1, desire2, chainName, intoName }, lineNum)];
+  }
+
+  /**
+   * Weigh statement: weigh CONFLICT into RESULT
+   * Produces an optimal trade-off recommendation using desire weights.
+   * Example: weigh tension report into resolution
+   */
+  _tokenizeWeighStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) {
+      return [new Token('KEYWORD', 'weigh', lineNum)];
+    }
+    const conflictName = words.slice(1, intoIdx).join(' ');
+    const intoName     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('WEIGH_STMT', { conflictName, intoName }, lineNum)];
+  }
+
+  /**
+   * Deepen statement: deepen AXIS with NEG and POS into RESULT
+   * Attaches explicit D±52 tori to an existing fractal axis for emergence scoring.
+   * Example: deepen market axis with emergence neg and emergence pos into deep axis
+   */
+  _tokenizeDeepenStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (withIdx < 0 || andIdx < 0 || intoIdx < 0 || andIdx <= withIdx || intoIdx <= andIdx) {
+      return [new Token('KEYWORD', 'deepen', lineNum)];
+    }
+    const axisName = words.slice(1, withIdx).join(' ');
+    const negName  = words.slice(withIdx + 1, andIdx).join(' ');
+    const posName  = words.slice(andIdx + 1, intoIdx).join(' ');
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('DEEPEN_STMT', { axisName, negName, posName, intoName }, lineNum)];
+  }
+
+  /**
+   * Trace statement: trace CONFLICT into RESULT
+   * Priority sensitivity curve — computes the breakeven ratio where the winner switches.
+   * Example: trace tension report into priority curve
+   */
+  _tokenizeTraceStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) {
+      return [new Token('KEYWORD', 'trace', lineNum)];
+    }
+    const conflictName = words.slice(1, intoIdx).join(' ');
+    const intoName     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('TRACE_STMT', { conflictName, intoName }, lineNum)];
+  }
+
+  /**
+   * Why statement: why DESIRE is not satisfied in CHAIN into RESULT
+   * Emits a WHY_STMT compound token for the parser.
+   *
+   * Example: why fair payment is not satisfied in leverage chain into diagnosis
+   *
+   * The sequence "is not satisfied in" is fixed. 'is', 'not', 'into' are keywords;
+   * 'satisfied' and 'in' are matched as plain words.
+   */
+  _tokenizeWhyStmt(words, lineNum) {
+    const isIdx   = this._indexOf(words, 'is');
+    const intoIdx = this._indexOf(words, 'into');
+
+    if (isIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'why', lineNum)];
+    }
+
+    // Verify the fixed sequence: is not satisfied in
+    if (words[isIdx + 1] !== 'not' ||
+        words[isIdx + 2] !== 'satisfied' ||
+        words[isIdx + 3] !== 'in') {
+      return [new Token('KEYWORD', 'why', lineNum)];
+    }
+
+    const desireName = words.slice(1, isIdx).join(' ');
+    const chainName  = words.slice(isIdx + 4, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+
+    return [new Token('WHY_STMT', { desireName, chainName, intoName }, lineNum)];
   }
 
   /**

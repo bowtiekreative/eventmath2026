@@ -106,6 +106,13 @@ class EventMathFormatter {
       case 'SatisfyStmt':        return this._formatSatisfyStmt(stmt);
       case 'EvaluateStmt':       return this._formatEvaluateStmt(stmt);
       case 'DimensionalStmt':    return this._formatDimensionalStmt(stmt);
+      case 'DiagnoseStmt':       return this._formatDiagnoseStmt(stmt);
+      case 'ChallengeStmt':      return this._formatChallengeStmt(stmt);
+      case 'CompareStmt':        return this._formatCompareStmt(stmt);
+      case 'ConflictStmt':       return this._formatConflictStmt(stmt);
+      case 'WeighStmt':          return this._formatWeighStmt(stmt);
+      case 'DeepenStmt':         return this._formatDeepenStmt(stmt);
+      case 'TraceStmt':          return this._formatTraceStmt(stmt);
     }
   }
 
@@ -521,10 +528,15 @@ class EventMathFormatter {
   // ── Prediction statements ─────────────────────────────────
 
   _formatPredictStmt(stmt) {
+    const dims = (stmt.dimensions && stmt.dimensions.length > 0)
+      ? stmt.dimensions
+      : [stmt.directionsLayer, stmt.lensesLayer, stmt.quantitiesLayer].filter(Boolean);
     this._line(`predict ${stmt.subject}`);
-    this._line(`across ${stmt.directionsLayer}`);
-    this._line(`and ${stmt.lensesLayer}`);
-    this._line(`and ${stmt.quantitiesLayer}`);
+    if (dims.length > 0) {
+      this._line(`across ${dims[0]}`);
+      for (let i = 1; i < dims.length; i++) this._line(`and ${dims[i]}`);
+    }
+    if (stmt.fractalName) this._line(`through ${stmt.fractalName}`);
     this._line(`into ${stmt.intoLayer}`);
   }
 
@@ -702,6 +714,34 @@ class EventMathFormatter {
   _formatDimensionalStmt(stmt) {
     const names = (stmt.desireNames || []).join(' and ');
     this._line(`evaluate ${names} against ${stmt.chainName} across fractal ${stmt.fractalName} into ${stmt.intoName}`);
+  }
+
+  _formatDiagnoseStmt(stmt) {
+    this._line(`why ${stmt.desireName} is not satisfied in ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatChallengeStmt(stmt) {
+    this._line(`challenge ${stmt.assumptionName} in ${stmt.reportName} into ${stmt.intoName}`);
+  }
+
+  _formatCompareStmt(stmt) {
+    this._line(`compare ${stmt.chain1Name} and ${stmt.chain2Name} for ${stmt.desireName} into ${stmt.intoName}`);
+  }
+
+  _formatConflictStmt(stmt) {
+    this._line(`conflict ${stmt.desire1Name} and ${stmt.desire2Name} for ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatWeighStmt(stmt) {
+    this._line(`weigh ${stmt.conflictName} into ${stmt.intoName}`);
+  }
+
+  _formatDeepenStmt(stmt) {
+    this._line(`deepen ${stmt.axisName} with ${stmt.negName} and ${stmt.posName} into ${stmt.intoName}`);
+  }
+
+  _formatTraceStmt(stmt) {
+    this._line(`trace ${stmt.conflictName} into ${stmt.intoName}`);
   }
 }
 

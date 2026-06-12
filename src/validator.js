@@ -139,6 +139,13 @@ class EventMathValidator {
         case 'SatisfyStmt':
         case 'EvaluateStmt':
         case 'DimensionalStmt':
+        case 'DiagnoseStmt':
+        case 'ChallengeStmt':
+        case 'CompareStmt':
+        case 'ConflictStmt':
+        case 'WeighStmt':
+        case 'DeepenStmt':
+        case 'TraceStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
           break;
       }
@@ -152,7 +159,7 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();
@@ -207,6 +214,21 @@ class EventMathValidator {
             }
           }
           break;
+
+        case 'PredictStmt': {
+          const dims = (stmt.dimensions && stmt.dimensions.length > 0)
+            ? stmt.dimensions
+            : [stmt.directionsLayer, stmt.lensesLayer, stmt.quantitiesLayer].filter(Boolean);
+          if (dims.length > 3 && !stmt.fractalName) {
+            this.warnings.push(
+              `"predict ${stmt.subject}" crosses ${dims.length} condition dimensions without routing through a fractal axis. ` +
+              `All condition dimensions must pass through the three structural tiers (surface D±13, system D±26, root D±39). ` +
+              `Add "through FRACTAL" to enforce dimensional routing, ` +
+              `e.g.: predict ${stmt.subject} across ${dims.slice(0, 2).join(' and ')} ... through my axis into ${stmt.intoLayer}`
+            );
+          }
+          break;
+        }
 
         case 'Walk':
           // Walk target must be a declared layer
