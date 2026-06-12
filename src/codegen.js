@@ -298,6 +298,7 @@ class EventMathCodeGen {
         case 'SatisfyStmt':
         case 'EvaluateStmt':
         case 'DimensionalStmt':
+        case 'DiagnoseStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -405,6 +406,7 @@ class EventMathCodeGen {
       case 'SatisfyStmt':         return this._genSatisfyStmt(stmt);
       case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
       case 'DimensionalStmt':     return this._genDimensionalStmt(stmt);
+      case 'DiagnoseStmt':        return this._genDiagnoseStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -1966,6 +1968,16 @@ class EventMathCodeGen {
     const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
     this._line(`// dimensional: [${desireLabel}] against "${this._escape(stmt.chainName)}" across fractal "${this._escape(stmt.fractalName)}"`);
     this._line(`${intoVar} = new EM.EventMathDimensionalReport('${intoEsc}', [${desireVarList}], ${chainVar}, ${fractalVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genDiagnoseStmt(stmt) {
+    const desireVar = this._safeName(stmt.desireName);
+    const chainVar  = this._safeName(stmt.chainName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// diagnose: why "${this._escape(stmt.desireName)}" is not satisfied in "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathDiagnosis('${intoEsc}', ${desireVar}, ${chainVar}, __assumptions);`);
     this._line('');
   }
 }

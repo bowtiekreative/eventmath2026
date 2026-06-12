@@ -37,6 +37,8 @@ const KEYWORDS = new Set([
   'fallacy', 'detect', 'dilemma', 'assume', 'fractal',
   // v2.2 — satisfaction engine
   'satisfy', 'evaluate', 'against',
+  // v2.6 — backward satisfaction diagnosis
+  'why', 'satisfied',
 ]);
 
 class Token {
@@ -149,6 +151,11 @@ class EventMathTokenizer {
     // evaluate <desire> [and <desire>...] against <chain> into <result>
     if (lead === 'evaluate') {
       return this._evaluateStmt(words, lineNum);
+    }
+
+    // why <desire> is not satisfied in <chain> into <result>
+    if (lead === 'why') {
+      return this._tokenizeWhyStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1691,6 +1698,37 @@ class EventMathTokenizer {
     const chainName = middleWords.join(' ');
     const intoName  = words.slice(intoIdx + 1).join(' ');
     return [new Token('EVALUATE_STMT', { desireNames, chainName, intoName }, lineNum)];
+  }
+
+  /**
+   * Why statement: why DESIRE is not satisfied in CHAIN into RESULT
+   * Emits a WHY_STMT compound token for the parser.
+   *
+   * Example: why fair payment is not satisfied in leverage chain into diagnosis
+   *
+   * The sequence "is not satisfied in" is fixed. 'is', 'not', 'into' are keywords;
+   * 'satisfied' and 'in' are matched as plain words.
+   */
+  _tokenizeWhyStmt(words, lineNum) {
+    const isIdx   = this._indexOf(words, 'is');
+    const intoIdx = this._indexOf(words, 'into');
+
+    if (isIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'why', lineNum)];
+    }
+
+    // Verify the fixed sequence: is not satisfied in
+    if (words[isIdx + 1] !== 'not' ||
+        words[isIdx + 2] !== 'satisfied' ||
+        words[isIdx + 3] !== 'in') {
+      return [new Token('KEYWORD', 'why', lineNum)];
+    }
+
+    const desireName = words.slice(1, isIdx).join(' ');
+    const chainName  = words.slice(isIdx + 4, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+
+    return [new Token('WHY_STMT', { desireName, chainName, intoName }, lineNum)];
   }
 
   /**

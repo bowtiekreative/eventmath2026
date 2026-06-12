@@ -117,6 +117,7 @@ class EventMathParser {
     if (t.type === 'SATISFY_STMT')          return this._parseSatisfyStmt();
     if (t.type === 'EVALUATE_STMT')         return this._parseEvaluateStmt();
     if (t.type === 'DIMENSIONAL_STMT')      return this._parseDimensionalStmt();
+    if (t.type === 'WHY_STMT')              return this._parseWhyStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1156,6 +1157,16 @@ class EventMathParser {
       chainName:   t.value.chainName,
       fractalName: t.value.fractalName,
       intoName:    t.value.intoName
+    });
+  }
+
+  _parseWhyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('DiagnoseStmt', {
+      desireName: t.value.desireName,
+      chainName:  t.value.chainName,
+      intoName:   t.value.intoName,
     });
   }
 

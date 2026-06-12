@@ -1935,6 +1935,255 @@
     return lines.join('\n');
   };
 
+  // ── Diagnosis (backward satisfaction trace) ───────────────
+  //
+  // `why DESIRE is not satisfied in CHAIN into RESULT`
+  //
+  // Reverses the satisfaction engine: given a desire that is not met,
+  // walks the chain backward from the goal to find:
+  //   - blockingLink   — the link where value collapses to 0 (or below threshold)
+  //   - lastActiveLink — the last productive node before the collapse
+  //   - interventionPoint — the specific flip that would unblock the path
+  //   - tierAnalysis   — which structural tier the failure lives in
+  //
+  // Complements DimensionalReport: that asks "how well does the path hold?"
+  // Diagnosis asks "exactly where does it break, and what to change?"
+
+  function EventMathDiagnosis(name, desire, chain, assumptions) {
+    if (!(this instanceof EventMathDiagnosis)) {
+      return new EventMathDiagnosis(name, desire, chain, assumptions);
+    }
+    this.name        = name   || 'diagnosis';
+    this.desire      = desire || null;
+    this.chain       = chain  || null;
+    this.assumptions = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+
+    this.isSatisfied       = false;
+    this.currentScore      = 0;
+    this.backwardPath      = [];   // links from goal to root, in reverse
+    this.blockingLink      = null; // the link where value first hits 0
+    this.lastActiveLink    = null; // last productive node before collapse
+    this.interventionPoint = '';   // specific lever to pull
+    this.tierAnalysis      = [];   // which tier (surface/system/root) the failure lives in
+    this.fallacies         = [];   // structural fallacies in the chain
+    this.lever             = '';   // one-line recommendation
+
+    this._diagnose();
+  }
+
+  EventMathDiagnosis.prototype._diagnose = function () {
+    if (!this.desire || !this.chain) return;
+
+    // ── Step 1: run the satisfaction engine forward ───────────
+    var eng = new EventMathSatisfactionEngine('diagnosis', [this.desire], this.chain, this.assumptions);
+    this.currentScore = eng.score || 0;
+    this.isSatisfied  = this.currentScore >= 100;
+
+    if (this.isSatisfied) {
+      this.lever = 'Desire "' + this.desire.name + '" is already satisfied.';
+      return;
+    }
+
+    // ── Step 2: find the desire target in the chain ───────────
+    var cond        = this.desire._condition || { subject: '', operator: 'matches', target: '' };
+    var target      = (cond.target  || '').toLowerCase().trim();
+    var subject     = (cond.subject || '').toLowerCase().trim();
+    var links       = this.chain.links || [];
+    // Use all non-empty words so short names like "C" or "payment" are matched
+    var allWords = (target + ' ' + subject).split(/\s+/).filter(function (w) { return w.length > 0; });
+
+    // Find the terminal link whose "to" matches the desire target (search from end)
+    var terminalLink = null;
+    for (var i = links.length - 1; i >= 0; i--) {
+      var toLower = links[i].to.toLowerCase();
+      if (allWords.some(function (w) { return toLower.includes(w); })) {
+        terminalLink = links[i];
+        break;
+      }
+    }
+
+    if (!terminalLink) {
+      this.interventionPoint = 'Desire target "' + (target || subject) + '" not found in chain.';
+      this.lever = 'Add a link to the chain that leads to "' + (target || subject) + '".';
+      // fall through to tier analysis even when the target is absent from the chain
+    }
+
+    // ── Step 3: walk backward collecting the path ─────────────
+    if (!terminalLink) {
+      // Skip path analysis but continue to tier analysis below
+      this._runTierAnalysis(links, null, null, target, subject);
+      return;
+    }
+
+    var path    = [terminalLink];
+    var current = terminalLink.from.toLowerCase();
+    var visited = {};
+    visited[terminalLink.to.toLowerCase()] = true;
+    visited[current] = true;
+
+    for (var d = 0; d < links.length; d++) {
+      var found = null;
+      for (var j = links.length - 1; j >= 0; j--) {
+        var lkTo = links[j].to.toLowerCase();
+        if (!visited[lkTo] &&
+            (lkTo === current || current.includes(lkTo) || lkTo.includes(current))) {
+          found = links[j];
+          break;
+        }
+      }
+      if (!found) break;
+      path.push(found);
+      visited[found.to.toLowerCase()] = true;
+      current = found.from.toLowerCase();
+      visited[current] = true;
+    }
+
+    this.backwardPath = path; // goal-first
+
+    // ── Step 4: find blocking link and last active link ────────
+    // "Blocking" = value is 0 (or null/undefined for numeric chains).
+    // Walk from goal backward; first zero link = blockingLink.
+    // Last non-zero link before the run of zeros = lastActiveLink.
+    var blockingLink   = null;
+    var lastActiveLink = null;
+    var hasNumericValues = links.some(function (l) { return l.value !== undefined; });
+
+    if (hasNumericValues) {
+      for (var k = 0; k < path.length; k++) {
+        var v = path[k].value;
+        var isZero = (v === 0 || v === null || v === undefined);
+        if (isZero && !blockingLink) {
+          blockingLink = path[k];
+        }
+        if (!isZero && v !== undefined) {
+          lastActiveLink = path[k];
+        }
+      }
+    } else {
+      // Non-numeric: blocking is the terminal with no outgoing links (end of chain)
+      blockingLink = terminalLink;
+    }
+
+    this.blockingLink   = blockingLink;
+    this.lastActiveLink = lastActiveLink;
+
+    // ── Step 5: identify the intervention ─────────────────────
+    if (blockingLink) {
+      var fromName = blockingLink.from;
+      var toName   = blockingLink.to;
+      var prevVal  = lastActiveLink ? lastActiveLink.value : null;
+      var prevNode = lastActiveLink ? lastActiveLink.from : null;
+
+      this.interventionPoint = '"' + fromName + '" → "' + toName + '"';
+
+      if (lastActiveLink && prevVal !== null) {
+        this.lever = 'Activate link "' + fromName + '" → "' + toName +
+          '" (currently value 0). ' +
+          'The chain produces "' + (lastActiveLink.to || prevNode) + '" at value ' + prevVal +
+          ' — this output is not reaching "' + toName + '". Connecting these unlocks the path.';
+      } else {
+        this.lever = 'Link "' + fromName + '" → "' + toName + '" produces no value (0). ' +
+          'Assign a positive value to this link to activate the downstream path.';
+      }
+    } else if (!hasNumericValues) {
+      this.lever = 'Chain reaches "' + terminalLink.to + '" but desire condition "' +
+        (target || subject) + '" is not met. ' +
+        'Add numeric values with "at value N" to enable precise gap analysis.';
+    }
+
+    // ── Step 6: tier analysis ──────────────────────────────────
+    this._runTierAnalysis(links, blockingLink, path, target, subject);
+  };
+
+  EventMathDiagnosis.prototype._runTierAnalysis = function (links, blockingLink, path, target, subject) {
+    // Tier 1 (surface D±13): where in the chain does the path break?
+    var chainLen   = links ? links.length : 0;
+    var breakDepth = (blockingLink && path) ? path.indexOf(blockingLink) : -1;
+    var breakStep  = breakDepth >= 0 ? (chainLen - breakDepth) : -1;
+
+    this.tierAnalysis.push({
+      tier: 1,
+      label: 'Surface D±13',
+      status: blockingLink ? 'BLOCKED' : (target || subject ? 'TARGET NOT IN CHAIN' : 'CLEAR'),
+      detail: blockingLink
+        ? 'Path breaks at step ' + (breakStep > 0 ? breakStep : '?') + ' of ' + chainLen +
+          ': "' + blockingLink.from + '" → "' + blockingLink.to + '" (value 0)'
+        : (target || subject)
+          ? 'Desire target "' + (target || subject) + '" not found in chain — add a link leading to it'
+          : 'Chain reaches desired state — surface tier is clear'
+    });
+
+    // Tier 2 (system D±26): what structural pattern causes this?
+    var detector   = new EventMathFallacyDetector(this.chain);
+    var fallacies  = detector.findings || [];
+    this.fallacies = fallacies;
+    var sysDetail  = fallacies.length > 0
+      ? fallacies.map(function (f) { return f.name; }).join(', ') + ' — chain structure is fragile'
+      : 'No structural fallacies detected';
+
+    this.tierAnalysis.push({
+      tier: 2,
+      label: 'System D±26',
+      status: fallacies.length > 0 ? 'FRAGILE' : 'SOUND',
+      detail: sysDetail
+    });
+
+    // Tier 3 (root D±39): fractal context not available without 'across fractal'
+    this.tierAnalysis.push({
+      tier: 3,
+      label: 'Root D±39',
+      status: 'REQUIRES FRACTAL',
+      detail: 'Root tier analysis requires a fractal axis. Use: why ' +
+        this.desire.name + ' is not satisfied in ' + this.chain.name +
+        ' across fractal MY AXIS into diagnosis'
+    });
+  };
+
+  EventMathDiagnosis.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ WHY: "' + this.desire.name + '" is not satisfied');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('  Chain: "' + (this.chain ? this.chain.name : '(none)') + '"');
+    lines.push('  Score: ' + this.currentScore + '/100');
+    lines.push('');
+
+    if (this.isSatisfied) {
+      lines.push('  ✓ Already satisfied — no intervention needed.');
+      return lines.join('\n');
+    }
+
+    // Backward path (goal → root)
+    if (this.backwardPath.length > 0) {
+      lines.push('  ── Causal path (goal → root) ──');
+      for (var i = 0; i < this.backwardPath.length; i++) {
+        var lk  = this.backwardPath[i];
+        var valStr = lk.value !== undefined ? '  [' + lk.value + ']' : '';
+        var marker = (this.blockingLink && lk === this.blockingLink) ? '  ← BLOCKED HERE' : '';
+        lines.push('  [' + (i + 1) + '] ' + lk.from + '  →  ' + lk.to + valStr + marker);
+      }
+      lines.push('');
+    }
+
+    // Intervention
+    if (this.interventionPoint) {
+      lines.push('  ── Minimum intervention ──');
+      lines.push('  Flip: ' + this.interventionPoint);
+      lines.push('  ' + this.lever);
+      lines.push('');
+    }
+
+    // Tier analysis
+    lines.push('  ── Tier analysis ──');
+    for (var t = 0; t < this.tierAnalysis.length; t++) {
+      var ta = this.tierAnalysis[t];
+      lines.push('  Tier ' + ta.tier + ' (' + ta.label + '): [' + ta.status + ']');
+      lines.push('    ' + ta.detail);
+    }
+
+    return lines.join('\n');
+  };
+
   // ── Default Timeline ─────────────────────────────────────
 
   var defaultTimeline = new EventMathTimeline('default');
@@ -1961,6 +2210,7 @@
     EventMathDesire:                EventMathDesire,
     EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
     EventMathDimensionalReport:     EventMathDimensionalReport,
+    EventMathDiagnosis:             EventMathDiagnosis,
     EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,

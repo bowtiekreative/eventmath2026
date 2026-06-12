@@ -106,6 +106,7 @@ class EventMathFormatter {
       case 'SatisfyStmt':        return this._formatSatisfyStmt(stmt);
       case 'EvaluateStmt':       return this._formatEvaluateStmt(stmt);
       case 'DimensionalStmt':    return this._formatDimensionalStmt(stmt);
+      case 'DiagnoseStmt':       return this._formatDiagnoseStmt(stmt);
     }
   }
 
@@ -707,6 +708,10 @@ class EventMathFormatter {
   _formatDimensionalStmt(stmt) {
     const names = (stmt.desireNames || []).join(' and ');
     this._line(`evaluate ${names} against ${stmt.chainName} across fractal ${stmt.fractalName} into ${stmt.intoName}`);
+  }
+
+  _formatDiagnoseStmt(stmt) {
+    this._line(`why ${stmt.desireName} is not satisfied in ${stmt.chainName} into ${stmt.intoName}`);
   }
 }
 
