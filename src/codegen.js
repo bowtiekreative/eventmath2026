@@ -946,11 +946,11 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     const srcEsc    = this._escape(stmt.sourceName);
 
-    // Accept negative dimensions (-26 to -2) as well as positive (2 to 26)
+    // Accept negative dimensions (-39 to -2) as well as positive (2 to 39)
     const rawDim = typeof stmt.dimension === 'number' ? stmt.dimension : 2;
     const absD   = Math.abs(rawDim);
-    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 26 ? 26 : absD)
-                              : (absD < 2 ? 2 : absD > 26 ? 26 : absD);
+    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 39 ? 39 : absD)
+                              : (absD < 2 ? 2 : absD > 39 ? 39 : absD);
     const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D+' + dim;
     this._line(`// spin ${srcEsc} into ${intoEsc}  [${dimLabel}]`);
     this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);

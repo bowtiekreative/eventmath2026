@@ -440,7 +440,12 @@
     14: 'tetradecagon',  15: 'pentadecagon',  16: 'hexadecagon',   17: 'heptadecagon',
     18: 'octadecagon',   19: 'enneadecagon',  20: 'icosagon',      21: 'icosihenagon',
     22: 'icosidigon',    23: 'icositrigon',   24: 'icositetragon', 25: 'icosipentagon',
-    26: 'icosihexagon'
+    26: 'icosihexagon',
+    27: 'icosiheptagon', 28: 'icosioctagon',  29: 'icosienneagon',
+    30: 'triacontagon',
+    31: 'triacontahenagon',  32: 'triacontadigon',    33: 'triacontatrigon',
+    34: 'triacontatetragon', 35: 'triacontapentagon', 36: 'triacontahexagon',
+    37: 'triacontaheptagon', 38: 'triacontaoctagon',  39: 'triacontaenneagon'
   };
 
   function getShapeName(D) {
@@ -490,7 +495,7 @@
     this.completionEvent = null;
   }
 
-  // spinFrom(source, dimension) — dimension 2-13 (positive) or -2 to -13 (negative/opposite polarity).
+  // spinFrom(source, dimension) — dimension 2-39 (positive) or -2 to -39 (negative/opposite polarity).
   // Negative dimensions spin clockwise; nucleus polarity is inverted.
   EventMathTorus.prototype.spinFrom = function (source, dimension) {
     this.sourceName = source
@@ -500,7 +505,7 @@
     var d = typeof dimension === 'number' ? Math.floor(dimension) : 2;
     var absD = Math.abs(d);
     if (absD < 2) absD = 2;
-    if (absD > 26) absD = 26;
+    if (absD > 39) absD = 39;
     this.dimension = d < 0 ? -absD : absD;
     return this;
   };
@@ -1217,13 +1222,16 @@
     return lines.join('\n');
   };
 
-  // ── Fractal Axis (D±26, tier 2) ───────────────────────────
+  // ── Fractal Axis (multi-tier, multiples of 13) ────────────
   //
-  // `fractal X and Y into Z` where X and Y are toruses at D±26.
-  // A two-tier self-similar axis: Tier 1 = D±13 (foundation),
-  // Tier 2 = D±26 (built on Tier 1's grand axis as its bridge).
+  // `fractal X and Y into Z` where X and Y are toruses.
+  // Auto-builds tiers based on input dimension:
+  //   D±13  → 1 tier  (D±13 foundation)
+  //   D±26  → 2 tiers (D±13 foundation, D±26 tier 2)
+  //   D±39  → 3 tiers (D±13 foundation, D±26 tier 2, D±39 tier 3)
+  //   D±52  → 4 tiers (next pass), and so on in multiples of 13.
   // Each tier repeats the same 6-layer complex structure.
-  // Next pass: D±39 (tier 3), D±52 (tier 4), multiples of 13 indefinitely.
+  // Tier N's grand axis feeds Tier N+1's bridge — fractal self-similarity.
 
   function EventMathFractalAxis(name, negative, positive) {
     if (!(this instanceof EventMathFractalAxis)) {
@@ -1237,38 +1245,63 @@
     var posDim = Math.abs((positive && positive.dimension) || 2);
     var maxDim = Math.max(negDim, posDim);
 
-    // Tier 1: foundation at D±13 (or the lower-magnitude pair)
+    // Tier 1: foundation at D±13
     var t1n = new EventMathTorus(name + '_t1_neg');
     t1n.spinFrom(null, -Math.min(13, negDim));
     var t1p = new EventMathTorus(name + '_t1_pos');
     t1p.spinFrom(null,  Math.min(13, posDim));
     this.tier1 = new EventMathAxis(name + '_tier1', t1n, t1p);
 
-    // Tier 2: full D±26 axis
-    this.tier2 = new EventMathAxis(name + '_tier2', negative, positive);
+    if (maxDim >= 27) {
+      // 3-tier mode: tier2 at D±26 (internal toruses), tier3 at D±maxDim (passed)
+      var t2n = new EventMathTorus(name + '_t2_neg');
+      t2n.spinFrom(null, -26);
+      var t2p = new EventMathTorus(name + '_t2_pos');
+      t2p.spinFrom(null,  26);
+      this.tier2 = new EventMathAxis(name + '_tier2', t2n, t2p);
+      this.tier2.bridge.fractalFrom = this.tier1.grandAxis.name;
 
-    // Fractal link: tier1 grand axis (C at D15) feeds into tier2 bridge
-    this.tier2.bridge.fractalFrom = this.tier1.grandAxis.name;
+      // Tier 3: D±maxDim using passed toruses
+      this.tier3 = new EventMathAxis(name + '_tier3', negative, positive);
+      this.tier3.bridge.fractalFrom = this.tier2.grandAxis.name;
 
-    this.dimension    = maxDim;
-    this.presentLine  = this.tier2.presentLine;
-    this.fractalDepth = 2;
-    this.signature    = 'D±' + Math.min(13, posDim) + ' ⊂ D±' + maxDim;
+      this.dimension    = maxDim;
+      this.presentLine  = this.tier3.presentLine;
+      this.fractalDepth = 3;
+      this.signature    = 'D±13 ⊂ D±26 ⊂ D±' + maxDim;
+    } else {
+      // 2-tier mode: tier2 at D±maxDim using passed toruses
+      this.tier2 = new EventMathAxis(name + '_tier2', negative, positive);
+      this.tier2.bridge.fractalFrom = this.tier1.grandAxis.name;
+
+      this.dimension    = maxDim;
+      this.presentLine  = this.tier2.presentLine;
+      this.fractalDepth = 2;
+      this.signature    = 'D±' + Math.min(13, posDim) + ' ⊂ D±' + maxDim;
+    }
   }
 
   EventMathFractalAxis.prototype.render = function () {
     var lines = [];
+    var depth    = this.fractalDepth;
+    var topAxis  = this.tier3 || this.tier2;
+    var nextDim  = this.dimension + 13;
+    var layerCount = depth * 6;
+
     lines.push('╔' + '═'.repeat(58) + '╗');
     lines.push('║ EventMath Fractal Axis: ' + this.name);
-    lines.push('║ Signature: ' + this.signature + '  [2 tiers, self-similar]');
+    lines.push('║ Signature: ' + this.signature +
+               '  [' + depth + ' tier' + (depth > 1 ? 's' : '') + ', self-similar]');
     lines.push('╚' + '═'.repeat(58) + '╝');
     lines.push('');
+
     lines.push('  TIER 1  D±' + Math.abs(this.tier1.dimension) +
                '  →  D' + this.tier1.grandAxis.zoomLevel + ' governance  [foundation]');
     lines.push('  ' + '─'.repeat(50));
     var t1 = this.tier1.render().split('\n');
     for (var i = 0; i < t1.length; i++) lines.push('    ' + t1[i]);
     lines.push('');
+
     lines.push('  TIER 2  D±' + Math.abs(this.tier2.dimension) +
                '  →  D' + this.tier2.grandAxis.zoomLevel + ' governance');
     lines.push('  (Tier 1 grand axis feeds Tier 2 bridge — fractal self-similarity)');
@@ -1276,11 +1309,22 @@
     var t2 = this.tier2.render().split('\n');
     for (var j = 0; j < t2.length; j++) lines.push('    ' + t2[j]);
     lines.push('');
+
+    if (this.tier3) {
+      lines.push('  TIER 3  D±' + Math.abs(this.tier3.dimension) +
+                 '  →  D' + this.tier3.grandAxis.zoomLevel + ' governance');
+      lines.push('  (Tier 2 grand axis feeds Tier 3 bridge — fractal tier 3)');
+      lines.push('  ' + '─'.repeat(50));
+      var t3 = this.tier3.render().split('\n');
+      for (var k = 0; k < t3.length; k++) lines.push('    ' + t3[k]);
+      lines.push('');
+    }
+
     lines.push('  Fractal present line: ' + this.presentLine);
-    lines.push('  Fractal depth: ' + this.fractalDepth +
-               '  [D±39 available next pass — multiples of 13]');
+    lines.push('  Fractal depth: ' + depth +
+               '  [D±' + nextDim + ' available next pass — multiples of 13]');
     lines.push('╔' + '═'.repeat(58) + '╗');
-    lines.push('║ COMPLETE  [12 layers, D' + this.tier2.grandAxis.zoomLevel + ' max governance]');
+    lines.push('║ COMPLETE  [' + layerCount + ' layers, D' + topAxis.grandAxis.zoomLevel + ' max governance]');
     lines.push('╚' + '═'.repeat(58) + '╝');
     return lines.join('\n');
   };
