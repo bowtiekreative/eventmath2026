@@ -1222,6 +1222,229 @@
     return lines.join('\n');
   };
 
+  // ── Desire ────────────────────────────────────────────────
+  //
+  // Wraps a desire block: subjective want → typed condition that can be
+  // evaluated against a chain. Direction: more | less | matches | does not match.
+  // Satisfied when: a text condition parsed into {subject, operator, target}.
+
+  function EventMathDesire(name, matter) {
+    if (!(this instanceof EventMathDesire)) {
+      return new EventMathDesire(name, matter);
+    }
+    this.name        = name   || '';
+    var m            = matter || {};
+    this.scenario    = m.scenario   || '';
+    this.subjective  = m.subjective || '';
+    this.outcomeText = m.outcome    || '';
+    this.direction   = String(m.direction || 'matches').toLowerCase().trim();
+    this.state       = String(m.state     || 'desired').toLowerCase().trim();
+    // "satisfied when" key may contain a space — access via bracket notation
+    this.satisfiedWhen = m['satisfied when'] || m.satisfiedWhen || this.outcomeText || '';
+    this._condition    = this._parseCondition(this.satisfiedWhen);
+  }
+
+  EventMathDesire.prototype._parseCondition = function (text) {
+    if (!text) return { subject: '', operator: this.direction || 'matches', target: '' };
+    var t   = String(text).toLowerCase().trim();
+    // Multi-word operators must be checked before single-word ones
+    var ops = ['does not match', 'more than', 'less than', 'not equals',
+               'exceeds', 'matches', 'equals', 'reaches', 'occurs', 'includes'];
+    for (var i = 0; i < ops.length; i++) {
+      var op  = ops[i];
+      var idx = t.indexOf(' ' + op + ' ');
+      if (idx >= 0) {
+        return { subject: t.slice(0, idx).trim(), operator: op, target: t.slice(idx + op.length + 2).trim() };
+      }
+      if (t.startsWith(op + ' ')) {
+        return { subject: '', operator: op, target: t.slice(op.length + 1).trim() };
+      }
+    }
+    // No operator keyword found — treat whole text as target
+    return { subject: '', operator: this.direction || 'matches', target: t };
+  };
+
+  EventMathDesire.prototype.render = function () {
+    var lines = ['── Desire: ' + this.name + ' ──'];
+    if (this.scenario)   lines.push('  Scenario:     ' + this.scenario);
+    lines.push('  Subjective:   ' + (this.subjective  || '(not stated)'));
+    lines.push('  Outcome:      ' + (this.outcomeText || '(not stated)'));
+    lines.push('  Direction:    ' + this.direction);
+    lines.push('  State:        ' + this.state);
+    if (this.satisfiedWhen) lines.push('  Satisfied when: ' + this.satisfiedWhen);
+    return lines.join('\n');
+  };
+
+  // ── Satisfaction Engine ────────────────────────────────────
+  //
+  // `satisfy DESIRE against CHAIN into RESULT`
+  // `evaluate DESIRE and DESIRE against CHAIN into RESULT`
+  //
+  // Evaluates whether desires are satisfied by a causal chain.
+  // Satisfaction = the chain's reachable states contain what the desire requires.
+  // Score = percentage of desires satisfied (0–100).
+  // Gaps = array of unsatisfied desires with reasons.
+
+  function EventMathSatisfactionEngine(name, desires, chain) {
+    if (!(this instanceof EventMathSatisfactionEngine)) {
+      return new EventMathSatisfactionEngine(name, desires, chain);
+    }
+    this.name    = name   || 'satisfaction check';
+    this.desires = Array.isArray(desires) ? desires : (desires ? [desires] : []);
+    this.chain   = chain  || null;
+    this.results = [];
+    this.score   = 0;
+    this.gaps    = [];
+    this._evaluate();
+  }
+
+  EventMathSatisfactionEngine.prototype._extractChainStates = function () {
+    if (!this.chain || !this.chain.links || this.chain.links.length === 0) {
+      return { all: [], terminals: [], sources: [] };
+    }
+    var all       = [];
+    var sourceSet = {};
+    this.chain.links.forEach(function (lk) {
+      var f = (lk.from || '').toLowerCase();
+      var t = (lk.to   || '').toLowerCase();
+      if (all.indexOf(f) === -1) all.push(f);
+      if (all.indexOf(t) === -1) all.push(t);
+      sourceSet[f] = true;
+    });
+    var terminals = all.filter(function (s) { return !sourceSet[s]; });
+    return { all: all, terminals: terminals, sources: Object.keys(sourceSet) };
+  };
+
+  EventMathSatisfactionEngine.prototype._checkDesire = function (desire, chainStates) {
+    var cond      = desire._condition || { subject: '', operator: 'matches', target: '' };
+    var direction = (desire.direction || 'matches').toLowerCase();
+    var target    = (cond.target  || '').toLowerCase();
+    var subject   = (cond.subject || '').toLowerCase();
+    var allStates = chainStates.all      || [];
+    var terminals = chainStates.terminals || [];
+
+    // Keywords for directional matching
+    var POS = ['increase', 'growth', 'more', 'rise', 'gain', 'expand', 'improve', 'higher'];
+    var NEG = ['decrease', 'reduce', 'less', 'drop', 'loss', 'shrink', 'decline', 'lower'];
+
+    // Break target into meaningful words (>2 chars) for flexible matching
+    var targetWords = target.split(/\s+/).filter(function (w) { return w.length > 2; });
+
+    var terminalMatch = terminals.some(function (s) {
+      return targetWords.length > 0 && targetWords.some(function (w) { return s.includes(w); });
+    });
+    var anyMatch = allStates.some(function (s) {
+      return (targetWords.length > 0 && targetWords.some(function (w) { return s.includes(w); })) ||
+             (subject && subject.length > 2 && s.includes(subject));
+    });
+
+    var satisfied, reason;
+    var noChain = !this.chain || !this.chain.links || this.chain.links.length === 0;
+
+    if (noChain) {
+      satisfied = false;
+      reason    = 'No chain provided — cannot evaluate satisfaction';
+    } else if (direction === 'does not match') {
+      satisfied = !anyMatch;
+      reason    = satisfied
+        ? 'Chain does not contain "' + (target || subject) + '" — desired absence confirmed'
+        : 'Chain contains "' + (target || subject) + '" — desired absence violated';
+    } else if (direction === 'more' || direction === 'more than') {
+      var posMatch = allStates.some(function (s) {
+        return POS.some(function (sig) { return s.includes(sig); }) ||
+               targetWords.some(function (w) { return s.includes(w); });
+      });
+      satisfied = posMatch || anyMatch;
+      reason    = satisfied
+        ? 'Chain contains states trending toward "' + (target || subject) + '"'
+        : 'Chain does not show increase toward "' + (target || subject) + '" — gap';
+    } else if (direction === 'less' || direction === 'less than') {
+      var negMatch = allStates.some(function (s) {
+        return NEG.some(function (sig) { return s.includes(sig); }) ||
+               targetWords.some(function (w) { return s.includes(w); });
+      });
+      satisfied = negMatch || anyMatch;
+      reason    = satisfied
+        ? 'Chain contains states trending toward reduction of "' + (target || subject) + '"'
+        : 'Chain does not show reduction of "' + (target || subject) + '" — gap';
+    } else {
+      // 'matches' or any other direction — terminal or any state contains target
+      satisfied = terminalMatch || anyMatch;
+      reason    = satisfied
+        ? 'Chain reaches a state containing "' + (target || subject) + '"'
+        : 'Chain does not reach "' + (target || subject) + '" — gap in causal path';
+    }
+
+    return {
+      desire:    desire.name,
+      satisfied: satisfied,
+      direction: direction,
+      condition: desire.satisfiedWhen || desire.outcomeText || '',
+      scenario:  desire.scenario || '',
+      reason:    reason
+    };
+  };
+
+  EventMathSatisfactionEngine.prototype._evaluate = function () {
+    var self        = this;
+    var chainStates = this._extractChainStates();
+    var satisfiedN  = 0;
+    this.desires.forEach(function (d) {
+      var r = self._checkDesire(d, chainStates);
+      self.results.push(r);
+      if (r.satisfied) satisfiedN++;
+      else self.gaps.push(r);
+    });
+    this.score = this.desires.length > 0
+      ? Math.round((satisfiedN / this.desires.length) * 100)
+      : 0;
+  };
+
+  EventMathSatisfactionEngine.prototype.render = function () {
+    var lines      = [];
+    var satN       = this.results.filter(function (r) { return r.satisfied; }).length;
+    var total      = this.results.length;
+    var statusLine = this.score === 100
+      ? 'INNOVATION COMPLETE — all desires satisfied'
+      : this.score > 50
+        ? 'PARTIAL — ' + this.gaps.length + ' desire(s) unmet'
+        : total === 0
+          ? 'NO DESIRES — nothing to evaluate'
+          : 'BLOCKED — majority of desires unsatisfied';
+
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ Satisfaction Engine: ' + this.name);
+    lines.push('║ Score: ' + this.score + '%  (' + satN + '/' + total + ' desires satisfied)');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+
+    this.results.forEach(function (r) {
+      lines.push('  ' + (r.satisfied ? '✓' : '✗') + '  ' + r.desire);
+      if (r.scenario)  lines.push('      Scenario:  ' + r.scenario);
+      if (r.condition) lines.push('      Condition: ' + r.condition);
+      lines.push('      Direction: ' + r.direction);
+      lines.push('      Result:    ' + r.reason);
+      lines.push('');
+    });
+
+    if (this.gaps.length > 0) {
+      lines.push('  ── Unmet desires (gaps) ──');
+      this.gaps.forEach(function (g) {
+        lines.push('    • ' + g.desire);
+        lines.push('      → ' + g.reason);
+      });
+      lines.push('');
+    } else if (total > 0) {
+      lines.push('  All desires satisfied.');
+      lines.push('');
+    }
+
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ ' + statusLine);
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    return lines.join('\n');
+  };
+
   // ── Fractal Axis (multi-tier, multiples of 13) ────────────
   //
   // `fractal X and Y into Z` where X and Y are toruses.
@@ -1350,8 +1573,10 @@
     EventMathPowerGap:       EventMathPowerGap,
     EventMathChain:          EventMathChain,
     EventMathRootTrace:      EventMathRootTrace,
-    EventMathFallacyDetector:EventMathFallacyDetector,
-    EventMathFractalAxis:    EventMathFractalAxis,
+    EventMathFallacyDetector:       EventMathFallacyDetector,
+    EventMathDesire:                EventMathDesire,
+    EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
+    EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,
     getDefaultTimeline:      getDefaultTimeline,

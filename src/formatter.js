@@ -103,6 +103,8 @@ class EventMathFormatter {
       case 'AssumeStmt':         return this._formatAssumeStmt(stmt);
       case 'DetectFallaciesStmt':return this._formatDetectFallaciesStmt(stmt);
       case 'FractalStmt':        return this._formatFractalStmt(stmt);
+      case 'SatisfyStmt':        return this._formatSatisfyStmt(stmt);
+      case 'EvaluateStmt':       return this._formatEvaluateStmt(stmt);
     }
   }
 
@@ -685,6 +687,15 @@ class EventMathFormatter {
 
   _formatFractalStmt(stmt) {
     this._line(`fractal ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatSatisfyStmt(stmt) {
+    this._line(`satisfy ${stmt.desireName} against ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatEvaluateStmt(stmt) {
+    const names = (stmt.desireNames || []).join(' and ');
+    this._line(`evaluate ${names} against ${stmt.chainName} into ${stmt.intoName}`);
   }
 }
 

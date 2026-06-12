@@ -114,6 +114,8 @@ class EventMathParser {
     if (t.type === 'ASSUME_STMT')           return this._parseAssumeStmt();
     if (t.type === 'DETECT_FALLACIES_STMT') return this._parseDetectFallaciesStmt();
     if (t.type === 'FRACTAL_STMT')          return this._parseFractalStmt();
+    if (t.type === 'SATISFY_STMT')          return this._parseSatisfyStmt();
+    if (t.type === 'EVALUATE_STMT')         return this._parseEvaluateStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1099,6 +1101,26 @@ class EventMathParser {
       firstName:  t.value.firstName,
       secondName: t.value.secondName,
       intoName:   t.value.intoName
+    });
+  }
+
+  _parseSatisfyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SatisfyStmt', {
+      desireName: t.value.desireName,
+      chainName:  t.value.chainName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseEvaluateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('EvaluateStmt', {
+      desireNames: t.value.desireNames,
+      chainName:   t.value.chainName,
+      intoName:    t.value.intoName
     });
   }
 

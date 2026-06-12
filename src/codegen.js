@@ -293,6 +293,8 @@ class EventMathCodeGen {
         case 'InvertStmt':
         case 'DetectFallaciesStmt':
         case 'FractalStmt':
+        case 'SatisfyStmt':
+        case 'EvaluateStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -391,6 +393,8 @@ class EventMathCodeGen {
       case 'AssumeStmt':          return this._genAssumeStmt(stmt);
       case 'DetectFallaciesStmt': return this._genDetectFallaciesStmt(stmt);
       case 'FractalStmt':         return this._genFractalStmt(stmt);
+      case 'SatisfyStmt':         return this._genSatisfyStmt(stmt);
+      case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -1758,6 +1762,9 @@ class EventMathCodeGen {
   }
 
   _genEventLikeStmt(stmt) {
+    // desire blocks get EventMathDesire — all other EventLike stmts get EventMathEvent
+    if (stmt.keyword === 'desire') return this._genDesireStmt(stmt);
+
     const varName  = this._safeName(stmt.name);
     const nameEsc  = this._escape(stmt.name);
     const catEsc   = this._escape(stmt.category || stmt.keyword || 'event');
@@ -1783,6 +1790,54 @@ class EventMathCodeGen {
     }
     this.indent--;
     this._line(`);`);
+    this._line('');
+  }
+
+  _genDesireStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    this._line(`// desire: "${nameEsc}"`);
+    this._line(`const ${varName} = new EM.EventMathDesire(`);
+    this.indent++;
+    this._line(`"${nameEsc}",`);
+    if (stmt.matter && stmt.matter.fields.length > 0) {
+      this._line(`{`);
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${this._safeKey(field.key)}: "${this._escape(field.value)}",`);
+        } else {
+          this._line(`${this._safeKey(field.key)}: ${this._safeRef(field.value)},`);
+        }
+      }
+      this.indent--;
+      this._line(`}`);
+    } else {
+      this._line(`{}`);
+    }
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genSatisfyStmt(stmt) {
+    const desireVar = this._safeName(stmt.desireName);
+    const chainVar  = this._safeName(stmt.chainName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// satisfy: "${this._escape(stmt.desireName)}" against "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVar}], ${chainVar});`);
+    this._line('');
+  }
+
+  _genEvaluateStmt(stmt) {
+    const desireVarList = (stmt.desireNames || []).map(n => this._safeName(n)).join(', ');
+    const chainVar      = this._safeName(stmt.chainName);
+    const intoVar       = this._safeName(stmt.intoName);
+    const intoEsc       = this._escape(stmt.intoName);
+    const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
+    this._line(`// evaluate: [${desireLabel}] against "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVarList}], ${chainVar});`);
     this._line('');
   }
 

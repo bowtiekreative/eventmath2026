@@ -35,6 +35,8 @@ const KEYWORDS = new Set([
   'actor', 'asymmetry', 'chain', 'leads', 'root',
   'invert', 'desire', 'outcome', 'scenario',
   'fallacy', 'detect', 'dilemma', 'assume', 'fractal',
+  // v2.2 — satisfaction engine
+  'satisfy', 'evaluate', 'against',
 ]);
 
 class Token {
@@ -137,6 +139,16 @@ class EventMathTokenizer {
     // fractal <X> and <Y> into <Z>  — two-tier fractal axis
     if (lead === 'fractal') {
       return this._fractalStmt(words, lineNum);
+    }
+
+    // satisfy <desire> against <chain> into <result>
+    if (lead === 'satisfy') {
+      return this._satisfyStmt(words, lineNum);
+    }
+
+    // evaluate <desire> [and <desire>...] against <chain> into <result>
+    if (lead === 'evaluate') {
+      return this._evaluateStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1579,6 +1591,40 @@ class EventMathTokenizer {
     const secondName = words.slice(andIdx  + 1, intoIdx).join(' ');
     const intoName   = words.slice(intoIdx + 1).join(' ');
     return [new Token('FRACTAL_STMT', { firstName, secondName, intoName }, lineNum)];
+  }
+
+  // satisfy <desire> against <chain> into <result>
+  _satisfyStmt(words, lineNum) {
+    const againstIdx = this._indexOf(words, 'against');
+    const intoIdx    = this._indexOf(words, 'into');
+    if (againstIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'satisfy', lineNum)];
+    const desireName = words.slice(1, againstIdx).join(' ');
+    const chainName  = words.slice(againstIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SATISFY_STMT', { desireName, chainName, intoName }, lineNum)];
+  }
+
+  // evaluate <desire> [and <desire>...] against <chain> into <result>
+  _evaluateStmt(words, lineNum) {
+    const againstIdx = this._indexOf(words, 'against');
+    const intoIdx    = this._indexOf(words, 'into');
+    if (againstIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'evaluate', lineNum)];
+    // Split desire names by 'and'
+    const desiresPart = words.slice(1, againstIdx);
+    const desireNames = [];
+    let   current     = [];
+    for (const w of desiresPart) {
+      if (w === 'and') {
+        if (current.length) desireNames.push(current.join(' '));
+        current = [];
+      } else {
+        current.push(w);
+      }
+    }
+    if (current.length) desireNames.push(current.join(' '));
+    const chainName = words.slice(againstIdx + 1, intoIdx).join(' ');
+    const intoName  = words.slice(intoIdx + 1).join(' ');
+    return [new Token('EVALUATE_STMT', { desireNames, chainName, intoName }, lineNum)];
   }
 
   /**
