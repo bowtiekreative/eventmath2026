@@ -84,6 +84,28 @@ class EventMathFormatter {
       case 'ZoomOut':      return this._formatZoomOut(stmt);
       case 'ZoomOpposite': return this._formatZoomOpposite(stmt);
       case 'ZoomMeta':     return this._formatZoomMeta(stmt);
+      case 'SpinStmt':     return this._formatSpinStmt(stmt);
+      case 'VibrateStmt':  return this._formatVibrateStmt(stmt);
+      case 'CycleStmt':    return this._formatCycleStmt(stmt);
+      case 'ResonateStmt': return this._formatResonateStmt(stmt);
+      case 'WeightStmt':   return this._formatWeightStmt(stmt);
+      case 'ExplainStmt':  return this._formatExplainStmt(stmt);
+      case 'AnalogyStmt':   return this._formatAnalogyStmt(stmt);
+      case 'LandscapeStmt': return this._formatLandscapeStmt(stmt);
+      case 'ForecastStmt':  return this._formatForecastStmt(stmt);
+      case 'BoundStmt':          return this._formatBoundStmt(stmt);
+      case 'ActorStmt':          return this._formatActorStmt(stmt);
+      case 'ChainStmt':          return this._formatChainStmt(stmt);
+      case 'EventLikeStmt':      return this._formatEventLikeStmt(stmt);
+      case 'AsymmetryStmt':      return this._formatAsymmetryStmt(stmt);
+      case 'RootOfStmt':         return this._formatRootOfStmt(stmt);
+      case 'InvertStmt':         return this._formatInvertStmt(stmt);
+      case 'AssumeStmt':         return this._formatAssumeStmt(stmt);
+      case 'DetectFallaciesStmt':return this._formatDetectFallaciesStmt(stmt);
+      case 'FractalStmt':        return this._formatFractalStmt(stmt);
+      case 'SatisfyStmt':        return this._formatSatisfyStmt(stmt);
+      case 'EvaluateStmt':       return this._formatEvaluateStmt(stmt);
+      case 'DimensionalStmt':    return this._formatDimensionalStmt(stmt);
     }
   }
 
@@ -533,6 +555,48 @@ class EventMathFormatter {
     this._line(`zoom meta on ${subjects} into ${stmt.intoName}`);
   }
 
+  _formatSpinStmt(stmt) {
+    const dim = stmt.dimension && stmt.dimension > 2 ? ` at dimension ${stmt.dimension}` : '';
+    this._line(`spin ${stmt.sourceName} into ${stmt.intoName}${dim}`);
+  }
+
+  _formatVibrateStmt(stmt) {
+    this._line(`vibrate ${stmt.torusName} across ${stmt.rings}`);
+  }
+
+  _formatCycleStmt(stmt) {
+    this._line(`cycle ${stmt.torusName}`);
+  }
+
+  _formatResonateStmt(stmt) {
+    this._line(`resonate ${stmt.firstName} and ${stmt.secondName}`);
+  }
+
+  _formatWeightStmt(stmt) {
+    this._line(`weight ${stmt.targetName} at ${stmt.value}`);
+  }
+
+  _formatExplainStmt(stmt) {
+    this._line(`explain ${stmt.observations} from ${stmt.candidates} into ${stmt.intoName}`);
+  }
+
+  _formatAnalogyStmt(stmt) {
+    this._line(`analogy ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatLandscapeStmt(stmt) {
+    const sources = (stmt.sources || []).join(' and ');
+    this._line(`landscape from ${sources} into ${stmt.intoName}`);
+  }
+
+  _formatForecastStmt(stmt) {
+    this._line(`forecast from ${stmt.landscapeName} into ${stmt.intoName}`);
+  }
+
+  _formatBoundStmt(stmt) {
+    this._line(`bound ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
   // ── Broken Event ──────────────────────────────────────────
 
   _formatBrokenEvent(stmt) {
@@ -553,6 +617,91 @@ class EventMathFormatter {
       this.indent--;
     }
     this._line('end');
+  }
+
+  // ── v2.0 format methods ───────────────────────────────────
+
+  _formatActorStmt(stmt) {
+    this._line(`actor ${stmt.name}`);
+    this.indent++;
+    if (stmt.category) this._line(`category ${stmt.category}`);
+    if (stmt.matter && stmt.matter.fields && stmt.matter.fields.length > 0) {
+      this._line('matter');
+      this.indent++;
+      for (const f of stmt.matter.fields) {
+        this._line(f.kind === 'literal' ? `${f.key} is ${f.value}` : `${f.key} from ${f.value}`);
+      }
+      this.indent--;
+      this._line('end');
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatChainStmt(stmt) {
+    this._line(`chain ${stmt.name}`);
+    this.indent++;
+    for (const link of (stmt.links || [])) {
+      this._line(`${link.from} leads to ${link.to}`);
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatEventLikeStmt(stmt) {
+    this._line(`${stmt.keyword} ${stmt.name}`);
+    this.indent++;
+    if (stmt.category) this._line(`category ${stmt.category}`);
+    if (stmt.matter && stmt.matter.fields && stmt.matter.fields.length > 0) {
+      this._line('matter');
+      this.indent++;
+      for (const f of stmt.matter.fields) {
+        this._line(f.kind === 'literal' ? `${f.key} is ${f.value}` : `${f.key} from ${f.value}`);
+      }
+      this.indent--;
+      this._line('end');
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatAsymmetryStmt(stmt) {
+    this._line(`asymmetry from ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatRootOfStmt(stmt) {
+    const chain = stmt.chainName ? ` in ${stmt.chainName}` : '';
+    this._line(`root of ${stmt.stateName}${chain} into ${stmt.intoName}`);
+  }
+
+  _formatInvertStmt(stmt) {
+    this._line(`invert ${stmt.sourceName} into ${stmt.intoName}`);
+  }
+
+  _formatAssumeStmt(stmt) {
+    this._line(`assume ${stmt.text}`);
+  }
+
+  _formatDetectFallaciesStmt(stmt) {
+    this._line(`detect fallacies in ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatFractalStmt(stmt) {
+    this._line(`fractal ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatSatisfyStmt(stmt) {
+    this._line(`satisfy ${stmt.desireName} against ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatEvaluateStmt(stmt) {
+    const names = (stmt.desireNames || []).join(' and ');
+    this._line(`evaluate ${names} against ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatDimensionalStmt(stmt) {
+    const names = (stmt.desireNames || []).join(' and ');
+    this._line(`evaluate ${names} against ${stmt.chainName} across fractal ${stmt.fractalName} into ${stmt.intoName}`);
   }
 }
 

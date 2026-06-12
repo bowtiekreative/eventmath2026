@@ -93,6 +93,54 @@ class EventMathValidator {
             this.timelines.set(stmt.intoName, true);
           }
           break;
+        case 'SpinStmt':
+          if (stmt.intoName) {
+            // torus is a new kind — register as a known symbol
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
+        case 'ExplainStmt':
+          if (stmt.intoName) {
+            this.events.set(stmt.intoName, true);
+          }
+          break;
+        case 'AnalogyStmt':
+          if (stmt.intoName) {
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
+        case 'LandscapeStmt':
+          if (stmt.intoName) {
+            this.marks.set(stmt.intoName, true);
+          }
+          break;
+        case 'ForecastStmt':
+          if (stmt.intoName) {
+            this.events.set(stmt.intoName, true);
+          }
+          break;
+        case 'BoundStmt':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
+        case 'ActorStmt':
+          this._registerSymbol('actor', stmt.name, this.events);
+          break;
+        case 'ChainStmt':
+          this.marks.set(stmt.name, true);
+          break;
+        case 'EventLikeStmt':
+          this._registerSymbol(stmt.keyword, stmt.name, this.events);
+          break;
+        case 'AsymmetryStmt':
+        case 'RootOfStmt':
+        case 'InvertStmt':
+        case 'DetectFallaciesStmt':
+        case 'FractalStmt':
+        case 'SatisfyStmt':
+        case 'EvaluateStmt':
+        case 'DimensionalStmt':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
       }
     }
   }

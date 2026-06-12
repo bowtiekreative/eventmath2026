@@ -12,7 +12,6 @@
  */
 
 const { Token } = require('./tokenizer.js');
-const RESERVED = require('./tokenizer.js').RESERVED_WORDS;
 
 const MAX_ITERATIONS = 10000;
 
@@ -94,11 +93,30 @@ class EventMathParser {
 
     if (t.type === 'KEYWORD' && t.value === 'end') return null;
 
-    // Handle ZOOM_* tokens (non-KEYWORD type)
+    // Handle ZOOM_* and torus tokens (non-KEYWORD types)
     if (t.type === 'ZOOM_IN')       return this._parseZoomIn();
     if (t.type === 'ZOOM_OUT')      return this._parseZoomOut();
     if (t.type === 'ZOOM_OPPOSITE') return this._parseZoomOpposite();
     if (t.type === 'ZOOM_META')     return this._parseZoomMeta();
+    if (t.type === 'SPIN_STMT')     return this._parseSpinStmt();
+    if (t.type === 'VIBRATE_STMT')  return this._parseVibrateStmt();
+    if (t.type === 'CYCLE_STMT')    return this._parseCycleStmt();
+    if (t.type === 'RESONATE_STMT') return this._parseResonateStmt();
+    if (t.type === 'WEIGHT_STMT')   return this._parseWeightStmt();
+    if (t.type === 'EXPLAIN_STMT')  return this._parseExplainStmt();
+    if (t.type === 'ANALOGY_STMT')   return this._parseAnalogyStmt();
+    if (t.type === 'BOUND_STMT')    return this._parseBoundStmt();
+    if (t.type === 'LANDSCAPE_STMT')        return this._parseLandscapeStmt();
+    if (t.type === 'FORECAST_STMT')         return this._parseForecastStmt();
+    if (t.type === 'ASYMMETRY_STMT')        return this._parseAsymmetryStmt();
+    if (t.type === 'ROOT_OF_STMT')          return this._parseRootOfStmt();
+    if (t.type === 'INVERT_STMT')           return this._parseInvertStmt();
+    if (t.type === 'ASSUME_STMT')           return this._parseAssumeStmt();
+    if (t.type === 'DETECT_FALLACIES_STMT') return this._parseDetectFallaciesStmt();
+    if (t.type === 'FRACTAL_STMT')          return this._parseFractalStmt();
+    if (t.type === 'SATISFY_STMT')          return this._parseSatisfyStmt();
+    if (t.type === 'EVALUATE_STMT')         return this._parseEvaluateStmt();
+    if (t.type === 'DIMENSIONAL_STMT')      return this._parseDimensionalStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -130,7 +148,14 @@ class EventMathParser {
       case 'count':    return this._parseCountInLayer();
       case 'predict':  return this._parsePredictStmt();
       case 'resolve':  return this._parseResolveStmt();
-      case 'pulse':    return this._parsePulse();
+      // v2.0
+      case 'actor':    return this._parseActorBlock();
+      case 'chain':    return this._parseChainBlock();
+      case 'desire':   return this._parseEventLike('desire');
+      case 'outcome':  return this._parseEventLike('outcome');
+      case 'scenario': return this._parseEventLike('scenario');
+      case 'fallacy':  return this._parseEventLike('fallacy');
+      case 'dilemma':  return this._parseEventLike('dilemma');
       default:         return this._parseBodyName();
     }
   }
@@ -141,7 +166,6 @@ class EventMathParser {
     this.expect('KEYWORD', 'event');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('event');
-    this._checkReserved(nameToken);
 
     const result = ast('Event', { name: nameToken.value, category: null, matter: null });
 
@@ -197,7 +221,6 @@ class EventMathParser {
     this.expect('KEYWORD', 'layer');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('layer');
-    this._checkReserved(nameToken);
 
     const events = [];
     let guard = 0;
@@ -219,7 +242,6 @@ class EventMathParser {
     this.expect('KEYWORD', 'timeline');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('timeline');
-    this._checkReserved(nameToken);
 
     const result = ast('Timeline', { name: nameToken.value, past: null, present: null, future: null });
 
@@ -260,7 +282,6 @@ class EventMathParser {
     this.expect('KEYWORD', 'action');
     const nameToken = this.expect('NAME');
     if (!nameToken) return this._skipBlock('action');
-    this._checkReserved(nameToken);
 
     const result = ast('Action', { name: nameToken.value, doorOpen: null, body: [], doorClosed: null });
 
@@ -308,7 +329,7 @@ class EventMathParser {
     const firstTok = this.peek();
     if (!firstTok) return { value: '' };
 
-    const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by']);
+    const ARITH_OPS = new Set(['plus', 'minus', 'times', 'divided by', 'take away']);
 
     // Handle BUILTIN token — emitted by _findBuiltinOp in tokenizer
     if (firstTok.type === 'BUILTIN') {
@@ -766,34 +787,6 @@ class EventMathParser {
     return ast('Check', { condition });
   }
 
-  /**
-   * Pulse declaration: pulse <name> [every N tick]
-   */
-  _parsePulse() {
-    this.expect('KEYWORD', 'pulse');
-    const nameToken = this.expect('NAME');
-    if (!nameToken) return ast('Pulse', { name: '', every: 1 });
-    this._checkReserved(nameToken);
-    let every = 1;
-    if (this.isKeyword('every')) {
-      this.advance(); // consume 'every'
-      const numToken = this.expect('NUMBER');
-      if (numToken) every = parseInt(numToken.value, 10) || 1;
-      this.match('KEYWORD', 'tick');
-      this.match('KEYWORD', 'ticks');
-    }
-    return ast('Pulse', { name: nameToken.value, every });
-  }
-
-  /**
-   * Reserved word enforcement (per spec E015).
-   */
-  _checkReserved(nameToken) {
-    if (nameToken && RESERVED.has(nameToken.value.toLowerCase())) {
-      this.errors.push(`Line ${nameToken.line}: The word "${nameToken.value}" is reserved and cannot be used as a name. Reserved words have one meaning in EventMath.`);
-    }
-  }
-
   // ── Layer operations ─────────────────────────────────────────────
 
   _parseSortLayer() {
@@ -918,6 +911,229 @@ class EventMathParser {
     if (!t || !t.value) return null;
     const { subjects, intoName } = t.value;
     return ast('ZoomMeta', { subjects, intoName });
+  }
+
+  // ── Torus statements ─────────────────────────────────────────────
+
+  _parseSpinStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SpinStmt', {
+      sourceName: t.value.sourceName,
+      intoName:   t.value.intoName,
+      dimension:  t.value.dimension || 2
+    });
+  }
+
+  _parseVibrateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('VibrateStmt', { torusName: t.value.torusName, rings: t.value.rings });
+  }
+
+  _parseCycleStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('CycleStmt', { torusName: t.value.torusName });
+  }
+
+  _parseResonateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ResonateStmt', { firstName: t.value.firstName, secondName: t.value.secondName });
+  }
+
+  _parseWeightStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('WeightStmt', { targetName: t.value.targetName, value: t.value.value });
+  }
+
+  _parseExplainStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ExplainStmt', {
+      observations: t.value.observations,
+      candidates:   t.value.candidates,
+      intoName:     t.value.intoName
+    });
+  }
+
+  _parseAnalogyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AnalogyStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseBoundStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('BoundStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseLandscapeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('LandscapeStmt', {
+      sources:  t.value.sources,
+      intoName: t.value.intoName
+    });
+  }
+
+  _parseForecastStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ForecastStmt', {
+      landscapeName: t.value.landscapeName,
+      intoName:      t.value.intoName
+    });
+  }
+
+  // ── v2.0 parse methods ──────────────────────────────────────────
+
+  // actor block — same structure as event
+  _parseActorBlock() {
+    this.expect('KEYWORD', 'actor');
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock('actor');
+    const result = ast('ActorStmt', { name: nameToken.value, category: null, matter: null });
+    if (this.isKeyword('category') || this.isKeyword('cat')) {
+      this.advance();
+      const catName = this.expect('NAME');
+      if (catName) result.category = catName.value;
+    }
+    if (this.isKeyword('matter')) {
+      this.advance();
+      result.matter = this._parseMatterBlock();
+    }
+    this.expect('KEYWORD', 'end');
+    return result;
+  }
+
+  // chain block — collects leads-to links until 'end'
+  _parseChainBlock() {
+    this.expect('KEYWORD', 'chain');
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock('chain');
+    const links = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < MAX_ITERATIONS) {
+      const t = this.peek();
+      if (t && t.type === 'LEADS_TO_STMT') {
+        const lt = this.advance();
+        links.push({ from: lt.value.from, to: lt.value.to, value: lt.value.value });
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ChainStmt', { name: nameToken.value, links });
+  }
+
+  // generic event-like block for desire/outcome/scenario/fallacy/dilemma
+  _parseEventLike(keyword) {
+    this.expect('KEYWORD', keyword);
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock(keyword);
+    const result = ast('EventLikeStmt', { keyword, name: nameToken.value, category: null, matter: null });
+    if (this.isKeyword('category') || this.isKeyword('cat')) {
+      this.advance();
+      const catName = this.expect('NAME');
+      if (catName) result.category = catName.value;
+    }
+    if (this.isKeyword('matter')) {
+      this.advance();
+      result.matter = this._parseMatterBlock();
+    }
+    this.expect('KEYWORD', 'end');
+    return result;
+  }
+
+  _parseAsymmetryStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AsymmetryStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseRootOfStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('RootOfStmt', {
+      stateName: t.value.stateName,
+      chainName: t.value.chainName,
+      intoName:  t.value.intoName
+    });
+  }
+
+  _parseInvertStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('InvertStmt', { sourceName: t.value.sourceName, intoName: t.value.intoName });
+  }
+
+  _parseAssumeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AssumeStmt', { name: t.value.name, value: t.value.value, text: t.value.text });
+  }
+
+  _parseDetectFallaciesStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('DetectFallaciesStmt', { chainName: t.value.chainName, intoName: t.value.intoName });
+  }
+
+  _parseFractalStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('FractalStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseSatisfyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SatisfyStmt', {
+      desireName: t.value.desireName,
+      chainName:  t.value.chainName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseEvaluateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('EvaluateStmt', {
+      desireNames: t.value.desireNames,
+      chainName:   t.value.chainName,
+      intoName:    t.value.intoName
+    });
+  }
+
+  _parseDimensionalStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('DimensionalStmt', {
+      desireNames: t.value.desireNames,
+      chainName:   t.value.chainName,
+      fractalName: t.value.fractalName,
+      intoName:    t.value.intoName
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

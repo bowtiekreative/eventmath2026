@@ -57,17 +57,6 @@ class EventMathCodeGen {
    */
   generate(ast) {
     this.output = [];
-
-    // Bug #14 fix: bail early if AST carries parse errors
-    if (ast.errors && ast.errors.length > 0) {
-      this._line(`// Compilation skipped — ${ast.errors.length} parse error(s) in source.`);
-      for (const err of ast.errors) {
-        const msg = typeof err === 'string' ? err : err.message || JSON.stringify(err);
-        this._line(`// ${msg}`);
-      }
-      this._line('module.exports = {};');
-      return this.output.join('\n');
-    }
     this.indent = 0;
     this._vars = new Set();
     this._varDecls = [];
@@ -89,6 +78,11 @@ class EventMathCodeGen {
     this._line("const EM = typeof EventMathRuntime !== 'undefined'");
     this._line("  ? EventMathRuntime");
     this._line("  : require('../runtime/eventmath-runtime.js');");
+    this._line('');
+    // Probabilistic weight registry — populated by weight statements
+    this._line('const __weights = {};');
+    // Assumption registry — populated by assume statements, passed to satisfaction engine
+    this._line('const __assumptions = [];');
     this._line('');
 
     // First pass: register all declaration names and door inputs
@@ -260,10 +254,72 @@ class EventMathCodeGen {
             this._timelineNames.add(stmt.intoName);
           }
           break;
-        case 'Pulse':
+        case 'SpinStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+          }
+          break;
+        case 'CycleStmt':
+          break;
+        case 'ExplainStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._eventNames.add(stmt.intoName);
+          }
+          break;
+        case 'AnalogyStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+          }
+          break;
+        case 'LandscapeStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'ForecastStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'BoundStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'AsymmetryStmt':
+        case 'RootOfStmt':
+        case 'InvertStmt':
+        case 'DetectFallaciesStmt':
+        case 'FractalStmt':
+        case 'SatisfyStmt':
+        case 'EvaluateStmt':
+        case 'DimensionalStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'AssumeStmt':
           if (stmt.name && !this._vars.has(stmt.name)) {
             this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
           }
+          break;
+        case 'ActorStmt':
+          this._eventNames.add(stmt.name);
+          break;
+        case 'ChainStmt':
+          if (!this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
+          }
+          break;
+        case 'EventLikeStmt':
+          this._eventNames.add(stmt.name);
           break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
@@ -327,7 +383,28 @@ class EventMathCodeGen {
       case 'ZoomOut':        return this._genZoomOut(stmt);
       case 'ZoomOpposite':   return this._genZoomOpposite(stmt);
       case 'ZoomMeta':       return this._genZoomMeta(stmt);
-      case 'Pulse':          return this._genPulse(stmt);
+      case 'SpinStmt':       return this._genSpinStmt(stmt);
+      case 'VibrateStmt':    return this._genVibrateStmt(stmt);
+      case 'CycleStmt':      return this._genCycleStmt(stmt);
+      case 'ResonateStmt':   return this._genResonateStmt(stmt);
+      case 'WeightStmt':     return this._genWeightStmt(stmt);
+      case 'ExplainStmt':    return this._genExplainStmt(stmt);
+      case 'AnalogyStmt':    return this._genAnalogyStmt(stmt);
+      case 'LandscapeStmt':  return this._genLandscapeStmt(stmt);
+      case 'ForecastStmt':   return this._genForecastStmt(stmt);
+      case 'BoundStmt':           return this._genBoundStmt(stmt);
+      case 'ActorStmt':           return this._genActorStmt(stmt);
+      case 'ChainStmt':           return this._genChainStmt(stmt);
+      case 'EventLikeStmt':       return this._genEventLikeStmt(stmt);
+      case 'AsymmetryStmt':       return this._genAsymmetryStmt(stmt);
+      case 'RootOfStmt':          return this._genRootOfStmt(stmt);
+      case 'InvertStmt':          return this._genInvertStmt(stmt);
+      case 'AssumeStmt':          return this._genAssumeStmt(stmt);
+      case 'DetectFallaciesStmt': return this._genDetectFallaciesStmt(stmt);
+      case 'FractalStmt':         return this._genFractalStmt(stmt);
+      case 'SatisfyStmt':         return this._genSatisfyStmt(stmt);
+      case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
+      case 'DimensionalStmt':     return this._genDimensionalStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -423,30 +500,12 @@ class EventMathCodeGen {
     this._line(`const ${varName} = new EM.EventMathTimeline("${this._escape(stmt.name)}");`);
     this._line('');
 
-    // Populate past sections (historical events)
-    if (stmt.past && stmt.past.layers && stmt.past.layers.length > 0) {
-      for (const layer of stmt.past.layers) {
-        this._line(`// Past: ${this._escape(layer.name)}`);
-        this._line(`${varName}.log.push(...${this._safeName(layer.name)}.events);`);
-      }
-    }
-
-    // Populate present sections
+    // Populate present layers
     if (stmt.present && stmt.present.layers) {
       for (const layer of stmt.present.layers) {
-        this._line(`// Present: ${this._escape(layer.name)}`);
         this._line(`${varName}.log.push(...${this._safeName(layer.name)}.events);`);
       }
     }
-
-    // Populate future sections (scheduled events)
-    if (stmt.future && stmt.future.layers && stmt.future.layers.length > 0) {
-      for (const layer of stmt.future.layers) {
-        this._line(`// Future: ${this._escape(layer.name)}`);
-        this._line(`${varName}.future.push(...${this._safeName(layer.name)}.events);`);
-      }
-    }
-
     this._line('');
   }
 
@@ -505,7 +564,10 @@ class EventMathCodeGen {
     if (!str) return '""';
     if (str === 'true') return 'true';
     if (str === 'false') return 'false';
-    if (/^\d+(\.\d+)?$/.test(str)) return str;
+    if (str === 'past')    return '-1';
+    if (str === 'present') return '0';
+    if (str === 'future')  return '1';
+    if (/^-?\d+(\.\d+)?$/.test(str)) return str;
     return `"${this._escape(str)}"`;
   }
 
@@ -528,12 +590,21 @@ class EventMathCodeGen {
     if (!value) return '""';
     if (value.kind === 'number') return value.value;
     if (value.kind === 'bool') return value.value ? 'true' : 'false';
-    if (value.kind === 'name') return this._safeRef(value.value);
+    if (value.kind === 'name') {
+      const n = value.value;
+      if (n === 'past')    return '-1';
+      if (n === 'present') return '0';
+      if (n === 'future')  return '1';
+      return this._safeRef(n);
+    }
     // Literal — detect boolean/number strings
     const raw = value.value || '';
     if (raw === 'true') return 'true';
     if (raw === 'false') return 'false';
-    if (/^\d+(\.\d+)?$/.test(raw)) return raw;
+    if (raw === 'past')    return '-1';
+    if (raw === 'present') return '0';
+    if (raw === 'future')  return '1';
+    if (/^-?\d+(\.\d+)?$/.test(raw)) return raw;
     return `"${this._escape(raw)}"`;
   }
 
@@ -639,6 +710,20 @@ class EventMathCodeGen {
     if (kind === 'zoom_level_of') {
       const targetName = this._safeName(op.target);
       return `(${targetName}.zoomLevel || 1)`;
+    }
+    if (kind === 'dimension_of') {
+      const targetName = this._safeName(op.target);
+      return `(${targetName}.dimension || 2)`;
+    }
+    if (kind === 'sqrt') {
+      const a = this._resolveOperand(op.a);
+      return `Math.sqrt(${a})`;
+    }
+    if (kind === 'weighted_accuracy_of') {
+      const layerName = this._safeName(op.layer.join(' '));
+      const condStr = (op.condition || []).join(' ');
+      const cond = this._genMatterCondition(condStr, '_p');
+      return `(function() {\n  const _resolved = ${layerName}.events.filter(_p => _p.matter && _p.matter.resolved === true && (${cond}));\n  let _wCorrect = 0, _wTotal = 0;\n  for (const _p of _resolved) {\n    const _w = __weights[_p.matter.direction] || __weights[_p.matter.lens] || __weights[_p.matter.quantity] || 1;\n    _wTotal += _w;\n    if (_p.matter.correct === true) _wCorrect += _w;\n  }\n  return _wTotal > 0 ? Math.round((_wCorrect / _wTotal) * 100) / 100 : 0;\n})()`;
     }
     return '""';
   }
@@ -867,41 +952,215 @@ class EventMathCodeGen {
     this._line('');
   }
 
-  /**
-   * Generate JS for a pulse (oscillating switch).
-   * Creates a toggle that cycles state every N timeline ticks.
-   * pulse switch_name [every N tick]
-   */
-  _genPulse(stmt) {
-    const varName = this._safeName(stmt.name);
-    const escName = this._escape(stmt.name);
-    const interval = stmt.every || 1;
+  // ── Torus statements ────────────────────────────────────────────
 
-    this._line(`// Pulse: \"${escName}\" — oscillates every ${interval} tick(s)`);
-    this._line(`let ${varName}_pulse = false; // current state (the nucleus)`);
-    this._line(`let ${varName}_count = 0;     // tick counter`);
-    this._line(`const ${varName} = {`);
+  _genSpinStmt(stmt) {
+    const torusVar  = this._safeName(stmt.intoName);
+    const sourceVar = this._safeName(stmt.sourceName);
+    const intoEsc   = this._escape(stmt.intoName);
+    const srcEsc    = this._escape(stmt.sourceName);
+
+    // Accept negative dimensions (-39 to -2) as well as positive (2 to 39)
+    const rawDim = typeof stmt.dimension === 'number' ? stmt.dimension : 2;
+    const absD   = Math.abs(rawDim);
+    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 39 ? 39 : absD)
+                              : (absD < 2 ? 2 : absD > 39 ? 39 : absD);
+    const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D+' + dim;
+    this._line(`// spin ${srcEsc} into ${intoEsc}  [${dimLabel}]`);
+    this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
+    this._line(`${torusVar}.spinFrom(typeof ${sourceVar} !== 'undefined' ? ${sourceVar} : null, ${dim});`);
+    this._line('');
+  }
+
+  _genVibrateStmt(stmt) {
+    const torusVar = this._safeName(stmt.torusName);
+    const torusEsc = this._escape(stmt.torusName);
+
+    this._line(`// vibrate ${torusEsc} across ${stmt.rings} rings`);
+    this._line(`${torusVar}.expand(${stmt.rings});`);
+    this._line('');
+  }
+
+  _genCycleStmt(stmt) {
+    const torusVar = this._safeName(stmt.torusName);
+    const torusEsc = this._escape(stmt.torusName);
+
+    this._line(`// cycle ${torusEsc} — mark the completion event`);
+    this._line(`${torusVar}.complete();`);
+    this._line('');
+  }
+
+  _genResonateStmt(stmt) {
+    const firstVar   = this._safeName(stmt.firstName);
+    const secondVar  = this._safeName(stmt.secondName);
+    const firstEsc   = this._escape(stmt.firstName);
+    const secondEsc  = this._escape(stmt.secondName);
+
+    this._line(`// resonate ${firstEsc} and ${secondEsc}`);
+    this._line(`if (${firstVar} && typeof ${firstVar}.addResonance === 'function') ${firstVar}.addResonance('${secondEsc}');`);
+    this._line(`if (${secondVar} && typeof ${secondVar}.addResonance === 'function') ${secondVar}.addResonance('${firstEsc}');`);
+    this._line('');
+  }
+
+  // ── v1.6 Reasoning statements ────────────────────────────────────
+
+  // weight <name> at <N>  — store probability weight in registry
+  _genWeightStmt(stmt) {
+    const key = this._safeName(stmt.targetName);
+    const esc = this._escape(stmt.targetName);
+    this._line(`// weight: ${esc} = ${stmt.value}`);
+    this._line(`__weights['${key}'] = ${stmt.value};`);
+    this._line('');
+  }
+
+  // explain <observations> from <candidates> into <result>
+  // Abductive: find the candidate from <candidates> that best explains
+  // the pattern of correct predictions in <observations>.
+  _genExplainStmt(stmt) {
+    const obsVar  = this._safeName(stmt.observations);
+    const canVar  = this._safeName(stmt.candidates);
+    const intoVar = this._safeName(stmt.intoName);
+    const obsEsc  = this._escape(stmt.observations);
+    const canEsc  = this._escape(stmt.candidates);
+    const intoEsc = this._escape(stmt.intoName);
+
+    this._line(`// explain ${obsEsc} from ${canEsc} into ${intoEsc}`);
+    this._line(`const ${intoVar} = (() => {`);
     this.indent++;
-    this._line(`name: '${escName}',`);
-    this._line(`every: ${interval},`);
-    this._line(`get state() { return ${varName}_pulse; },`);
-    this._line(`tick() {`);
+    // Collect correct observations — handle both layer.events and raw arrays
+    this._line(`const __obs = (Array.isArray(${obsVar}) ? ${obsVar} : (${obsVar}.events || []));`);
+    this._line(`const __isTruthy = v => v === true || v === 'true';`);
+    this._line(`const __correct = __obs.filter(_p => _p.matter && __isTruthy(_p.matter.resolved) && __isTruthy(_p.matter.correct));`);
+    this._line(`const __candidates = (Array.isArray(${canVar}) ? ${canVar} : (${canVar}.events || []));`);
+    this._line(`let __bestScore = -1, __bestEvt = null, __bestReason = '';`);
+    this._line(`for (const __c of __candidates) {`);
     this.indent++;
-    this._line(`${varName}_count++;`);
-    this._line(`if (${varName}_count >= ${interval}) {`);
+    this._line(`let __score = 0;`);
+    this._line(`const __cMatter = __c.matter || {};`);
+    this._line(`for (const __p of __correct) {`);
     this.indent++;
-    this._line(`${varName}_count = 0;`);
-    this._line(`${varName}_pulse = !${varName}_pulse; // nucleus appears / disappears`);
-    this._line(`EM.getDefaultTimeline().append(new EM.TimelineEntry('set', { key: '${escName}', value: ${varName}_pulse }));`);
+    this._line(`const __pMatter = __p.matter || {};`);
+    // Weight-adjusted scoring: each field match scores weight of that field
+    this._line(`for (const __k of Object.keys(__cMatter)) {`);
+    this.indent++;
+    this._line(`if (__pMatter[__k] !== undefined && __pMatter[__k] === __cMatter[__k]) {`);
+    this.indent++;
+    this._line(`__score += (__weights[String(__cMatter[__k])] || __weights[__k] || 1);`);
     this.indent--;
     this._line(`}`);
     this.indent--;
-    this._line(`},`);
-    this._line(`reset() { ${varName}_pulse = false; ${varName}_count = 0; }`);
+    this._line(`}`);
     this.indent--;
-    this._line(`};`);
-    this._line(`EM.getDefaultTimeline()._state.pulses = EM.getDefaultTimeline()._state.pulses || {};`);
-    this._line(`EM.getDefaultTimeline()._state.pulses['${escName}'] = ${varName};`);
+    this._line(`}`);
+    this._line(`if (__score > __bestScore) {`);
+    this.indent++;
+    this._line(`__bestScore = __score;`);
+    this._line(`__bestEvt = __c;`);
+    this._line(`__bestReason = 'matched ' + Object.keys(__cMatter).filter(k => __correct.some(p => (p.matter||{})[k] === __cMatter[k])).join(', ');`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`}`);
+    // Wrap best result as an event with explanation metadata
+    this._line(`if (!__bestEvt) return new EM.EventMathEvent('no_explanation', 'explanation', { score: 0, reason: 'no candidates matched' });`);
+    this._line(`const __expMatter = Object.assign({}, __bestEvt.matter, {`);
+    this.indent++;
+    this._line(`explanation_score: Math.round(__bestScore * 100) / 100,`);
+    this._line(`explanation_of: '${obsEsc}',`);
+    this._line(`matched_fields: __bestReason,`);
+    this._line(`abductive: true`);
+    this.indent--;
+    this._line(`});`);
+    this._line(`return new EM.EventMathEvent(__bestEvt.id + '_explanation', 'explanation', __expMatter);`);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  // analogy <X> and <Y> into <Z>
+  // Analogical: compute structural similarity between X and Y (0-1 score).
+  // Compares: matter field overlap (Jaccard), zoom level match, governance role match.
+  _genAnalogyStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const firstEsc  = this._escape(stmt.firstName);
+    const secondEsc = this._escape(stmt.secondName);
+    const intoEsc   = this._escape(stmt.intoName);
+
+    this._line(`// analogy ${firstEsc} and ${secondEsc} into ${intoEsc}`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    // Extract matter from event, timeline control entry, or raw object
+    this._line(`function __getMatter(x) {`);
+    this.indent++;
+    this._line(`if (!x) return {};`);
+    this._line(`if (x.matter) return x.matter;`);
+    this._line(`if (x.log && x.log[0] && x.log[0].data) return x.log[0].data.matter || {};`);
+    this._line(`return {};`);
+    this.indent--;
+    this._line(`}`);
+    this._line(`const __aM = __getMatter(${firstVar});`);
+    this._line(`const __bM = __getMatter(${secondVar});`);
+    this._line(`const __aKeys = new Set(Object.keys(__aM));`);
+    this._line(`const __bKeys = new Set(Object.keys(__bM));`);
+    // Jaccard similarity on matter fields with matching values
+    this._line(`const __intersection = [...__aKeys].filter(k => __bKeys.has(k) && __aM[k] === __bM[k]).length;`);
+    this._line(`const __union = new Set([...__aKeys, ...__bKeys]).size;`);
+    this._line(`const __matterSim = __union > 0 ? __intersection / __union : 1;`);
+    // Structural similarity: zoom level, opposite, meta, rings
+    this._line(`let __sScore = 0, __sTotal = 0;`);
+    this._line(`const __a = ${firstVar}, __b = ${secondVar};`);
+    this._line(`if (__a.zoomLevel !== undefined && __b.zoomLevel !== undefined) { __sTotal++; if (__a.zoomLevel === __b.zoomLevel) __sScore++; }`);
+    this._line(`if (__a.opposite !== undefined || __b.opposite !== undefined) { __sTotal++; if (__a.opposite === __b.opposite) __sScore++; }`);
+    this._line(`if (__a.meta !== undefined || __b.meta !== undefined) { __sTotal++; if (__a.meta === __b.meta) __sScore++; }`);
+    this._line(`if (__a.rings !== undefined || __b.rings !== undefined) { __sTotal++; if ((__a.rings||[]).length === (__b.rings||[]).length) __sScore++; }`);
+    this._line(`const __structSim = __sTotal > 0 ? __sScore / __sTotal : 1;`);
+    this._line(`return Math.round((__matterSim * 0.6 + __structSim * 0.4) * 100) / 100;`);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  // ── v1.7 Multi-dimensional landscape ────────────────────────────
+
+  // landscape from T1 and T2 and ... into L
+  _genLandscapeStmt(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const intoEsc = this._escape(stmt.intoName);
+    this._line(`// landscape: ${intoEsc}`);
+    this._line(`${intoVar} = new EM.EventMathLandscape('${intoEsc}');`);
+    for (const src of (stmt.sources || [])) {
+      const srcVar = this._safeName(src);
+      const srcEsc = this._escape(src);
+      this._line(`if (typeof ${srcVar} !== 'undefined' && ${srcVar} && typeof ${srcVar}.dimension !== 'undefined') { ${intoVar}.addTorus(${srcVar}); }`);
+    }
+    this._line('');
+  }
+
+  // forecast from L into F
+  _genForecastStmt(stmt) {
+    const landVar = this._safeName(stmt.landscapeName);
+    const intoVar = this._safeName(stmt.intoName);
+    const intoEsc = this._escape(stmt.intoName);
+    this._line(`// forecast from ${this._escape(stmt.landscapeName)} into ${intoEsc}`);
+    this._line(`${intoVar} = ${landVar}.forecast();`);
+    this._line('');
+  }
+
+  // bound <firstName> and <secondName> into <intoName>
+  // Bridges negative-D and positive-D toruses into the full complex axis structure:
+  //   bridge (i), anti-bridge (-i), meta (ℝ), anti-meta (-ℝ), grand (ℂ)
+  _genBoundStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const firstEsc  = this._escape(stmt.firstName);
+    const secondEsc = this._escape(stmt.secondName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// bound "${firstEsc}" and "${secondEsc}" → "${intoEsc}"`);
+    this._line(`// bridge=i  anti-bridge=-i  meta=R  anti-meta=-R  grand=C`);
+    this._line(`${intoVar} = new EM.EventMathAxis('${intoEsc}', ${firstVar}, ${secondVar});`);
     this._line('');
   }
 
@@ -1017,7 +1276,7 @@ class EventMathCodeGen {
   _genExpr(node) {
     if (!node) return '0';
     if (node.kind === 'expr') {
-      const ops = { plus: '+', minus: '-', times: '*', 'divided by': '/' };
+      const ops = { plus: '+', minus: '-', times: '*', 'divided by': '/', 'take away': '-' };
       const jsOp = ops[node.op] || '+';
       const left  = node.left.kind  === 'expr' ? `(${this._genExpr(node.left)})`  : this._exprOperand(node.left);
       const right = node.right.kind === 'expr' ? `(${this._genExpr(node.right)})` : this._exprOperand(node.right);
@@ -1029,7 +1288,14 @@ class EventMathCodeGen {
   _exprOperand(operand) {
     if (!operand) return '0';
     if (operand.kind === 'number') return operand.value;
-    if (operand.kind === 'name') return this._safeRef(operand.value);
+    if (operand.kind === 'name') {
+      // past/present/future are the numberless numbers: -1, 0, 1
+      const n = operand.value;
+      if (n === 'past')    return '-1';
+      if (n === 'present') return '0';
+      if (n === 'future')  return '1';
+      return this._safeRef(n);
+    }
     return `"${this._escape(operand.value || '')}"`;
   }
 
@@ -1461,6 +1727,205 @@ class EventMathCodeGen {
       .replace(/"/g, '\\"')
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r');
+  }
+
+  // ── v2.0 code generators ────────────────────────────────────────
+
+  _genActorStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    this._line(`// Actor: "${nameEsc}"`);
+    this._line(`const ${varName} = new EM.EventMathActor(`);
+    this.indent++;
+    this._line(`"${nameEsc}",`);
+    if (stmt.matter && stmt.matter.fields.length > 0) {
+      this._line(`{`);
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${this._safeKey(field.key)}: "${this._escape(field.value)}",`);
+        } else {
+          this._line(`${this._safeKey(field.key)}: ${this._safeRef(field.value)},`);
+        }
+      }
+      this.indent--;
+      this._line(`}`);
+    } else {
+      this._line(`{}`);
+    }
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genChainStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    this._line(`// Chain: "${nameEsc}"`);
+    this._line(`${varName} = new EM.EventMathChain('${nameEsc}');`);
+    for (const link of (stmt.links || [])) {
+      const fromEsc = this._escape(link.from);
+      const toEsc   = this._escape(link.to);
+      const valArg  = (link.value !== null && link.value !== undefined && !isNaN(link.value))
+        ? `, ${link.value}` : '';
+      this._line(`${varName}.addLink('${fromEsc}', '${toEsc}'${valArg});`);
+    }
+    this._line('');
+  }
+
+  _genEventLikeStmt(stmt) {
+    // desire blocks get EventMathDesire — all other EventLike stmts get EventMathEvent
+    if (stmt.keyword === 'desire') return this._genDesireStmt(stmt);
+
+    const varName  = this._safeName(stmt.name);
+    const nameEsc  = this._escape(stmt.name);
+    const catEsc   = this._escape(stmt.category || stmt.keyword || 'event');
+    this._line(`// ${stmt.keyword}: "${nameEsc}"`);
+    this._line(`const ${varName} = new EM.EventMathEvent(`);
+    this.indent++;
+    this._line(`"${nameEsc}",`);
+    this._line(`"${catEsc}",`);
+    if (stmt.matter && stmt.matter.fields.length > 0) {
+      this._line(`{`);
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${this._safeKey(field.key)}: "${this._escape(field.value)}",`);
+        } else {
+          this._line(`${this._safeKey(field.key)}: ${this._safeRef(field.value)},`);
+        }
+      }
+      this.indent--;
+      this._line(`}`);
+    } else {
+      this._line(`{}`);
+    }
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genDesireStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    this._line(`// desire: "${nameEsc}"`);
+    this._line(`const ${varName} = new EM.EventMathDesire(`);
+    this.indent++;
+    this._line(`"${nameEsc}",`);
+    if (stmt.matter && stmt.matter.fields.length > 0) {
+      this._line(`{`);
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${this._safeKey(field.key)}: "${this._escape(field.value)}",`);
+        } else {
+          this._line(`${this._safeKey(field.key)}: ${this._safeRef(field.value)},`);
+        }
+      }
+      this.indent--;
+      this._line(`}`);
+    } else {
+      this._line(`{}`);
+    }
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genSatisfyStmt(stmt) {
+    const desireVar = this._safeName(stmt.desireName);
+    const chainVar  = this._safeName(stmt.chainName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// satisfy: "${this._escape(stmt.desireName)}" against "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVar}], ${chainVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genEvaluateStmt(stmt) {
+    const desireVarList = (stmt.desireNames || []).map(n => this._safeName(n)).join(', ');
+    const chainVar      = this._safeName(stmt.chainName);
+    const intoVar       = this._safeName(stmt.intoName);
+    const intoEsc       = this._escape(stmt.intoName);
+    const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
+    this._line(`// evaluate: [${desireLabel}] against "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVarList}], ${chainVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genAsymmetryStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// asymmetry: power gap between "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}"`);
+    this._line(`${intoVar} = new EM.EventMathPowerGap('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
+  }
+
+  _genRootOfStmt(stmt) {
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    const stateEsc = this._escape(stmt.stateName);
+    this._line(`// root of: trace "${stateEsc}" backward through chain`);
+    if (stmt.chainName) {
+      const chainVar = this._safeName(stmt.chainName);
+      this._line(`${intoVar} = ${chainVar}.trace('${stateEsc}');`);
+    } else {
+      // No chain specified — emit a note; trace requires a chain at runtime
+      this._line(`${intoVar} = new EM.EventMathRootTrace(null, '${stateEsc}');`);
+    }
+    this._line('');
+  }
+
+  _genInvertStmt(stmt) {
+    const srcVar  = this._safeName(stmt.sourceName);
+    const intoVar = this._safeName(stmt.intoName);
+    const intoEsc = this._escape(stmt.intoName);
+    this._line(`// invert: reverse chain "${this._escape(stmt.sourceName)}"`);
+    this._line(`${intoVar} = (${srcVar} && typeof ${srcVar}.invert === 'function') ? ${srcVar}.invert() : new EM.EventMathChain('${intoEsc}');`);
+    this._line('');
+  }
+
+  _genAssumeStmt(stmt) {
+    const nameEsc  = this._escape(stmt.name  || stmt.text || '');
+    const valueEsc = this._escape(stmt.value || '');
+    const varName  = this._safeName(stmt.name || stmt.text || '');
+    this._line(`// assume: "${nameEsc}" is "${valueEsc}"`);
+    this._line(`${varName} = new EM.EventMathAssumption('${nameEsc}', '${valueEsc}');`);
+    this._line(`__assumptions.push(${varName});`);
+    this._line('');
+  }
+
+  _genDetectFallaciesStmt(stmt) {
+    const chainVar = this._safeName(stmt.chainName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    this._line(`// detect fallacies in "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathFallacyDetector(${chainVar});`);
+    this._line('');
+  }
+
+  _genFractalStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// fractal axis: "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}" → "${intoEsc}"`);
+    this._line(`${intoVar} = new EM.EventMathFractalAxis('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
+  }
+
+  _genDimensionalStmt(stmt) {
+    const desireVarList = (stmt.desireNames || []).map(n => this._safeName(n)).join(', ');
+    const chainVar      = this._safeName(stmt.chainName);
+    const fractalVar    = this._safeName(stmt.fractalName);
+    const intoVar       = this._safeName(stmt.intoName);
+    const intoEsc       = this._escape(stmt.intoName);
+    const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
+    this._line(`// dimensional: [${desireLabel}] against "${this._escape(stmt.chainName)}" across fractal "${this._escape(stmt.fractalName)}"`);
+    this._line(`${intoVar} = new EM.EventMathDimensionalReport('${intoEsc}', [${desireVarList}], ${chainVar}, ${fractalVar}, __assumptions);`);
+    this._line('');
   }
 }
 
