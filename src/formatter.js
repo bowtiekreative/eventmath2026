@@ -103,6 +103,8 @@ class EventMathFormatter {
       case 'AssumeStmt':         return this._formatAssumeStmt(stmt);
       case 'DetectFallaciesStmt':return this._formatDetectFallaciesStmt(stmt);
       case 'FractalStmt':        return this._formatFractalStmt(stmt);
+      case 'SpineStmt':          return this._formatSpineStmt(stmt);
+      case 'AnchorStmt':         return this._formatAnchorStmt(stmt);
       case 'SatisfyStmt':        return this._formatSatisfyStmt(stmt);
       case 'EvaluateStmt':       return this._formatEvaluateStmt(stmt);
       case 'DimensionalStmt':    return this._formatDimensionalStmt(stmt);
@@ -112,7 +114,10 @@ class EventMathFormatter {
       case 'ConflictStmt':       return this._formatConflictStmt(stmt);
       case 'WeighStmt':          return this._formatWeighStmt(stmt);
       case 'DeepenStmt':         return this._formatDeepenStmt(stmt);
+      case 'ExtendStmt':         return this._formatExtendStmt(stmt);
       case 'TraceStmt':          return this._formatTraceStmt(stmt);
+      case 'ScrubStmt':          return this._formatScrubStmt(stmt);
+      case 'GradeStmt':          return this._formatGradeStmt(stmt);
     }
   }
 
@@ -742,6 +747,29 @@ class EventMathFormatter {
 
   _formatTraceStmt(stmt) {
     this._line(`trace ${stmt.conflictName} into ${stmt.intoName}`);
+  }
+
+  // ── v2.10 video-editor vocabulary ────────────────────────────────
+
+  _formatAnchorStmt(stmt) {
+    this._line(`anchor ${stmt.name} at depth ${stmt.depth}`);
+  }
+
+  _formatSpineStmt(stmt) {
+    this._line(`spine ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatGradeStmt(stmt) {
+    const through = stmt.spineName ? ` through ${stmt.spineName}` : '';
+    this._line(`grade ${stmt.desireName} against ${stmt.chainName}${through} into ${stmt.intoName}`);
+  }
+
+  _formatExtendStmt(stmt) {
+    this._line(`extend ${stmt.spineName} with ${stmt.negName} and ${stmt.posName} into ${stmt.intoName}`);
+  }
+
+  _formatScrubStmt(stmt) {
+    this._line(`scrub ${stmt.conflictName} into ${stmt.intoName}`);
   }
 }
 

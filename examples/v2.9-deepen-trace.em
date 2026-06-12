@@ -1,6 +1,5 @@
-// EventMath v2.9 — D±52 Emergence tier, deepen, trace
-// Demonstrates: fractal axis deepening to tier 4, emergence scoring,
-// conflict tracing with priority sensitivity curves.
+// EventMath v2.10 — anchor, spine, grade, extend, scrub
+// Demonstrates the video-editor vocabulary for dimensional analysis.
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
@@ -13,9 +12,9 @@ event negotiation complete
 // ── Chain ───────────────────────────────────────────────────────────────────
 
 chain compensation
-  work rate 55
-  review score 82
-  offer amount 95000
+  work leads to review at value 82
+  review leads to offer at value 95
+  offer leads to payment at value 95000
 end
 
 // ── Assumptions ─────────────────────────────────────────────────────────────
@@ -25,51 +24,43 @@ assume living cost is 60000
 
 // ── Desires with priority ────────────────────────────────────────────────────
 
-matter fair pay
+desire fair pay
+matter
   direction is more than
   satisfied when payment more than market rate
   priority is 3
 end
+end
 
-matter job security
+desire job security
+matter
   direction is more than
-  satisfied when review score more than 70
+  satisfied when review more than 70
   priority is 2
 end
-
-matter growth path
-  direction is more than
-  satisfied when offer amount more than 90000
-  priority is 1
 end
 
-// ── Fractal axis — three structural tiers ───────────────────────────────────
+// ── Anchors (dimensional poles) ──────────────────────────────────────────────
 
-torus economic shadow
-  spin from dimension negative 13
-end
+anchor economic low end at depth -13
+anchor economic high end at depth 13
 
-torus economic signal
-  spin from dimension positive 13
-end
+// ── Spine (structural through-line) ─────────────────────────────────────────
 
-fractal axis compensation axis from economic shadow and economic signal
+spine economic low end and economic high end into compensation spine
 
-// ── Deepen to D±52 emergence tier ───────────────────────────────────────────
+// ── Grade (dimensional analysis of a desire against a chain) ─────────────────
 
-torus emergence shadow
-  spin from dimension negative 52
-end
+grade fair pay against compensation through compensation spine into pay grade
 
-torus emergence signal
-  spin from dimension positive 52
-end
+// ── Anchors for emergence tier (D±52) ───────────────────────────────────────
 
-deepen compensation axis with emergence shadow and emergence signal into deep compensation axis
+anchor emergence shadow at depth -52
+anchor emergence signal at depth 52
 
-// ── Dimensional report ───────────────────────────────────────────────────────
+// ── Extend the spine to D±52 ─────────────────────────────────────────────────
 
-satisfy fair pay against compensation for deep compensation axis into pay report
+extend compensation spine with emergence shadow and emergence signal into deep spine
 
 // ── Conflict detection ───────────────────────────────────────────────────────
 
@@ -79,6 +70,6 @@ conflict fair pay and job security for compensation into pay vs security
 
 weigh pay vs security into pay resolution
 
-// ── Priority sensitivity trace ────────────────────────────────────────────────
+// ── Priority sensitivity scrub ────────────────────────────────────────────────
 
-trace pay vs security into pay trace
+scrub pay vs security into pay scrub

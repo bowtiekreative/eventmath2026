@@ -29,18 +29,18 @@ console.log('\n─ D±52 Emergence tier (dimensional report) ─');
   const chain = new EM.EventMathChain('creator chain');
   chain.addLink('authentic voice', 'payment', 620);
 
-  const negTorus = new EM.EventMathTorus('neg');
-  negTorus.spinFrom(null, -39);
-  const posTorus = new EM.EventMathTorus('pos');
-  posTorus.spinFrom(null, 39);
-  const axis = new EM.EventMathFractalAxis('market axis', negTorus, posTorus);
+  const negTorus = new EM.EventMathAnchor('neg');
+  negTorus.setDepth( -39);
+  const posTorus = new EM.EventMathAnchor('pos');
+  posTorus.setDepth( 39);
+  const axis = new EM.EventMathSpine('market axis', negTorus, posTorus);
 
   const assumption = new EM.EventMathAssumption('market rate', '500');
   const desire = new EM.EventMathDesire('fair payment', {
     direction: 'more than', 'satisfied when': 'payment more than market rate',
   });
 
-  const report = new EM.EventMathDimensionalReport('test', [desire], chain, axis, [assumption]);
+  const report = new EM.EventMathGrade('test', [desire], chain, axis, [assumption]);
 
   assert('tier4: exists on dimensional report', typeof report.tier4Score === 'number', report.tier4Score);
   assert('tier4: is between 0 and 100', report.tier4Score >= 0 && report.tier4Score <= 100, report.tier4Score);
@@ -57,13 +57,13 @@ console.log('\n─ D±52 Emergence tier (dimensional report) ─');
   const chain = new EM.EventMathChain('strong chain');
   chain.addLink('foundation', 'payment', 700);
 
-  const neg39 = new EM.EventMathTorus('n39'); neg39.spinFrom(null, -39);
-  const pos39 = new EM.EventMathTorus('p39'); pos39.spinFrom(null, 39);
-  const axis = new EM.EventMathFractalAxis('strong axis', neg39, pos39);
+  const neg39 = new EM.EventMathAnchor('n39'); neg39.setDepth( -39);
+  const pos39 = new EM.EventMathAnchor('p39'); pos39.setDepth( 39);
+  const axis = new EM.EventMathSpine('strong axis', neg39, pos39);
 
   const assumption = new EM.EventMathAssumption('market rate', '500');
   const desire = new EM.EventMathDesire('fair pay', { direction: 'more than', 'satisfied when': 'payment more than market rate' });
-  const report = new EM.EventMathDimensionalReport('strong', [desire], chain, axis, [assumption]);
+  const report = new EM.EventMathGrade('strong', [desire], chain, axis, [assumption]);
 
   // t3 ≥ 0, t4 = t3²/100 ≥ 0
   assert('tier4: scales with root strength', report.tier4Score >= 0, report.tier4Score);
@@ -79,15 +79,15 @@ console.log('\n─ D±52 Emergence tier (dimensional report) ─');
 console.log('\n─ Fractal axis deepen (D±52) ─');
 
 {
-  const neg39 = new EM.EventMathTorus('n39'); neg39.spinFrom(null, -39);
-  const pos39 = new EM.EventMathTorus('p39'); pos39.spinFrom(null, 39);
-  const axis = new EM.EventMathFractalAxis('market axis', neg39, pos39);
+  const neg39 = new EM.EventMathAnchor('n39'); neg39.setDepth( -39);
+  const pos39 = new EM.EventMathAnchor('p39'); pos39.setDepth( 39);
+  const axis = new EM.EventMathSpine('market axis', neg39, pos39);
 
   assert('deepen: fractalDepth before = 3', axis.fractalDepth === 3, axis.fractalDepth);
 
-  const neg52 = new EM.EventMathTorus('n52'); neg52.spinFrom(null, -52);
-  const pos52 = new EM.EventMathTorus('p52'); pos52.spinFrom(null,  52);
-  axis.deepen(neg52, pos52);
+  const neg52 = new EM.EventMathAnchor('n52'); neg52.setDepth( -52);
+  const pos52 = new EM.EventMathAnchor('p52'); pos52.setDepth(  52);
+  axis.extend(neg52, pos52);
 
   assert('deepen: fractalDepth after = 4', axis.fractalDepth === 4, axis.fractalDepth);
   assert('deepen: dimension = 52', axis.dimension === 52, axis.dimension);
@@ -97,10 +97,10 @@ console.log('\n─ Fractal axis deepen (D±52) ─');
 
 {
   // Deepen without explicit tori — auto-creates D±52 tori
-  const neg39 = new EM.EventMathTorus('n39'); neg39.spinFrom(null, -39);
-  const pos39 = new EM.EventMathTorus('p39'); pos39.spinFrom(null, 39);
-  const axis = new EM.EventMathFractalAxis('auto axis', neg39, pos39);
-  axis.deepen(null, null);
+  const neg39 = new EM.EventMathAnchor('n39'); neg39.setDepth( -39);
+  const pos39 = new EM.EventMathAnchor('p39'); pos39.setDepth( 39);
+  const axis = new EM.EventMathSpine('auto axis', neg39, pos39);
+  axis.extend(null, null);
   assert('deepen: null tori auto-creates D±52', axis.tier4 !== null && axis.fractalDepth === 4);
 }
 
@@ -109,17 +109,17 @@ console.log('\n─ Fractal axis deepen (D±52) ─');
   const chain = new EM.EventMathChain('deep chain');
   chain.addLink('work', 'payment', 620);
 
-  const neg39 = new EM.EventMathTorus('n39'); neg39.spinFrom(null, -39);
-  const pos39 = new EM.EventMathTorus('p39'); pos39.spinFrom(null, 39);
-  const axis = new EM.EventMathFractalAxis('deep axis', neg39, pos39);
+  const neg39 = new EM.EventMathAnchor('n39'); neg39.setDepth( -39);
+  const pos39 = new EM.EventMathAnchor('p39'); pos39.setDepth( 39);
+  const axis = new EM.EventMathSpine('deep axis', neg39, pos39);
 
-  const neg52 = new EM.EventMathTorus('n52'); neg52.spinFrom(null, -52);
-  const pos52 = new EM.EventMathTorus('p52'); pos52.spinFrom(null,  52);
-  axis.deepen(neg52, pos52);
+  const neg52 = new EM.EventMathAnchor('n52'); neg52.setDepth( -52);
+  const pos52 = new EM.EventMathAnchor('p52'); pos52.setDepth(  52);
+  axis.extend(neg52, pos52);
 
   const assumption = new EM.EventMathAssumption('market rate', '500');
   const desire = new EM.EventMathDesire('fair pay', { direction: 'more than', 'satisfied when': 'payment more than market rate' });
-  const report = new EM.EventMathDimensionalReport('deep', [desire], chain, axis, [assumption]);
+  const report = new EM.EventMathGrade('deep', [desire], chain, axis, [assumption]);
 
   assert('deepen in report: emergeAdjustments non-empty', report.emergeAdjustments.length > 0);
   // neg ×0.70 applied first, then pos ×1.30 — combined: 0.70 × 1.30 = 0.91 < 1
@@ -138,7 +138,7 @@ console.log('\n─ Trace (priority sensitivity curve) ─');
   const d1 = new EM.EventMathDesire('fair payment', { direction: 'more than', 'satisfied when': 'payment more than 100' });
   const d2 = new EM.EventMathDesire('big savings', { direction: 'more than', 'satisfied when': 'savings more than 100' });
   const conflict = new EM.EventMathConflict('c', d1, d2, chain, []);
-  const trace = new EM.EventMathTrace('t', conflict);
+  const trace = new EM.EventMathScrub('t', conflict);
 
   assert('trace OPPOSED: dominant is fair payment', trace.dominant === 'fair payment', trace.dominant);
   assert('trace OPPOSED: breakeven is null', trace.breakeven === null, trace.breakeven);
@@ -154,7 +154,7 @@ console.log('\n─ Trace (priority sensitivity curve) ─');
   const d1 = new EM.EventMathDesire('fair payment', { direction: 'more than', 'satisfied when': 'payment more than 100' });
   const d2 = new EM.EventMathDesire('savings goal', { direction: 'more than', 'satisfied when': 'savings more than 50' });
   const conflict = new EM.EventMathConflict('c2', d1, d2, chain, []);
-  const trace = new EM.EventMathTrace('t2', conflict);
+  const trace = new EM.EventMathScrub('t2', conflict);
 
   assert('trace BOTH: curve has 10 points', trace.curve.length === 10, trace.curve.length);
   // When both satisfied, breakeven = s2/s1 = 100/100 = 1 (tied at equal priority)
@@ -171,7 +171,7 @@ console.log('\n─ Trace (priority sensitivity curve) ─');
   const d1 = new EM.EventMathDesire('want alpha', { direction: 'more than', 'satisfied when': 'alpha more than 30' });
   const d2 = new EM.EventMathDesire('want beta', { direction: 'more than', 'satisfied when': 'beta more than 50' });
   const conflict = new EM.EventMathConflict('math', d1, d2, chain, []);
-  const trace = new EM.EventMathTrace('math trace', conflict);
+  const trace = new EM.EventMathScrub('math trace', conflict);
 
   // s1=100, s2=100 → breakeven = 1.0
   // Actually both alpha (60>30) and beta (90>50) are satisfied → s1=100, s2=100
@@ -186,7 +186,7 @@ console.log('\n─ Trace (priority sensitivity curve) ─');
   const d1 = new EM.EventMathDesire('d1', { direction: 'more than', 'satisfied when': 'payment more than 100' });
   const d2 = new EM.EventMathDesire('d2', { direction: 'more than', 'satisfied when': 'savings more than 100' });
   const conflict = new EM.EventMathConflict('rc', d1, d2, chain, []);
-  const trace = new EM.EventMathTrace('render trace', conflict);
+  const trace = new EM.EventMathScrub('render trace', conflict);
   const rendered = trace.render();
   assert('trace render: TRACE header', rendered.includes('TRACE'));
   assert('trace render: Desire A present', rendered.includes('Desire A'));
@@ -238,7 +238,7 @@ console.log('\n─ Codegen ─');
 
 {
   const js = compile('deepen market axis with emergence neg and emergence pos into deep axis');
-  assert('deepen codegen: calls .deepen()', js.includes('.deepen('));
+  assert('deepen codegen: calls .extend()', js.includes('.extend('));
   assert('deepen codegen: axis var', js.includes('market_axis'));
   assert('deepen codegen: neg var', js.includes('emergence_neg'));
   assert('deepen codegen: pos var', js.includes('emergence_pos'));
@@ -246,7 +246,7 @@ console.log('\n─ Codegen ─');
 
 {
   const js = compile('trace tension report into priority curve');
-  assert('trace codegen: EventMathTrace constructor', js.includes('EventMathTrace'));
+  assert('trace codegen: EventMathScrub constructor', js.includes('EventMathScrub'));
   assert('trace codegen: conflict var', js.includes('tension_report'));
 }
 
@@ -270,13 +270,13 @@ console.log('\n─ Gradient: EMERGENCE READY ─');
   const chain = new EM.EventMathChain('strong chain');
   chain.addLink('work', 'payment', 5000);
 
-  const neg39 = new EM.EventMathTorus('n39'); neg39.spinFrom(null, -39);
-  const pos39 = new EM.EventMathTorus('p39'); pos39.spinFrom(null, 39);
-  const axis = new EM.EventMathFractalAxis('strong axis', neg39, pos39);
+  const neg39 = new EM.EventMathAnchor('n39'); neg39.setDepth( -39);
+  const pos39 = new EM.EventMathAnchor('p39'); pos39.setDepth( 39);
+  const axis = new EM.EventMathSpine('strong axis', neg39, pos39);
 
   const assumption = new EM.EventMathAssumption('market rate', '500');
   const desire = new EM.EventMathDesire('fair pay', { direction: 'more than', 'satisfied when': 'payment more than market rate' });
-  const report = new EM.EventMathDimensionalReport('strong', [desire], chain, axis, [assumption]);
+  const report = new EM.EventMathGrade('strong', [desire], chain, axis, [assumption]);
 
   // t3 = t2 * rootConfidence, t2 = t1 * systemConfidence
   // t1 = 100 (5000 >> 500), t2 = 100 * 0.9 (2-tier deduction? or 3-tier)

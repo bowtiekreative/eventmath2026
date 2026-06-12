@@ -45,6 +45,8 @@ const KEYWORDS = new Set([
   'conflict', 'weigh',
   // v2.9 — emergence tier + trace
   'deepen', 'trace',
+  // v2.10 — video editor vocabulary rename
+  'anchor', 'spine', 'grade', 'extend', 'scrub',
 ]);
 
 class Token {
@@ -144,9 +146,24 @@ class EventMathTokenizer {
       return this._detectFallaciesStmt(words, lineNum);
     }
 
-    // fractal <X> and <Y> into <Z>  — two-tier fractal axis
+    // fractal <X> and <Y> into <Z>  — two-tier fractal axis (legacy; 'spine' preferred)
     if (lead === 'fractal') {
       return this._fractalStmt(words, lineNum);
+    }
+
+    // spine NEG and POS into NAME  — fractal spine (renamed from 'fractal')
+    if (lead === 'spine') {
+      return this._spineStmt(words, lineNum);
+    }
+
+    // anchor NAME at depth N  — dimensional anchor (renamed from 'spin into')
+    if (lead === 'anchor') {
+      return this._anchorStmt(words, lineNum);
+    }
+
+    // grade DESIRE against CHAIN through SPINE into RESULT  — dimensional grade
+    if (lead === 'grade') {
+      return this._gradeStmt(words, lineNum);
     }
 
     // satisfy <desire> against <chain> into <result>
@@ -184,14 +201,24 @@ class EventMathTokenizer {
       return this._tokenizeWeighStmt(words, lineNum);
     }
 
-    // deepen AXIS with NEG and POS into RESULT — attach D±52 tori to fractal axis
+    // deepen AXIS with NEG and POS into RESULT — attach D±52 tori to fractal axis (legacy; 'extend' preferred)
     if (lead === 'deepen') {
       return this._tokenizeDeepenStmt(words, lineNum);
     }
 
-    // trace CONFLICT into RESULT — priority sensitivity curve
+    // extend SPINE with NEG and POS into RESULT — deepen a spine to D±52
+    if (lead === 'extend') {
+      return this._tokenizeExtendStmt(words, lineNum);
+    }
+
+    // trace CONFLICT into RESULT — priority sensitivity curve (legacy; 'scrub' preferred)
     if (lead === 'trace') {
       return this._tokenizeTraceStmt(words, lineNum);
+    }
+
+    // scrub CONFLICT into RESULT — priority sensitivity curve
+    if (lead === 'scrub') {
+      return this._tokenizeScrubStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1838,6 +1865,79 @@ class EventMathTokenizer {
     const conflictName = words.slice(1, intoIdx).join(' ');
     const intoName     = words.slice(intoIdx + 1).join(' ');
     return [new Token('TRACE_STMT', { conflictName, intoName }, lineNum)];
+  }
+
+  // ── v2.10 video-editor vocabulary ─────────────────────────────────────────
+
+  // anchor NAME at depth N  — creates a dimensional anchor
+  _anchorStmt(words, lineNum) {
+    const atIdx    = this._indexOf(words, 'at');
+    const depthIdx = atIdx >= 0 ? this._indexOfFrom(words, 'depth', atIdx) : -1;
+    let name, depth;
+    if (atIdx >= 0 && depthIdx === atIdx + 1 && words.length > depthIdx + 1) {
+      name  = words.slice(1, atIdx).join(' ');
+      depth = parseInt(words[depthIdx + 1], 10) || 2;
+    } else {
+      name  = words.slice(1).join(' ');
+      depth = 2;
+    }
+    if (!name) return [new Token('KEYWORD', 'anchor', lineNum)];
+    return [new Token('ANCHOR_STMT', { name, depth }, lineNum)];
+  }
+
+  // spine NEG and POS into NAME  — fractal spine (video editor name for fractal axis)
+  _spineStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'spine', lineNum)];
+    const firstName  = words.slice(1, andIdx).join(' ');
+    const secondName = words.slice(andIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SPINE_STMT', { firstName, secondName, intoName }, lineNum)];
+  }
+
+  // grade DESIRE against CHAIN through SPINE into RESULT  — dimensional grade
+  _gradeStmt(words, lineNum) {
+    const againstIdx = this._indexOf(words, 'against');
+    const intoIdx    = this._indexOf(words, 'into');
+    if (againstIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'grade', lineNum)];
+    const desireName  = words.slice(1, againstIdx).join(' ');
+    const middleWords = words.slice(againstIdx + 1, intoIdx);
+    const throughIdx  = this._indexOf(middleWords, 'through');
+    let chainName, spineName;
+    if (throughIdx >= 0) {
+      chainName = middleWords.slice(0, throughIdx).join(' ');
+      spineName = middleWords.slice(throughIdx + 1).join(' ');
+    } else {
+      chainName = middleWords.join(' ');
+      spineName = '';
+    }
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('GRADE_STMT', { desireName, chainName, spineName, intoName }, lineNum)];
+  }
+
+  // extend SPINE with NEG and POS into RESULT  — deepen a spine to D±52
+  _tokenizeExtendStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (withIdx < 0 || andIdx < 0 || intoIdx < 0 || andIdx <= withIdx || intoIdx <= andIdx) {
+      return [new Token('KEYWORD', 'extend', lineNum)];
+    }
+    const spineName = words.slice(1, withIdx).join(' ');
+    const negName   = words.slice(withIdx + 1, andIdx).join(' ');
+    const posName   = words.slice(andIdx + 1, intoIdx).join(' ');
+    const intoName  = words.slice(intoIdx + 1).join(' ');
+    return [new Token('EXTEND_STMT', { spineName, negName, posName, intoName }, lineNum)];
+  }
+
+  // scrub CONFLICT into RESULT  — priority sensitivity curve
+  _tokenizeScrubStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) return [new Token('KEYWORD', 'scrub', lineNum)];
+    const conflictName = words.slice(1, intoIdx).join(' ');
+    const intoName     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SCRUB_STMT', { conflictName, intoName }, lineNum)];
   }
 
   /**

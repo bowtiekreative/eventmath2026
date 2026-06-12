@@ -290,21 +290,31 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        case 'AnchorStmt':
+          if (stmt.name && !this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
+          }
+          break;
         case 'AsymmetryStmt':
         case 'RootOfStmt':
         case 'InvertStmt':
         case 'DetectFallaciesStmt':
         case 'FractalStmt':
+        case 'SpineStmt':
         case 'SatisfyStmt':
         case 'EvaluateStmt':
         case 'DimensionalStmt':
+        case 'GradeStmt':
         case 'DiagnoseStmt':
         case 'ChallengeStmt':
         case 'CompareStmt':
         case 'ConflictStmt':
         case 'WeighStmt':
         case 'DeepenStmt':
+        case 'ExtendStmt':
         case 'TraceStmt':
+        case 'ScrubStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -409,16 +419,21 @@ class EventMathCodeGen {
       case 'AssumeStmt':          return this._genAssumeStmt(stmt);
       case 'DetectFallaciesStmt': return this._genDetectFallaciesStmt(stmt);
       case 'FractalStmt':         return this._genFractalStmt(stmt);
+      case 'SpineStmt':           return this._genSpineStmt(stmt);
+      case 'AnchorStmt':          return this._genAnchorStmt(stmt);
       case 'SatisfyStmt':         return this._genSatisfyStmt(stmt);
       case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
       case 'DimensionalStmt':     return this._genDimensionalStmt(stmt);
+      case 'GradeStmt':           return this._genGradeStmt(stmt);
       case 'DiagnoseStmt':        return this._genDiagnoseStmt(stmt);
       case 'ChallengeStmt':       return this._genChallengeStmt(stmt);
       case 'CompareStmt':         return this._genCompareStmt(stmt);
       case 'ConflictStmt':        return this._genConflictStmt(stmt);
       case 'WeighStmt':           return this._genWeighStmt(stmt);
       case 'DeepenStmt':          return this._genDeepenStmt(stmt);
+      case 'ExtendStmt':          return this._genExtendStmt(stmt);
       case 'TraceStmt':           return this._genTraceStmt(stmt);
+      case 'ScrubStmt':           return this._genScrubStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -1015,15 +1030,14 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     const srcEsc    = this._escape(stmt.sourceName);
 
-    // Accept negative dimensions (-39 to -2) as well as positive (2 to 39)
+    // Dimensions extend at 13-step intervals (D±13, D±26, D±39, D±52, D±65 ...)
     const rawDim = typeof stmt.dimension === 'number' ? stmt.dimension : 2;
     const absD   = Math.abs(rawDim);
-    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 39 ? 39 : absD)
-                              : (absD < 2 ? 2 : absD > 39 ? 39 : absD);
+    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD) : (absD < 2 ? 2 : absD);
     const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D+' + dim;
     this._line(`// spin ${srcEsc} into ${intoEsc}  [${dimLabel}]`);
-    this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
-    this._line(`${torusVar}.spinFrom(typeof ${sourceVar} !== 'undefined' ? ${sourceVar} : null, ${dim});`);
+    this._line(`const ${torusVar} = new EM.EventMathAnchor('${intoEsc}');`);
+    this._line(`${torusVar}.setDepth(${dim});`);
     this._line('');
   }
 
@@ -1966,8 +1980,8 @@ class EventMathCodeGen {
     const secondVar = this._safeName(stmt.secondName);
     const intoVar   = this._safeName(stmt.intoName);
     const intoEsc   = this._escape(stmt.intoName);
-    this._line(`// fractal axis: "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}" → "${intoEsc}"`);
-    this._line(`${intoVar} = new EM.EventMathFractalAxis('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line(`// spine: "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}" → "${intoEsc}"`);
+    this._line(`${intoVar} = new EM.EventMathSpine('${intoEsc}', ${firstVar}, ${secondVar});`);
     this._line('');
   }
 
@@ -1978,8 +1992,8 @@ class EventMathCodeGen {
     const intoVar       = this._safeName(stmt.intoName);
     const intoEsc       = this._escape(stmt.intoName);
     const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
-    this._line(`// dimensional: [${desireLabel}] against "${this._escape(stmt.chainName)}" across fractal "${this._escape(stmt.fractalName)}"`);
-    this._line(`${intoVar} = new EM.EventMathDimensionalReport('${intoEsc}', [${desireVarList}], ${chainVar}, ${fractalVar}, __assumptions);`);
+    this._line(`// grade: [${desireLabel}] against "${this._escape(stmt.chainName)}" across spine "${this._escape(stmt.fractalName)}"`);
+    this._line(`${intoVar} = new EM.EventMathGrade('${intoEsc}', [${desireVarList}], ${chainVar}, ${fractalVar}, __assumptions);`);
     this._line('');
   }
 
@@ -2041,7 +2055,7 @@ class EventMathCodeGen {
     const intoVar  = this._safeName(stmt.intoName);
     const intoEsc  = this._escape(stmt.intoName);
     this._line(`// deepen: "${this._escape(stmt.axisName)}" + D±52 tori → "${this._escape(stmt.intoName)}"`);
-    this._line(`${axisVar}.deepen(${negVar}, ${posVar});`);
+    this._line(`${axisVar}.extend(${negVar}, ${posVar});`);
     this._line(`${intoVar} = ${axisVar};`);
     this._line('');
   }
@@ -2051,7 +2065,61 @@ class EventMathCodeGen {
     const intoVar     = this._safeName(stmt.intoName);
     const intoEsc     = this._escape(stmt.intoName);
     this._line(`// trace: priority curve for "${this._escape(stmt.conflictName)}"`);
-    this._line(`${intoVar} = new EM.EventMathTrace('${intoEsc}', ${conflictVar});`);
+    this._line(`${intoVar} = new EM.EventMathScrub('${intoEsc}', ${conflictVar});`);
+    this._line('');
+  }
+
+  // ── v2.10 video-editor vocabulary ────────────────────────────────
+
+  _genAnchorStmt(stmt) {
+    const anchorVar = this._safeName(stmt.name);
+    const nameEsc   = this._escape(stmt.name);
+    const depth     = typeof stmt.depth === 'number' ? stmt.depth : 2;
+    this._line(`// anchor: "${nameEsc}" at depth ${depth}`);
+    this._line(`${anchorVar} = new EM.EventMathAnchor('${nameEsc}');`);
+    this._line(`${anchorVar}.setDepth(${depth});`);
+    this._line('');
+  }
+
+  _genSpineStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// spine: "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}" → "${intoEsc}"`);
+    this._line(`${intoVar} = new EM.EventMathSpine('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
+  }
+
+  _genGradeStmt(stmt) {
+    const desireVar = this._safeName(stmt.desireName);
+    const chainVar  = this._safeName(stmt.chainName);
+    const spineVar  = this._safeName(stmt.spineName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// grade: "${this._escape(stmt.desireName)}" against "${this._escape(stmt.chainName)}" through "${this._escape(stmt.spineName)}"`);
+    this._line(`${intoVar} = new EM.EventMathGrade('${intoEsc}', [${desireVar}], ${chainVar}, ${spineVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genExtendStmt(stmt) {
+    const spineVar = this._safeName(stmt.spineName);
+    const negVar   = this._safeName(stmt.negName);
+    const posVar   = this._safeName(stmt.posName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    this._line(`// extend: "${this._escape(stmt.spineName)}" + D±52 anchors → "${this._escape(stmt.intoName)}"`);
+    this._line(`${spineVar}.extend(${negVar}, ${posVar});`);
+    this._line(`${intoVar} = ${spineVar};`);
+    this._line('');
+  }
+
+  _genScrubStmt(stmt) {
+    const conflictVar = this._safeName(stmt.conflictName);
+    const intoVar     = this._safeName(stmt.intoName);
+    const intoEsc     = this._escape(stmt.intoName);
+    this._line(`// scrub: priority curve for "${this._escape(stmt.conflictName)}"`);
+    this._line(`${intoVar} = new EM.EventMathScrub('${intoEsc}', ${conflictVar});`);
     this._line('');
   }
 }

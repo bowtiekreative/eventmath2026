@@ -114,16 +114,21 @@ class EventMathParser {
     if (t.type === 'ASSUME_STMT')           return this._parseAssumeStmt();
     if (t.type === 'DETECT_FALLACIES_STMT') return this._parseDetectFallaciesStmt();
     if (t.type === 'FRACTAL_STMT')          return this._parseFractalStmt();
+    if (t.type === 'SPINE_STMT')            return this._parseSpineStmt();
+    if (t.type === 'ANCHOR_STMT')           return this._parseAnchorStmt();
     if (t.type === 'SATISFY_STMT')          return this._parseSatisfyStmt();
     if (t.type === 'EVALUATE_STMT')         return this._parseEvaluateStmt();
     if (t.type === 'DIMENSIONAL_STMT')      return this._parseDimensionalStmt();
+    if (t.type === 'GRADE_STMT')            return this._parseGradeStmt();
     if (t.type === 'WHY_STMT')              return this._parseWhyStmt();
     if (t.type === 'CHALLENGE_STMT')        return this._parseChallengeStmt();
     if (t.type === 'COMPARE_STMT')          return this._parseCompareStmt();
     if (t.type === 'CONFLICT_STMT')         return this._parseConflictStmt();
     if (t.type === 'WEIGH_STMT')            return this._parseWeighStmt();
     if (t.type === 'DEEPEN_STMT')           return this._parseDeepenStmt();
+    if (t.type === 'EXTEND_STMT')           return this._parseExtendStmt();
     if (t.type === 'TRACE_STMT')            return this._parseTraceStmt();
+    if (t.type === 'SCRUB_STMT')            return this._parseScrubStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1232,6 +1237,55 @@ class EventMathParser {
     const t = this.advance();
     if (!t || !t.value) return null;
     return ast('TraceStmt', {
+      conflictName: t.value.conflictName,
+      intoName:     t.value.intoName,
+    });
+  }
+
+  // ── v2.10 video-editor vocabulary ────────────────────────────────
+
+  _parseAnchorStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AnchorStmt', { name: t.value.name, depth: t.value.depth });
+  }
+
+  _parseSpineStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SpineStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName,
+    });
+  }
+
+  _parseGradeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('GradeStmt', {
+      desireName: t.value.desireName,
+      chainName:  t.value.chainName,
+      spineName:  t.value.spineName,
+      intoName:   t.value.intoName,
+    });
+  }
+
+  _parseExtendStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ExtendStmt', {
+      spineName: t.value.spineName,
+      negName:   t.value.negName,
+      posName:   t.value.posName,
+      intoName:  t.value.intoName,
+    });
+  }
+
+  _parseScrubStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ScrubStmt', {
       conflictName: t.value.conflictName,
       intoName:     t.value.intoName,
     });

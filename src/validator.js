@@ -95,8 +95,12 @@ class EventMathValidator {
           break;
         case 'SpinStmt':
           if (stmt.intoName) {
-            // torus is a new kind — register as a known symbol
             this.marks.set(stmt.intoName, true);
+          }
+          break;
+        case 'AnchorStmt':
+          if (stmt.name) {
+            this.marks.set(stmt.name, true);
           }
           break;
         case 'ExplainStmt':
@@ -136,16 +140,20 @@ class EventMathValidator {
         case 'InvertStmt':
         case 'DetectFallaciesStmt':
         case 'FractalStmt':
+        case 'SpineStmt':
         case 'SatisfyStmt':
         case 'EvaluateStmt':
         case 'DimensionalStmt':
+        case 'GradeStmt':
         case 'DiagnoseStmt':
         case 'ChallengeStmt':
         case 'CompareStmt':
         case 'ConflictStmt':
         case 'WeighStmt':
         case 'DeepenStmt':
+        case 'ExtendStmt':
         case 'TraceStmt':
+        case 'ScrubStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
           break;
       }
@@ -159,7 +167,7 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

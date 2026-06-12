@@ -480,13 +480,11 @@
     return FIB.indexOf(n) !== -1;
   }
 
-  function EventMathTorus(name) {
-    if (!(this instanceof EventMathTorus)) {
-      return new EventMathTorus(name);
+  function EventMathAnchor(name) {
+    if (!(this instanceof EventMathAnchor)) {
+      return new EventMathAnchor(name);
     }
     this.name          = name || '';
-    this.sourceName    = '';
-    this.zoomLevel     = 1;
     this.dimension     = 2;
     this.rings         = [];
     this.totalOuter    = 0;
@@ -495,14 +493,10 @@
     this.completionEvent = null;
   }
 
-  // spinFrom(source, dimension) — dimension 2–N (positive) or -(2–N) (negative/opposite polarity).
+  // setDepth(dimension) — dimension 2–N (positive) or -(2–N) (negative/opposite polarity).
   // Each structural tier adds 13: D±13 surface, D±26 system, D±39 root, D±52 emergence, D±65 ...
   // Negative dimensions spin clockwise; nucleus polarity is inverted.
-  EventMathTorus.prototype.spinFrom = function (source, dimension) {
-    this.sourceName = source
-      ? (source.name || source.id || String(source))
-      : '';
-    this.zoomLevel = ((source && source.zoomLevel) || 1) + 1;
+  EventMathAnchor.prototype.setDepth = function (dimension) {
     var d = typeof dimension === 'number' ? Math.floor(dimension) : 2;
     var absD = Math.abs(d);
     if (absD < 2) absD = 2;
@@ -512,7 +506,7 @@
 
   // Add N rings. Points per ring = |D| (except |D|=2 → 4).
   // Negative dimension: rotates clockwise; Fibonacci flag is inverted (nucleus present when NOT Fibonacci).
-  EventMathTorus.prototype.expand = function (n) {
+  EventMathAnchor.prototype.expand = function (n) {
     var D       = this.dimension || 2;
     var absD    = Math.abs(D);
     var pts     = absD < 3 ? 4 : absD;
@@ -546,14 +540,14 @@
     return this;
   };
 
-  EventMathTorus.prototype.nucleusPresent = function () {
+  EventMathAnchor.prototype.nucleusPresent = function () {
     var D    = this.dimension || 2;
     var absD = Math.abs(D);
     var isFib = isNStepFib(this.totalOuter + 1, absD);
     return D < 0 ? !isFib : isFib;
   };
 
-  EventMathTorus.prototype.complete = function () {
+  EventMathAnchor.prototype.complete = function () {
     var D           = this.dimension || 2;
     var beforeCycle = this.totalOuter + 1;
     var withCycle   = beforeCycle + 1;
@@ -577,12 +571,12 @@
     return this.completionEvent;
   };
 
-  EventMathTorus.prototype.addResonance = function (otherName, label) {
+  EventMathAnchor.prototype.addResonance = function (otherName, label) {
     this.resonances.push({ name: otherName, label: label || 'resonance' });
     return this;
   };
 
-  EventMathTorus.prototype.render = function () {
+  EventMathAnchor.prototype.render = function () {
     var D         = this.dimension || 2;
     var absD      = Math.abs(D);
     var neg       = D < 0;
@@ -593,9 +587,8 @@
     var nucState  = this.nucleusPresent() ? '● PRESENT' : '○ ABSENT';
     var direction = neg ? 'clockwise ↺' : 'counterclockwise ↻';
 
-    var lines = ['── Torus: ' + this.name + '  [' + dimLabel + ' / ' + shapeName + '] ──'];
-    lines.push('  Source: ' + (this.sourceName || 'unknown') +
-               '  (zoom ' + (this.zoomLevel - 1) + ' → torus level ' + this.zoomLevel + ')');
+    var lines = ['── Anchor: ' + this.name + '  [' + dimLabel + ' / ' + shapeName + '] ──'];
+    lines.push('  Depth: ' + dimLabel);
     lines.push('  ' + pts + ' pts/ring   ' + Math.abs(90 / pts) + '°/ring   ' + direction + '   ' + fibLabel);
     if (neg) lines.push('  Negative dimension: nucleus polarity INVERTED (present when NOT ' + fibLabel + ')');
     lines.push('  Nucleus: ' + nucState +
@@ -1620,9 +1613,9 @@
   // Each tier repeats the same 6-layer complex structure.
   // Tier N's grand axis feeds Tier N+1's bridge — fractal self-similarity.
 
-  function EventMathFractalAxis(name, negative, positive) {
-    if (!(this instanceof EventMathFractalAxis)) {
-      return new EventMathFractalAxis(name, negative, positive);
+  function EventMathSpine(name, negative, positive) {
+    if (!(this instanceof EventMathSpine)) {
+      return new EventMathSpine(name, negative, positive);
     }
     this.name     = name     || '';
     this.negative = negative || null;
@@ -1633,18 +1626,18 @@
     var maxDim = Math.max(negDim, posDim);
 
     // Tier 1: foundation at D±13
-    var t1n = new EventMathTorus(name + '_t1_neg');
-    t1n.spinFrom(null, -Math.min(13, negDim));
-    var t1p = new EventMathTorus(name + '_t1_pos');
-    t1p.spinFrom(null,  Math.min(13, posDim));
+    var t1n = new EventMathAnchor(name + '_t1_neg');
+    t1n.setDepth(-Math.min(13, negDim));
+    var t1p = new EventMathAnchor(name + '_t1_pos');
+    t1p.setDepth(Math.min(13, posDim));
     this.tier1 = new EventMathAxis(name + '_tier1', t1n, t1p);
 
     if (maxDim >= 27) {
       // 3-tier mode: tier2 at D±26 (internal toruses), tier3 at D±maxDim (passed)
-      var t2n = new EventMathTorus(name + '_t2_neg');
-      t2n.spinFrom(null, -26);
-      var t2p = new EventMathTorus(name + '_t2_pos');
-      t2p.spinFrom(null,  26);
+      var t2n = new EventMathAnchor(name + '_t2_neg');
+      t2n.setDepth(-26);
+      var t2p = new EventMathAnchor(name + '_t2_pos');
+      t2p.setDepth(26);
       this.tier2 = new EventMathAxis(name + '_tier2', t2n, t2p);
       this.tier2.bridge.fractalFrom = this.tier1.grandAxis.name;
 
@@ -1668,11 +1661,11 @@
     }
   }
 
-  EventMathFractalAxis.prototype.deepen = function (negative52, positive52) {
+  EventMathSpine.prototype.extend = function (negative52, positive52) {
     var t4n = negative52 || null;
     var t4p = positive52 || null;
-    if (!t4n) { t4n = new EventMathTorus(this.name + '_t4_neg'); t4n.spinFrom(null, -52); }
-    if (!t4p) { t4p = new EventMathTorus(this.name + '_t4_pos'); t4p.spinFrom(null,  52); }
+    if (!t4n) { t4n = new EventMathAnchor(this.name + '_t4_neg'); t4n.setDepth(-52); }
+    if (!t4p) { t4p = new EventMathAnchor(this.name + '_t4_pos'); t4p.setDepth( 52); }
     this.tier4 = new EventMathAxis(this.name + '_tier4', t4n, t4p);
     var parent = this.tier3 || this.tier2;
     if (parent) this.tier4.bridge.fractalFrom = parent.grandAxis.name;
@@ -1681,7 +1674,7 @@
     this.signature    = 'D±13 ⊂ D±26 ⊂ D±39 ⊂ D±52';
   };
 
-  EventMathFractalAxis.prototype.render = function () {
+  EventMathSpine.prototype.render = function () {
     var lines = [];
     var depth    = this.fractalDepth;
     var topAxis  = this.tier4 || this.tier3 || this.tier2;
@@ -1750,9 +1743,9 @@
   // Gradient: ALIGNED | SHARP DECLINE | BLOCKED | ROOT STRONGER THAN SURFACE | etc.
   // Correction path targeted to the tier where the score drops.
 
-  function EventMathDimensionalReport(name, desires, chain, fractal, assumptions) {
-    if (!(this instanceof EventMathDimensionalReport)) {
-      return new EventMathDimensionalReport(name, desires, chain, fractal, assumptions);
+  function EventMathGrade(name, desires, chain, fractal, assumptions) {
+    if (!(this instanceof EventMathGrade)) {
+      return new EventMathGrade(name, desires, chain, fractal, assumptions);
     }
     this.name        = name   || 'dimensional report';
     this.desires     = Array.isArray(desires)     ? desires     : (desires     ? [desires]     : []);
@@ -1777,7 +1770,7 @@
     this._compute();
   }
 
-  EventMathDimensionalReport.prototype._compute = function () {
+  EventMathGrade.prototype._compute = function () {
     // ── Tier 1: surface satisfaction ────────────────────────────────
     this.tier1Engine = new EventMathSatisfactionEngine(
       this.name + '_surface', this.desires, this.chain, this.assumptions
@@ -1889,7 +1882,7 @@
     this._analyzeGradient();
   };
 
-  EventMathDimensionalReport.prototype._analyzeGradient = function () {
+  EventMathGrade.prototype._analyzeGradient = function () {
     var t1 = this.tier1Score, t2 = this.tier2Score, t3 = this.tier3Score, t4 = this.tier4Score;
 
     if (t3 >= 80 && t4 >= 60) {
@@ -1939,7 +1932,7 @@
     }
   };
 
-  EventMathDimensionalReport.prototype.render = function () {
+  EventMathGrade.prototype.render = function () {
     var self = this;
     var lines = [];
     var desireNames = this.desires.map(function (d) { return d.name || '?'; }).join(' | ');
@@ -2328,8 +2321,8 @@
     this.targetAssumption.active = false;
 
     var ct1 = 0, ct2 = 0, ct3 = 0, cg = '';
-    if (r instanceof EventMathDimensionalReport) {
-      var cr = new EventMathDimensionalReport('challenged_' + (r.name || ''), r.desires, r.chain, r.fractal, this.assumptions);
+    if (r instanceof EventMathGrade) {
+      var cr = new EventMathGrade('challenged_' + (r.name || ''), r.desires, r.chain, r.fractal, this.assumptions);
       ct1 = cr.tier1Score; ct2 = cr.tier2Score; ct3 = cr.tier3Score; cg = cr.gradient;
     } else if (r instanceof EventMathSatisfactionEngine) {
       var ce = new EventMathSatisfactionEngine('challenged', r.desires, r.chain, this.assumptions);
@@ -2515,14 +2508,14 @@
     return defaultTimeline;
   }
 
-  // ── EventMathTrace ────────────────────────────────────────────────
+  // ── EventMathScrub ────────────────────────────────────────────────
   // Priority sensitivity curve for a ConflictStmt result.
   // Analytically computes the breakeven priority ratio at which the winner switches,
   // then samples the trade-off curve at key ratio steps.
 
-  function EventMathTrace(name, conflict) {
-    if (!(this instanceof EventMathTrace)) {
-      return new EventMathTrace(name, conflict);
+  function EventMathScrub(name, conflict) {
+    if (!(this instanceof EventMathScrub)) {
+      return new EventMathScrub(name, conflict);
     }
     this.name     = name     || 'trace';
     this.conflict = conflict || null;
@@ -2532,7 +2525,7 @@
     this._trace();
   }
 
-  EventMathTrace.prototype._trace = function () {
+  EventMathScrub.prototype._trace = function () {
     if (!this.conflict || !this.conflict.desire1 || !this.conflict.desire2) return;
     var d1 = this.conflict.desire1;
     var d2 = this.conflict.desire2;
@@ -2568,7 +2561,7 @@
     }
   };
 
-  EventMathTrace.prototype.render = function () {
+  EventMathScrub.prototype.render = function () {
     if (!this.conflict) return '── Trace: (no conflict provided) ──';
     var d1  = this.conflict.desire1;
     var d2  = this.conflict.desire2;
@@ -2799,7 +2792,7 @@
     EventMathEvent:          EventMathEvent,
     EventMathLayer:          EventMathLayer,
     EventMathTimeline:       EventMathTimeline,
-    EventMathTorus:          EventMathTorus,
+    EventMathAnchor:          EventMathAnchor,
     EventMathLandscape:      EventMathLandscape,
     EventMathAxis:           EventMathAxis,
     EventMathActor:          EventMathActor,
@@ -2810,14 +2803,14 @@
     EventMathAssumption:            EventMathAssumption,
     EventMathDesire:                EventMathDesire,
     EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
-    EventMathDimensionalReport:     EventMathDimensionalReport,
+    EventMathGrade:     EventMathGrade,
     EventMathDiagnosis:             EventMathDiagnosis,
     EventMathChallenge:             EventMathChallenge,
     EventMathComparison:            EventMathComparison,
     EventMathConflict:              EventMathConflict,
     EventMathWeigh:                 EventMathWeigh,
-    EventMathTrace:                 EventMathTrace,
-    EventMathFractalAxis:           EventMathFractalAxis,
+    EventMathScrub:                 EventMathScrub,
+    EventMathSpine:           EventMathSpine,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,
     getDefaultTimeline:      getDefaultTimeline,
