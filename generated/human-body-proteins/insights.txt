@@ -1,0 +1,51 @@
+╔══════════════════════════════════════════════════════════╗
+║ Dimensional Report: forward report
+║ Desires:  reach optimal
+║ Chain:    human body proteins forward chain
+║ Fractal:  domain axis
+╚══════════════════════════════════════════════════════════╝
+
+  ── TIER 1  D±13  [Surface — chain → desire?] ──
+  Score: 100%
+  ✓  reach optimal
+      desired outcome is 90 — target: 80 — exceeded by 10 (100% satisfied)
+
+  ── TIER 2  D±26  [System — fallacy-adjusted] ──
+  System confidence: 75%
+    • slippery slope risk detected  →  ×0.75
+  Score: 75%  (tier 1 100% × 0.75)
+
+  ── TIER 3  D±39  [Root — fractal energy] ──
+  Root confidence: 72%
+    • D-39 negative torus (max tension)  →  ×0.60
+    • D+39 positive torus (sovereign signal)  →  ×1.20
+  Score: 54%  (tier 2 75% × 0.72)
+
+  ── Correction path ──
+  The surface chain is working but system and root tiers
+  show friction. Expand the fractal axis depth to unlock
+  the full potential of this desire path.
+
+╔══════════════════════════════════════════════════════════╗
+║ GRADIENT: SURFACE VIABLE
+╚══════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════╗
+║ WHY: "reach optimal" is not satisfied
+╚══════════════════════════════════════════════════════════╝
+  Chain: "human body proteins blocked chain"
+  Score: 0/100
+
+  ── Causal path (goal → root) ──
+  [1] blocked output  →  desired outcome  [0]  ← BLOCKED HERE
+
+  ── Minimum intervention ──
+  Flip: "blocked output" → "desired outcome"
+  Link "blocked output" → "desired outcome" produces no value (0). Assign a positive value to this link to activate the downstream path.
+
+  ── Tier analysis ──
+  Tier 1 (Surface D±13): [BLOCKED]
+    Path breaks at step 4 of 4: "blocked output" → "desired outcome" (value 0)
+  Tier 2 (System D±26): [SOUND]
+    No structural fallacies detected
+  Tier 3 (Root D±39): [REQUIRES FRACTAL]
+    Root tier analysis requires a fractal axis. Use: why reach optimal is not satisfied in human body proteins blocked chain across fractal MY AXIS into diagnosis
