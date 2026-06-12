@@ -111,6 +111,8 @@ class EventMathFormatter {
       case 'CompareStmt':        return this._formatCompareStmt(stmt);
       case 'ConflictStmt':       return this._formatConflictStmt(stmt);
       case 'WeighStmt':          return this._formatWeighStmt(stmt);
+      case 'DeepenStmt':         return this._formatDeepenStmt(stmt);
+      case 'TraceStmt':          return this._formatTraceStmt(stmt);
     }
   }
 
@@ -732,6 +734,14 @@ class EventMathFormatter {
 
   _formatWeighStmt(stmt) {
     this._line(`weigh ${stmt.conflictName} into ${stmt.intoName}`);
+  }
+
+  _formatDeepenStmt(stmt) {
+    this._line(`deepen ${stmt.axisName} with ${stmt.negName} and ${stmt.posName} into ${stmt.intoName}`);
+  }
+
+  _formatTraceStmt(stmt) {
+    this._line(`trace ${stmt.conflictName} into ${stmt.intoName}`);
   }
 }
 

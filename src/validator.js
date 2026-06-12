@@ -144,6 +144,8 @@ class EventMathValidator {
         case 'CompareStmt':
         case 'ConflictStmt':
         case 'WeighStmt':
+        case 'DeepenStmt':
+        case 'TraceStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
           break;
       }
@@ -157,7 +159,7 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

@@ -495,7 +495,8 @@
     this.completionEvent = null;
   }
 
-  // spinFrom(source, dimension) — dimension 2-39 (positive) or -2 to -39 (negative/opposite polarity).
+  // spinFrom(source, dimension) — dimension 2–N (positive) or -(2–N) (negative/opposite polarity).
+  // Each structural tier adds 13: D±13 surface, D±26 system, D±39 root, D±52 emergence, D±65 ...
   // Negative dimensions spin clockwise; nucleus polarity is inverted.
   EventMathTorus.prototype.spinFrom = function (source, dimension) {
     this.sourceName = source
@@ -505,7 +506,6 @@
     var d = typeof dimension === 'number' ? Math.floor(dimension) : 2;
     var absD = Math.abs(d);
     if (absD < 2) absD = 2;
-    if (absD > 39) absD = 39;
     this.dimension = d < 0 ? -absD : absD;
     return this;
   };
@@ -1668,10 +1668,23 @@
     }
   }
 
+  EventMathFractalAxis.prototype.deepen = function (negative52, positive52) {
+    var t4n = negative52 || null;
+    var t4p = positive52 || null;
+    if (!t4n) { t4n = new EventMathTorus(this.name + '_t4_neg'); t4n.spinFrom(null, -52); }
+    if (!t4p) { t4p = new EventMathTorus(this.name + '_t4_pos'); t4p.spinFrom(null,  52); }
+    this.tier4 = new EventMathAxis(this.name + '_tier4', t4n, t4p);
+    var parent = this.tier3 || this.tier2;
+    if (parent) this.tier4.bridge.fractalFrom = parent.grandAxis.name;
+    this.fractalDepth = 4;
+    this.dimension    = 52;
+    this.signature    = 'D±13 ⊂ D±26 ⊂ D±39 ⊂ D±52';
+  };
+
   EventMathFractalAxis.prototype.render = function () {
     var lines = [];
     var depth    = this.fractalDepth;
-    var topAxis  = this.tier3 || this.tier2;
+    var topAxis  = this.tier4 || this.tier3 || this.tier2;
     var nextDim  = this.dimension + 13;
     var layerCount = depth * 6;
 
@@ -1704,6 +1717,15 @@
       lines.push('  ' + '─'.repeat(50));
       var t3 = this.tier3.render().split('\n');
       for (var k = 0; k < t3.length; k++) lines.push('    ' + t3[k]);
+      lines.push('');
+    }
+
+    if (this.tier4) {
+      lines.push('  TIER 4  D±52  [Emergence — what this architecture makes possible]');
+      lines.push('  (Tier 3 grand axis feeds Tier 4 bridge — emergence layer)');
+      lines.push('  ' + '─'.repeat(50));
+      var t4 = this.tier4.render().split('\n');
+      for (var m = 0; m < t4.length; m++) lines.push('    ' + t4[m]);
       lines.push('');
     }
 
@@ -1742,9 +1764,12 @@
     this.tier1Score        = 0;
     this.tier2Score        = 0;
     this.tier3Score        = 0;
+    this.tier4Score        = 0;
     this.systemConfidence  = 1.0;
     this.rootConfidence    = 1.0;
+    this.emergeConfidence  = 1.0;
     this.systemAdjustments = [];
+    this.emergeAdjustments = [];
     this.rootAdjustments   = [];
     this.gradient          = '';
     this.correctionPath    = '';
@@ -1833,13 +1858,46 @@
       Math.round(this.tier2Score * this.rootConfidence)
     ));
 
+    // ── Tier 4: emergence D±52 — what the architecture makes possible ──
+    // Scales quadratically from root strength: t3² / 100.
+    // Weak roots (t3 < 50) yield little emergence; strong roots compound.
+    // Optional D±52 tori from 'deepen' modulate the confidence factor.
+    this.emergeConfidence  = 1.0;
+    this.emergeAdjustments = [];
+    var baseEmergence = this.tier3Score * this.tier3Score / 100;
+
+    if (this.fractal && this.fractal.tier4) {
+      var t4ax = this.fractal.tier4;
+      var negDim4 = t4ax.negative ? Math.abs(t4ax.negative.dimension || 0) : 0;
+      var posDim4 = t4ax.positive ? Math.abs(t4ax.positive.dimension || 0) : 0;
+      if (negDim4 >= 52) {
+        this.emergeConfidence *= 0.7;
+        this.emergeAdjustments.push('D-' + negDim4 + ' emergence noise  →  ×0.70 (shadow constraints)');
+      }
+      if (posDim4 >= 52) {
+        this.emergeConfidence *= 1.3;
+        this.emergeAdjustments.push('D+' + posDim4 + ' emergence signal  →  ×1.30 (unlocked potential)');
+      }
+    } else {
+      this.emergeAdjustments.push('no D±52 axis — emergence derived from root architecture (add "deepen" for explicit modulation)');
+    }
+
+    this.tier4Score = Math.min(100, Math.max(0,
+      Math.round(baseEmergence * this.emergeConfidence)
+    ));
+
     this._analyzeGradient();
   };
 
   EventMathDimensionalReport.prototype._analyzeGradient = function () {
-    var t1 = this.tier1Score, t2 = this.tier2Score, t3 = this.tier3Score;
+    var t1 = this.tier1Score, t2 = this.tier2Score, t3 = this.tier3Score, t4 = this.tier4Score;
 
-    if (t3 > t2 && t2 >= t1) {
+    if (t3 >= 80 && t4 >= 60) {
+      this.gradient = 'EMERGENCE READY';
+      this.correctionPath =
+        'All four tiers are aligned. The root architecture is generating emergence potential ' +
+        '(D±52: ' + t4 + '%). Expand the chain to capture what this foundation is already making possible.';
+    } else if (t3 > t2 && t2 >= t1) {
       this.gradient = 'ROOT STRONGER THAN SURFACE';
       this.correctionPath =
         'The root architecture is better than the surface chain suggests. ' +
@@ -1848,7 +1906,8 @@
     } else if (t1 >= 80 && t2 >= 70 && t3 >= 60) {
       this.gradient = 'ALIGNED';
       this.correctionPath =
-        'All three tiers support the desire. Surface, system, and root are in agreement. ' +
+        'Surface, system, and root are in agreement. ' +
+        'Root strength projects ' + t4 + '% emergence potential (D±52). ' +
         'This path is structurally sound.';
     } else if (t1 === 0) {
       this.gradient = 'BLOCKED';
@@ -1875,7 +1934,8 @@
       this.gradient = 'SURFACE VIABLE';
       this.correctionPath =
         'The surface chain is working but system and root tiers show friction. ' +
-        'Expand the fractal axis depth to unlock the full potential of this desire path.';
+        'Add a "deepen" statement with D±52 tori to unlock the emergence tier ' +
+        'and reveal what this architecture can make possible.';
     }
   };
 
@@ -1926,6 +1986,17 @@
     lines.push('  Score: ' + this.tier3Score + '%' +
       '  (tier 2 ' + this.tier2Score + '% × ' +
       Math.round(this.rootConfidence * 100) / 100 + ')');
+    lines.push('');
+
+    // Tier 4 — emergence
+    lines.push('  ── TIER 4  D±52  [Emergence — what this architecture makes possible] ──');
+    lines.push('  Emergence confidence: ' + Math.round(this.emergeConfidence * 100) + '%');
+    if (this.emergeAdjustments.length > 0) {
+      this.emergeAdjustments.forEach(function (a) { lines.push('    • ' + a); });
+    }
+    lines.push('  Score: ' + this.tier4Score + '%' +
+      '  (root² / 100 = ' + Math.round(this.tier3Score * this.tier3Score / 100) + '% base × ' +
+      Math.round(this.emergeConfidence * 100) / 100 + ')');
     lines.push('');
 
     // Correction path
@@ -2444,6 +2515,106 @@
     return defaultTimeline;
   }
 
+  // ── EventMathTrace ────────────────────────────────────────────────
+  // Priority sensitivity curve for a ConflictStmt result.
+  // Analytically computes the breakeven priority ratio at which the winner switches,
+  // then samples the trade-off curve at key ratio steps.
+
+  function EventMathTrace(name, conflict) {
+    if (!(this instanceof EventMathTrace)) {
+      return new EventMathTrace(name, conflict);
+    }
+    this.name     = name     || 'trace';
+    this.conflict = conflict || null;
+    this.curve    = [];
+    this.breakeven = null;
+    this.dominant  = null;
+    this._trace();
+  }
+
+  EventMathTrace.prototype._trace = function () {
+    if (!this.conflict || !this.conflict.desire1 || !this.conflict.desire2) return;
+    var d1 = this.conflict.desire1;
+    var d2 = this.conflict.desire2;
+    var s1 = this.conflict.score1;
+    var s2 = this.conflict.score2;
+
+    // Breakeven: ratio r where s1*r = s2 → r = s2/s1
+    if (s1 > 0 && s2 > 0) {
+      this.breakeven = Math.round((s2 / s1) * 100) / 100;
+    } else if (s1 === 0 && s2 > 0) {
+      this.breakeven = null;
+      this.dominant  = d2.name;
+    } else if (s2 === 0 && s1 > 0) {
+      this.breakeven = null;
+      this.dominant  = d1.name;
+    } else {
+      this.breakeven = null;
+      this.dominant  = null;
+    }
+
+    // Sample curve: vary desire1's priority ratio relative to desire2 (fixed at 1)
+    var ratios = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5, 10];
+    for (var i = 0; i < ratios.length; i++) {
+      var r   = ratios[i];
+      var ws1 = Math.round(s1 * r * 10) / 10;
+      var ws2 = s2;
+      this.curve.push({
+        ratio:  r,
+        ws1:    ws1,
+        ws2:    ws2,
+        winner: ws1 >= ws2 ? d1.name : d2.name,
+      });
+    }
+  };
+
+  EventMathTrace.prototype.render = function () {
+    if (!this.conflict) return '── Trace: (no conflict provided) ──';
+    var d1  = this.conflict.desire1;
+    var d2  = this.conflict.desire2;
+    var d1n = d1 ? d1.name : '?';
+    var d2n = d2 ? d2.name : '?';
+
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    var hdr = '  TRACE: ' + this.name;
+    lines.push('║' + hdr + ' '.repeat(Math.max(0, 58 - hdr.length)) + '║');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    lines.push('  Desire A: "' + d1n + '"  (score: ' + this.conflict.score1 + '%)');
+    lines.push('  Desire B: "' + d2n + '"  (score: ' + this.conflict.score2 + '%)');
+    lines.push('');
+
+    if (this.dominant) {
+      lines.push('  "' + this.dominant + '" always wins regardless of priority.');
+      lines.push('  The other desire has 0% satisfaction in this chain.');
+      lines.push('  Adjust the chain to open a path, not the priorities.');
+    } else if (this.conflict.score1 === 0 && this.conflict.score2 === 0) {
+      lines.push('  Both desires score 0% — the chain satisfies neither.');
+      lines.push('  Priorities are irrelevant. Rebuild the chain first.');
+    } else {
+      if (this.breakeven !== null) {
+        lines.push('  Breakeven:  priority ratio ' + this.breakeven + ':1  (A:B)');
+        lines.push('  Below ' + this.breakeven + '×:  "' + d2n + '" wins.');
+        lines.push('  Above ' + this.breakeven + '×:  "' + d1n + '" wins.');
+      }
+      lines.push('');
+      lines.push('  Priority A:B   Score A (weighted)   Score B (fixed)   Winner');
+      lines.push('  ' + '─'.repeat(54));
+      var be = this.breakeven;
+      for (var i = 0; i < this.curve.length; i++) {
+        var pt = this.curve[i];
+        var marker = (be !== null && i > 0 && this.curve[i - 1].winner !== pt.winner) ? ' ← switch' : '';
+        var ratioStr = String(pt.ratio).padEnd(7);
+        var ws1Str   = String(pt.ws1).padEnd(21);
+        var ws2Str   = String(pt.ws2).padEnd(18);
+        lines.push('  ' + ratioStr + '      ' + ws1Str + ws2Str + pt.winner + marker);
+      }
+    }
+    lines.push('');
+    return lines.join('\n');
+  };
+
   // ── EventMathConflict ─────────────────────────────────────────────
   // Detects tension between two desires evaluated against the same chain.
   // Labels: ALIGNED (≤5 point loss), COMPETITIVE (≤35), OPPOSED (>35).
@@ -2645,6 +2816,7 @@
     EventMathComparison:            EventMathComparison,
     EventMathConflict:              EventMathConflict,
     EventMathWeigh:                 EventMathWeigh,
+    EventMathTrace:                 EventMathTrace,
     EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,

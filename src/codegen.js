@@ -303,6 +303,8 @@ class EventMathCodeGen {
         case 'CompareStmt':
         case 'ConflictStmt':
         case 'WeighStmt':
+        case 'DeepenStmt':
+        case 'TraceStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -415,6 +417,8 @@ class EventMathCodeGen {
       case 'CompareStmt':         return this._genCompareStmt(stmt);
       case 'ConflictStmt':        return this._genConflictStmt(stmt);
       case 'WeighStmt':           return this._genWeighStmt(stmt);
+      case 'DeepenStmt':          return this._genDeepenStmt(stmt);
+      case 'TraceStmt':           return this._genTraceStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -2027,6 +2031,27 @@ class EventMathCodeGen {
     const intoEsc     = this._escape(stmt.intoName);
     this._line(`// weigh: "${this._escape(stmt.conflictName)}" into "${this._escape(stmt.intoName)}"`);
     this._line(`${intoVar} = new EM.EventMathWeigh('${intoEsc}', ${conflictVar});`);
+    this._line('');
+  }
+
+  _genDeepenStmt(stmt) {
+    const axisVar  = this._safeName(stmt.axisName);
+    const negVar   = this._safeName(stmt.negName);
+    const posVar   = this._safeName(stmt.posName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    this._line(`// deepen: "${this._escape(stmt.axisName)}" + D±52 tori → "${this._escape(stmt.intoName)}"`);
+    this._line(`${axisVar}.deepen(${negVar}, ${posVar});`);
+    this._line(`${intoVar} = ${axisVar};`);
+    this._line('');
+  }
+
+  _genTraceStmt(stmt) {
+    const conflictVar = this._safeName(stmt.conflictName);
+    const intoVar     = this._safeName(stmt.intoName);
+    const intoEsc     = this._escape(stmt.intoName);
+    this._line(`// trace: priority curve for "${this._escape(stmt.conflictName)}"`);
+    this._line(`${intoVar} = new EM.EventMathTrace('${intoEsc}', ${conflictVar});`);
     this._line('');
   }
 }

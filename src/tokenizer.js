@@ -43,6 +43,8 @@ const KEYWORDS = new Set([
   'challenge', 'compare', 'for',
   // v2.8 — conflict detection + weighted trade-offs
   'conflict', 'weigh',
+  // v2.9 — emergence tier + trace
+  'deepen', 'trace',
 ]);
 
 class Token {
@@ -180,6 +182,16 @@ class EventMathTokenizer {
     // weigh CONFLICT into RESULT
     if (lead === 'weigh') {
       return this._tokenizeWeighStmt(words, lineNum);
+    }
+
+    // deepen AXIS with NEG and POS into RESULT — attach D±52 tori to fractal axis
+    if (lead === 'deepen') {
+      return this._tokenizeDeepenStmt(words, lineNum);
+    }
+
+    // trace CONFLICT into RESULT — priority sensitivity curve
+    if (lead === 'trace') {
+      return this._tokenizeTraceStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1792,6 +1804,40 @@ class EventMathTokenizer {
     const conflictName = words.slice(1, intoIdx).join(' ');
     const intoName     = words.slice(intoIdx + 1).join(' ');
     return [new Token('WEIGH_STMT', { conflictName, intoName }, lineNum)];
+  }
+
+  /**
+   * Deepen statement: deepen AXIS with NEG and POS into RESULT
+   * Attaches explicit D±52 tori to an existing fractal axis for emergence scoring.
+   * Example: deepen market axis with emergence neg and emergence pos into deep axis
+   */
+  _tokenizeDeepenStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (withIdx < 0 || andIdx < 0 || intoIdx < 0 || andIdx <= withIdx || intoIdx <= andIdx) {
+      return [new Token('KEYWORD', 'deepen', lineNum)];
+    }
+    const axisName = words.slice(1, withIdx).join(' ');
+    const negName  = words.slice(withIdx + 1, andIdx).join(' ');
+    const posName  = words.slice(andIdx + 1, intoIdx).join(' ');
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('DEEPEN_STMT', { axisName, negName, posName, intoName }, lineNum)];
+  }
+
+  /**
+   * Trace statement: trace CONFLICT into RESULT
+   * Priority sensitivity curve — computes the breakeven ratio where the winner switches.
+   * Example: trace tension report into priority curve
+   */
+  _tokenizeTraceStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) {
+      return [new Token('KEYWORD', 'trace', lineNum)];
+    }
+    const conflictName = words.slice(1, intoIdx).join(' ');
+    const intoName     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('TRACE_STMT', { conflictName, intoName }, lineNum)];
   }
 
   /**
