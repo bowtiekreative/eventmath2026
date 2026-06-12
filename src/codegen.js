@@ -297,6 +297,7 @@ class EventMathCodeGen {
         case 'FractalStmt':
         case 'SatisfyStmt':
         case 'EvaluateStmt':
+        case 'DimensionalStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -403,6 +404,7 @@ class EventMathCodeGen {
       case 'FractalStmt':         return this._genFractalStmt(stmt);
       case 'SatisfyStmt':         return this._genSatisfyStmt(stmt);
       case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
+      case 'DimensionalStmt':     return this._genDimensionalStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -966,7 +968,7 @@ class EventMathCodeGen {
     const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D+' + dim;
     this._line(`// spin ${srcEsc} into ${intoEsc}  [${dimLabel}]`);
     this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
-    this._line(`${torusVar}.spinFrom(${sourceVar}, ${dim});`);
+    this._line(`${torusVar}.spinFrom(typeof ${sourceVar} !== 'undefined' ? ${sourceVar} : null, ${dim});`);
     this._line('');
   }
 
@@ -1911,6 +1913,18 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     this._line(`// fractal axis: "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}" → "${intoEsc}"`);
     this._line(`${intoVar} = new EM.EventMathFractalAxis('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
+  }
+
+  _genDimensionalStmt(stmt) {
+    const desireVarList = (stmt.desireNames || []).map(n => this._safeName(n)).join(', ');
+    const chainVar      = this._safeName(stmt.chainName);
+    const fractalVar    = this._safeName(stmt.fractalName);
+    const intoVar       = this._safeName(stmt.intoName);
+    const intoEsc       = this._escape(stmt.intoName);
+    const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
+    this._line(`// dimensional: [${desireLabel}] against "${this._escape(stmt.chainName)}" across fractal "${this._escape(stmt.fractalName)}"`);
+    this._line(`${intoVar} = new EM.EventMathDimensionalReport('${intoEsc}', [${desireVarList}], ${chainVar}, ${fractalVar}, __assumptions);`);
     this._line('');
   }
 }

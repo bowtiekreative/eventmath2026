@@ -138,6 +138,7 @@ class EventMathValidator {
         case 'FractalStmt':
         case 'SatisfyStmt':
         case 'EvaluateStmt':
+        case 'DimensionalStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
           break;
       }

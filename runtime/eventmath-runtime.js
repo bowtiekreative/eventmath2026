@@ -1705,6 +1705,236 @@
     return lines.join('\n');
   };
 
+  // ── Dimensional Report (multi-tier satisfaction) ──────────
+  //
+  // `evaluate DESIRE [and DESIRE...] against CHAIN across fractal FRACTAL into REPORT`
+  //
+  // Connects the fractal axis to the satisfaction engine across three tiers:
+  //   Tier 1  D±13  Surface   — can the chain directly reach the desire's target?
+  //   Tier 2  D±26  System    — does the chain hold up under fallacy scrutiny?
+  //   Tier 3  D±39  Root      — is the fractal foundation aligned or suppressing?
+  //
+  // Gradient: ALIGNED | SHARP DECLINE | BLOCKED | ROOT STRONGER THAN SURFACE | etc.
+  // Correction path targeted to the tier where the score drops.
+
+  function EventMathDimensionalReport(name, desires, chain, fractal, assumptions) {
+    if (!(this instanceof EventMathDimensionalReport)) {
+      return new EventMathDimensionalReport(name, desires, chain, fractal, assumptions);
+    }
+    this.name        = name   || 'dimensional report';
+    this.desires     = Array.isArray(desires)     ? desires     : (desires     ? [desires]     : []);
+    this.assumptions = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+    this.chain       = chain   || null;
+    this.fractal     = fractal || null;
+
+    this.tier1Engine       = null;
+    this.tier1Score        = 0;
+    this.tier2Score        = 0;
+    this.tier3Score        = 0;
+    this.systemConfidence  = 1.0;
+    this.rootConfidence    = 1.0;
+    this.systemAdjustments = [];
+    this.rootAdjustments   = [];
+    this.gradient          = '';
+    this.correctionPath    = '';
+
+    this._compute();
+  }
+
+  EventMathDimensionalReport.prototype._compute = function () {
+    // ── Tier 1: surface satisfaction ────────────────────────────────
+    this.tier1Engine = new EventMathSatisfactionEngine(
+      this.name + '_surface', this.desires, this.chain, this.assumptions
+    );
+    this.tier1Score = this.tier1Engine.score;
+
+    // ── Tier 2: system confidence (fallacy-adjusted) ─────────────────
+    this.systemConfidence  = 1.0;
+    this.systemAdjustments = [];
+
+    if (this.chain) {
+      var detector = new EventMathFallacyDetector(this.chain);
+      for (var i = 0; i < detector.findings.length; i++) {
+        var f = detector.findings[i];
+        if (f.fallacy === 'circular reasoning') {
+          this.systemConfidence *= 0.5;
+          this.systemAdjustments.push('circular reasoning detected  →  ×0.50');
+        } else if (f.fallacy === 'slippery slope risk') {
+          this.systemConfidence *= 0.75;
+          this.systemAdjustments.push('slippery slope risk detected  →  ×0.75');
+        } else if (f.fallacy === 'false dichotomy risk') {
+          this.systemConfidence *= 0.85;
+          this.systemAdjustments.push('false dichotomy risk detected  →  ×0.85');
+        }
+      }
+    }
+
+    if (this.fractal && this.fractal.presentLine !== 0) {
+      this.systemConfidence *= 0.9;
+      this.systemAdjustments.push(
+        'present line offset: ' + this.fractal.presentLine + '  →  ×0.90'
+      );
+    }
+
+    this.tier2Score = Math.min(100, Math.round(this.tier1Score * this.systemConfidence));
+
+    // ── Tier 3: root confidence (fractal energy alignment) ───────────
+    this.rootConfidence  = 1.0;
+    this.rootAdjustments = [];
+
+    if (this.fractal) {
+      if (this.fractal.tier3) {
+        var t3     = this.fractal.tier3;
+        var negDim = t3.negative ? Math.abs(t3.negative.dimension || 0) : 0;
+        var posDim = t3.positive ? Math.abs(t3.positive.dimension || 0) : 0;
+
+        if (negDim >= 39) {
+          this.rootConfidence *= 0.6;
+          this.rootAdjustments.push(
+            'D-' + negDim + ' negative torus (max tension)  →  ×0.60'
+          );
+        }
+        if (posDim >= 39) {
+          this.rootConfidence *= 1.2;
+          this.rootAdjustments.push(
+            'D+' + posDim + ' positive torus (sovereign signal)  →  ×1.20'
+          );
+        }
+        if (negDim < 39 && posDim < 39) {
+          this.rootAdjustments.push(
+            'D±' + Math.max(negDim, posDim) + ' fractal depth  →  ×1.00 (balanced)'
+          );
+        }
+      } else {
+        this.rootConfidence *= 0.9;
+        this.rootAdjustments.push(
+          '2-tier fractal (D±26 max)  →  ×0.90 (limited depth)'
+        );
+      }
+    } else {
+      this.rootConfidence *= 0.8;
+      this.rootAdjustments.push(
+        'no fractal axis provided  →  ×0.80 (no structural foundation)'
+      );
+    }
+
+    this.tier3Score = Math.min(100, Math.max(0,
+      Math.round(this.tier2Score * this.rootConfidence)
+    ));
+
+    this._analyzeGradient();
+  };
+
+  EventMathDimensionalReport.prototype._analyzeGradient = function () {
+    var t1 = this.tier1Score, t2 = this.tier2Score, t3 = this.tier3Score;
+
+    if (t3 > t2 && t2 >= t1) {
+      this.gradient = 'ROOT STRONGER THAN SURFACE';
+      this.correctionPath =
+        'The root architecture is better than the surface chain suggests. ' +
+        'Trust the fractal foundation — it amplifies what the surface cannot yet fully show. ' +
+        'Deepen the chain to match what the fractal already knows.';
+    } else if (t1 >= 80 && t2 >= 70 && t3 >= 60) {
+      this.gradient = 'ALIGNED';
+      this.correctionPath =
+        'All three tiers support the desire. Surface, system, and root are in agreement. ' +
+        'This path is structurally sound.';
+    } else if (t1 === 0) {
+      this.gradient = 'BLOCKED';
+      this.correctionPath =
+        'The chain cannot surface the desire at any tier. ' +
+        'The fundamental causal path is missing. Redesign the chain before adjusting the system.';
+    } else if (t1 > 0 && t2 < Math.round(t1 * 0.7)) {
+      var fallacyNames = this.systemAdjustments.map(function (a) {
+        return a.split('  →')[0];
+      });
+      this.gradient = 'SHARP DECLINE';
+      this.correctionPath =
+        'System-level fallacies are collapsing the surface score. Address: ' +
+        (fallacyNames.length > 0 ? fallacyNames.join(', ') :
+          'the structural weaknesses in the chain') +
+        '. Each causal link needs independent evidence.';
+    } else if (t3 < t2 && t3 < 50) {
+      this.gradient = 'ROOT MISALIGNED';
+      this.correctionPath =
+        'The root architecture is suppressing the surface potential. ' +
+        'Examine the fractal axis: the negative torus may be dominating. ' +
+        'Rebalance toward the sovereign signal (positive torus).';
+    } else {
+      this.gradient = 'SURFACE VIABLE';
+      this.correctionPath =
+        'The surface chain is working but system and root tiers show friction. ' +
+        'Expand the fractal axis depth to unlock the full potential of this desire path.';
+    }
+  };
+
+  EventMathDimensionalReport.prototype.render = function () {
+    var self = this;
+    var lines = [];
+    var desireNames = this.desires.map(function (d) { return d.name || '?'; }).join(' | ');
+
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ Dimensional Report: ' + this.name);
+    lines.push('║ Desires:  ' + (desireNames || '(none)'));
+    lines.push('║ Chain:    ' + (this.chain   ? this.chain.name   : '(none)'));
+    lines.push('║ Fractal:  ' + (this.fractal ? this.fractal.name : '(none)'));
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+
+    // Tier 1 — surface
+    lines.push('  ── TIER 1  D±13  [Surface — chain → desire?] ──');
+    lines.push('  Score: ' + this.tier1Score + '%');
+    var t1results = this.tier1Engine ? this.tier1Engine.results : [];
+    t1results.forEach(function (r) {
+      var partial = (r.partialScore !== undefined && r.partialScore < 100 && r.partialScore > 0)
+        ? '  [' + r.partialScore + '%]' : '';
+      lines.push('  ' + (r.satisfied ? '✓' : '✗') + '  ' + r.desire + partial);
+      lines.push('      ' + r.reason);
+    });
+    lines.push('');
+
+    // Tier 2 — system
+    lines.push('  ── TIER 2  D±26  [System — fallacy-adjusted] ──');
+    lines.push('  System confidence: ' + Math.round(this.systemConfidence * 100) + '%');
+    if (this.systemAdjustments.length > 0) {
+      this.systemAdjustments.forEach(function (a) { lines.push('    • ' + a); });
+    } else {
+      lines.push('    • no structural fallacies detected — full system confidence');
+    }
+    lines.push('  Score: ' + this.tier2Score + '%' +
+      '  (tier 1 ' + this.tier1Score + '% × ' +
+      Math.round(this.systemConfidence * 100) / 100 + ')');
+    lines.push('');
+
+    // Tier 3 — root
+    lines.push('  ── TIER 3  D±39  [Root — fractal energy] ──');
+    lines.push('  Root confidence: ' + Math.round(this.rootConfidence * 100) + '%');
+    if (this.rootAdjustments.length > 0) {
+      this.rootAdjustments.forEach(function (a) { lines.push('    • ' + a); });
+    }
+    lines.push('  Score: ' + this.tier3Score + '%' +
+      '  (tier 2 ' + this.tier2Score + '% × ' +
+      Math.round(this.rootConfidence * 100) / 100 + ')');
+    lines.push('');
+
+    // Correction path
+    lines.push('  ── Correction path ──');
+    var words = this.correctionPath.split(' ');
+    var line = '  ', col = 2;
+    words.forEach(function (w) {
+      if (col + w.length + 1 > 58) { lines.push(line); line = '  ' + w; col = 2 + w.length; }
+      else { line += (col > 2 ? ' ' : '') + w; col += w.length + 1; }
+    });
+    if (line.trim()) lines.push(line);
+    lines.push('');
+
+    // Gradient banner
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ GRADIENT: ' + this.gradient);
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    return lines.join('\n');
+  };
+
   // ── Default Timeline ─────────────────────────────────────
 
   var defaultTimeline = new EventMathTimeline('default');
@@ -1730,6 +1960,7 @@
     EventMathAssumption:            EventMathAssumption,
     EventMathDesire:                EventMathDesire,
     EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
+    EventMathDimensionalReport:     EventMathDimensionalReport,
     EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,

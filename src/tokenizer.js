@@ -1612,18 +1612,31 @@ class EventMathTokenizer {
     return [new Token('FRACTAL_STMT', { firstName, secondName, intoName }, lineNum)];
   }
 
-  // satisfy <desire> against <chain> into <result>
+  // satisfy <desire> against <chain> [across fractal <fractal>] into <result>
   _satisfyStmt(words, lineNum) {
     const againstIdx = this._indexOf(words, 'against');
     const intoIdx    = this._indexOf(words, 'into');
     if (againstIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'satisfy', lineNum)];
-    const desireName = words.slice(1, againstIdx).join(' ');
-    const chainName  = words.slice(againstIdx + 1, intoIdx).join(' ');
-    const intoName   = words.slice(intoIdx + 1).join(' ');
+    const desireName  = words.slice(1, againstIdx).join(' ');
+    const middleWords = words.slice(againstIdx + 1, intoIdx);
+    const acrossIdx   = this._indexOf(middleWords, 'across');
+
+    // Detect dimensional form: "against CHAIN across fractal FRACTAL into RESULT"
+    if (acrossIdx >= 0 && middleWords[acrossIdx + 1] === 'fractal') {
+      const chainName   = middleWords.slice(0, acrossIdx).join(' ');
+      const fractalName = middleWords.slice(acrossIdx + 2).join(' ');
+      const intoName    = words.slice(intoIdx + 1).join(' ');
+      return [new Token('DIMENSIONAL_STMT', {
+        desireNames: [desireName], chainName, fractalName, intoName
+      }, lineNum)];
+    }
+
+    const chainName = middleWords.join(' ');
+    const intoName  = words.slice(intoIdx + 1).join(' ');
     return [new Token('SATISFY_STMT', { desireName, chainName, intoName }, lineNum)];
   }
 
-  // evaluate <desire> [and <desire>...] against <chain> into <result>
+  // evaluate <desire> [and <desire>...] against <chain> [across fractal <fractal>] into <result>
   _evaluateStmt(words, lineNum) {
     const againstIdx = this._indexOf(words, 'against');
     const intoIdx    = this._indexOf(words, 'into');
@@ -1641,7 +1654,20 @@ class EventMathTokenizer {
       }
     }
     if (current.length) desireNames.push(current.join(' '));
-    const chainName = words.slice(againstIdx + 1, intoIdx).join(' ');
+    const middleWords = words.slice(againstIdx + 1, intoIdx);
+    const acrossIdx   = this._indexOf(middleWords, 'across');
+
+    // Detect dimensional form: "against CHAIN across fractal FRACTAL into RESULT"
+    if (acrossIdx >= 0 && middleWords[acrossIdx + 1] === 'fractal') {
+      const chainName   = middleWords.slice(0, acrossIdx).join(' ');
+      const fractalName = middleWords.slice(acrossIdx + 2).join(' ');
+      const intoName    = words.slice(intoIdx + 1).join(' ');
+      return [new Token('DIMENSIONAL_STMT', {
+        desireNames, chainName, fractalName, intoName
+      }, lineNum)];
+    }
+
+    const chainName = middleWords.join(' ');
     const intoName  = words.slice(intoIdx + 1).join(' ');
     return [new Token('EVALUATE_STMT', { desireNames, chainName, intoName }, lineNum)];
   }
