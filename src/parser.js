@@ -120,6 +120,8 @@ class EventMathParser {
     if (t.type === 'WHY_STMT')              return this._parseWhyStmt();
     if (t.type === 'CHALLENGE_STMT')        return this._parseChallengeStmt();
     if (t.type === 'COMPARE_STMT')          return this._parseCompareStmt();
+    if (t.type === 'CONFLICT_STMT')         return this._parseConflictStmt();
+    if (t.type === 'WEIGH_STMT')            return this._parseWeighStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1190,6 +1192,26 @@ class EventMathParser {
       chain2Name:  t.value.chain2,
       desireName:  t.value.desireName,
       intoName:    t.value.intoName,
+    });
+  }
+
+  _parseConflictStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ConflictStmt', {
+      desire1Name: t.value.desire1,
+      desire2Name: t.value.desire2,
+      chainName:   t.value.chainName,
+      intoName:    t.value.intoName,
+    });
+  }
+
+  _parseWeighStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('WeighStmt', {
+      conflictName: t.value.conflictName,
+      intoName:     t.value.intoName,
     });
   }
 

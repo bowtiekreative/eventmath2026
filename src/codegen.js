@@ -301,6 +301,8 @@ class EventMathCodeGen {
         case 'DiagnoseStmt':
         case 'ChallengeStmt':
         case 'CompareStmt':
+        case 'ConflictStmt':
+        case 'WeighStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -411,6 +413,8 @@ class EventMathCodeGen {
       case 'DiagnoseStmt':        return this._genDiagnoseStmt(stmt);
       case 'ChallengeStmt':       return this._genChallengeStmt(stmt);
       case 'CompareStmt':         return this._genCompareStmt(stmt);
+      case 'ConflictStmt':        return this._genConflictStmt(stmt);
+      case 'WeighStmt':           return this._genWeighStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -2003,6 +2007,26 @@ class EventMathCodeGen {
     const intoEsc    = this._escape(stmt.intoName);
     this._line(`// compare: "${this._escape(stmt.chain1Name)}" vs "${this._escape(stmt.chain2Name)}" for "${this._escape(stmt.desireName)}"`);
     this._line(`${intoVar} = new EM.EventMathComparison('${intoEsc}', ${chain1Var}, ${chain2Var}, ${desireVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genConflictStmt(stmt) {
+    const desire1Var = this._safeName(stmt.desire1Name);
+    const desire2Var = this._safeName(stmt.desire2Name);
+    const chainVar   = this._safeName(stmt.chainName);
+    const intoVar    = this._safeName(stmt.intoName);
+    const intoEsc    = this._escape(stmt.intoName);
+    this._line(`// conflict: "${this._escape(stmt.desire1Name)}" vs "${this._escape(stmt.desire2Name)}" for "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathConflict('${intoEsc}', ${desire1Var}, ${desire2Var}, ${chainVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genWeighStmt(stmt) {
+    const conflictVar = this._safeName(stmt.conflictName);
+    const intoVar     = this._safeName(stmt.intoName);
+    const intoEsc     = this._escape(stmt.intoName);
+    this._line(`// weigh: "${this._escape(stmt.conflictName)}" into "${this._escape(stmt.intoName)}"`);
+    this._line(`${intoVar} = new EM.EventMathWeigh('${intoEsc}', ${conflictVar});`);
     this._line('');
   }
 }

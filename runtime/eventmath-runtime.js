@@ -1277,6 +1277,10 @@
     // "satisfied when" key may contain a space — access via bracket notation
     this.satisfiedWhen = m['satisfied when'] || m.satisfiedWhen || this.outcomeText || '';
     this._condition    = this._parseCondition(this.satisfiedWhen);
+    // priority for conflict resolution — matter field "priority is N", default 1
+    // Also accepts m.weight from direct API use (not via compiled .em files)
+    var w = parseFloat(m.priority || m['priority'] || m.weight || 1);
+    this.weight = (w > 0 && !isNaN(w)) ? w : 1;
   }
 
   EventMathDesire.prototype._parseCondition = function (text) {
@@ -1527,18 +1531,19 @@
   };
 
   EventMathSatisfactionEngine.prototype._evaluate = function () {
-    var self        = this;
-    var chainStates = this._extractChainStates();
-    var totalPartial = 0;
+    var self         = this;
+    var chainStates  = this._extractChainStates();
+    var weightedSum  = 0;
+    var totalWeight  = 0;
     this.desires.forEach(function (d) {
       var r = self._checkDesire(d, chainStates);
       self.results.push(r);
-      totalPartial += (r.partialScore || 0);
+      var w = (d && d.weight > 0) ? d.weight : 1;
+      weightedSum += (r.partialScore || 0) * w;
+      totalWeight += w;
       if (!r.satisfied) self.gaps.push(r);
     });
-    this.score = this.desires.length > 0
-      ? Math.round(totalPartial / this.desires.length)
-      : 0;
+    this.score = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
   };
 
   EventMathSatisfactionEngine.prototype.render = function () {
@@ -2439,6 +2444,184 @@
     return defaultTimeline;
   }
 
+  // ── EventMathConflict ─────────────────────────────────────────────
+  // Detects tension between two desires evaluated against the same chain.
+  // Labels: ALIGNED (≤5 point loss), COMPETITIVE (≤35), OPPOSED (>35).
+
+  function EventMathConflict(name, desire1, desire2, chain, assumptions) {
+    if (!(this instanceof EventMathConflict)) {
+      return new EventMathConflict(name, desire1, desire2, chain, assumptions);
+    }
+    this.name        = name        || 'conflict';
+    this.desire1     = desire1     || null;
+    this.desire2     = desire2     || null;
+    this.chain       = chain       || null;
+    this.assumptions = Array.isArray(assumptions) ? assumptions : [];
+    this.score1      = 0;
+    this.score2      = 0;
+    this.scoreBoth   = 0;
+    this.tensionScore = 0;
+    this.label       = 'UNKNOWN';
+    this.verdict     = '';
+    this._detect();
+  }
+
+  EventMathConflict.prototype._detect = function () {
+    if (!this.desire1 || !this.desire2 || !this.chain) {
+      this.label   = 'UNKNOWN';
+      this.verdict = 'Conflict requires two desires and a chain.';
+      return;
+    }
+    var eng1 = new EventMathSatisfactionEngine('cf1', [this.desire1], this.chain, this.assumptions);
+    var eng2 = new EventMathSatisfactionEngine('cf2', [this.desire2], this.chain, this.assumptions);
+    var engB = new EventMathSatisfactionEngine('cfb', [this.desire1, this.desire2], this.chain, this.assumptions);
+    this.score1    = eng1.score;
+    this.score2    = eng2.score;
+    this.scoreBoth = engB.score;
+
+    // Expected combined score if desires were independent — use weights
+    var w1 = this.desire1.weight || 1;
+    var w2 = this.desire2.weight || 1;
+    var expectedWeighted = (this.score1 * w1 + this.score2 * w2) / (w1 + w2);
+    this.tensionScore = Math.max(0, Math.round(expectedWeighted - this.scoreBoth));
+
+    var d1n = this.desire1.name || 'desire 1';
+    var d2n = this.desire2.name || 'desire 2';
+    var minScore = Math.min(this.score1, this.score2);
+    var maxScore = Math.max(this.score1, this.score2);
+
+    if (minScore >= 80) {
+      // Both substantially satisfied — no conflict
+      this.label   = 'ALIGNED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are compatible in this chain. Both can be satisfied without trade-offs.';
+    } else if (maxScore === 0) {
+      // Chain satisfies neither desire — not an inter-desire conflict, a chain gap
+      this.label   = 'ALIGNED';
+      this.verdict = 'Neither "' + d1n + '" nor "' + d2n + '" is served by this chain. The gap is in the chain, not between the desires.';
+    } else if (minScore === 0) {
+      // One desire is completely blocked while the other succeeds — structurally opposed
+      this.label   = 'OPPOSED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are structurally opposed. One can be satisfied (' + maxScore + '%) while the other cannot (0%). Use "weigh" to find which to prioritize.';
+    } else if (this.tensionScore > 35) {
+      this.label   = 'OPPOSED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are structurally opposed. Satisfying both in this chain requires an explicit trade-off — use "weigh" to find the optimal path.';
+    } else if (this.tensionScore > 5) {
+      this.label   = 'COMPETITIVE';
+      this.verdict = 'Partial tension: pursuing both "' + d1n + '" and "' + d2n + '" costs ' + this.tensionScore + ' satisfaction points compared to pursuing each independently.';
+    } else {
+      this.label   = 'ALIGNED';
+      this.verdict = '"' + d1n + '" and "' + d2n + '" are compatible in this chain. Both can be satisfied without trade-offs.';
+    }
+  };
+
+  EventMathConflict.prototype.render = function () {
+    var lines = [];
+    var d1n = this.desire1 ? this.desire1.name : '?';
+    var d2n = this.desire2 ? this.desire2.name : '?';
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    var hdr = '  CONFLICT: ' + this.name;
+    lines.push('║' + hdr + ' '.repeat(Math.max(0, 58 - hdr.length)) + '║');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    lines.push('  Desire A: "' + d1n + '"  (weight ' + (this.desire1 ? this.desire1.weight || 1 : 1) + ')  →  individual score: ' + this.score1 + '%');
+    lines.push('  Desire B: "' + d2n + '"  (weight ' + (this.desire2 ? this.desire2.weight || 1 : 1) + ')  →  individual score: ' + this.score2 + '%');
+    lines.push('');
+    lines.push('  Combined score:  ' + this.scoreBoth + '%');
+    lines.push('  Tension loss:    ' + this.tensionScore + ' points');
+    lines.push('');
+    lines.push('  Status: ' + this.label);
+    lines.push('  ' + this.verdict);
+    lines.push('');
+    return lines.join('\n');
+  };
+
+  // ── EventMathWeigh ─────────────────────────────────────────────────
+  // Optimal trade-off recommendation from a ConflictStmt result.
+  // Uses desire weights to determine which desire to prioritize.
+
+  function EventMathWeigh(name, conflict) {
+    if (!(this instanceof EventMathWeigh)) {
+      return new EventMathWeigh(name, conflict);
+    }
+    this.name           = name     || 'weigh';
+    this.conflict       = conflict || null;
+    this.winner         = '';
+    this.tradeoff       = '';
+    this.recommendation = '';
+    this.weightedScore1 = 0;
+    this.weightedScore2 = 0;
+    this._weigh();
+  }
+
+  EventMathWeigh.prototype._weigh = function () {
+    if (!this.conflict) {
+      this.recommendation = 'No conflict provided.';
+      return;
+    }
+    var d1 = this.conflict.desire1;
+    var d2 = this.conflict.desire2;
+    if (!d1 || !d2) {
+      this.recommendation = 'Conflict is missing one or both desires.';
+      return;
+    }
+    var w1 = d1.weight || 1;
+    var w2 = d2.weight || 1;
+    this.weightedScore1 = Math.round(this.conflict.score1 * w1);
+    this.weightedScore2 = Math.round(this.conflict.score2 * w2);
+
+    var weightsStr = (w1 !== 1 || w2 !== 1)
+      ? ' (weights: ' + d1.name + '×' + w1 + ', ' + d2.name + '×' + w2 + ')'
+      : '';
+
+    if (this.conflict.label === 'ALIGNED') {
+      this.winner         = 'both';
+      this.tradeoff       = 'none';
+      this.recommendation = 'Pursue both "' + d1.name + '" and "' + d2.name + '" — no trade-off required in this chain.';
+    } else if (this.weightedScore1 >= this.weightedScore2) {
+      this.winner         = d1.name;
+      this.tradeoff       = d2.name;
+      this.recommendation =
+        'Prioritize "' + d1.name + '" — weighted score ' + this.weightedScore1 + ' vs ' + this.weightedScore2 + weightsStr + '. ' +
+        'Accept partial satisfaction of "' + d2.name + '". ' +
+        'The tension cost is ' + this.conflict.tensionScore + ' points.';
+    } else {
+      this.winner         = d2.name;
+      this.tradeoff       = d1.name;
+      this.recommendation =
+        'Prioritize "' + d2.name + '" — weighted score ' + this.weightedScore2 + ' vs ' + this.weightedScore1 + weightsStr + '. ' +
+        'Accept partial satisfaction of "' + d1.name + '". ' +
+        'The tension cost is ' + this.conflict.tensionScore + ' points.';
+    }
+  };
+
+  EventMathWeigh.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    var hdr = '  WEIGH: ' + this.name;
+    lines.push('║' + hdr + ' '.repeat(Math.max(0, 58 - hdr.length)) + '║');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    if (this.conflict) {
+      var d1 = this.conflict.desire1;
+      var d2 = this.conflict.desire2;
+      if (d1) {
+        lines.push('  "' + d1.name + '"  weight×' + (d1.weight || 1) + '  score ' + this.conflict.score1 + '%  →  weighted ' + this.weightedScore1);
+      }
+      if (d2) {
+        lines.push('  "' + d2.name + '"  weight×' + (d2.weight || 1) + '  score ' + this.conflict.score2 + '%  →  weighted ' + this.weightedScore2);
+      }
+      lines.push('');
+      lines.push('  Conflict: ' + this.conflict.label + '  (tension: ' + this.conflict.tensionScore + ' pts)');
+      lines.push('');
+    }
+    lines.push('  Winner:    ' + this.winner);
+    lines.push('  Trade-off: ' + this.tradeoff);
+    lines.push('');
+    lines.push('  ' + this.recommendation);
+    lines.push('');
+    return lines.join('\n');
+  };
+
   // ── Exports ──────────────────────────────────────────────
 
   return {
@@ -2460,6 +2643,8 @@
     EventMathDiagnosis:             EventMathDiagnosis,
     EventMathChallenge:             EventMathChallenge,
     EventMathComparison:            EventMathComparison,
+    EventMathConflict:              EventMathConflict,
+    EventMathWeigh:                 EventMathWeigh,
     EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,

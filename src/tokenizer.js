@@ -41,6 +41,8 @@ const KEYWORDS = new Set([
   'why', 'satisfied',
   // v2.7 — sensitivity analysis + chain comparison
   'challenge', 'compare', 'for',
+  // v2.8 — conflict detection + weighted trade-offs
+  'conflict', 'weigh',
 ]);
 
 class Token {
@@ -168,6 +170,16 @@ class EventMathTokenizer {
     // compare CHAIN and CHAIN for DESIRE into RESULT
     if (lead === 'compare') {
       return this._tokenizeCompareStmt(words, lineNum);
+    }
+
+    // conflict DESIRE and DESIRE for CHAIN into RESULT
+    if (lead === 'conflict') {
+      return this._tokenizeConflictStmt(words, lineNum);
+    }
+
+    // weigh CONFLICT into RESULT
+    if (lead === 'weigh') {
+      return this._tokenizeWeighStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1746,6 +1758,40 @@ class EventMathTokenizer {
     const desireName = words.slice(forIdx + 1, intoIdx).join(' ');
     const intoName   = words.slice(intoIdx + 1).join(' ');
     return [new Token('COMPARE_STMT', { chain1, chain2, desireName, intoName }, lineNum)];
+  }
+
+  /**
+   * Conflict statement: conflict DESIRE and DESIRE for CHAIN into RESULT
+   * Detects ALIGNED / COMPETITIVE / OPPOSED tension between two desires in a chain.
+   * Example: conflict fair payment and creative freedom for leverage chain into tension report
+   */
+  _tokenizeConflictStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const forIdx  = this._indexOf(words, 'for');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || forIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'conflict', lineNum)];
+    }
+    const desire1   = words.slice(1, andIdx).join(' ');
+    const desire2   = words.slice(andIdx + 1, forIdx).join(' ');
+    const chainName = words.slice(forIdx + 1, intoIdx).join(' ');
+    const intoName  = words.slice(intoIdx + 1).join(' ');
+    return [new Token('CONFLICT_STMT', { desire1, desire2, chainName, intoName }, lineNum)];
+  }
+
+  /**
+   * Weigh statement: weigh CONFLICT into RESULT
+   * Produces an optimal trade-off recommendation using desire weights.
+   * Example: weigh tension report into resolution
+   */
+  _tokenizeWeighStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) {
+      return [new Token('KEYWORD', 'weigh', lineNum)];
+    }
+    const conflictName = words.slice(1, intoIdx).join(' ');
+    const intoName     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('WEIGH_STMT', { conflictName, intoName }, lineNum)];
   }
 
   /**
