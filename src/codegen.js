@@ -299,6 +299,8 @@ class EventMathCodeGen {
         case 'EvaluateStmt':
         case 'DimensionalStmt':
         case 'DiagnoseStmt':
+        case 'ChallengeStmt':
+        case 'CompareStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
@@ -407,6 +409,8 @@ class EventMathCodeGen {
       case 'EvaluateStmt':        return this._genEvaluateStmt(stmt);
       case 'DimensionalStmt':     return this._genDimensionalStmt(stmt);
       case 'DiagnoseStmt':        return this._genDiagnoseStmt(stmt);
+      case 'ChallengeStmt':       return this._genChallengeStmt(stmt);
+      case 'CompareStmt':         return this._genCompareStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -1978,6 +1982,27 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     this._line(`// diagnose: why "${this._escape(stmt.desireName)}" is not satisfied in "${this._escape(stmt.chainName)}"`);
     this._line(`${intoVar} = new EM.EventMathDiagnosis('${intoEsc}', ${desireVar}, ${chainVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genChallengeStmt(stmt) {
+    const assumptionVar = this._safeName(stmt.assumptionName);
+    const reportVar     = this._safeName(stmt.reportName);
+    const intoVar       = this._safeName(stmt.intoName);
+    const intoEsc       = this._escape(stmt.intoName);
+    this._line(`// challenge: "${this._escape(stmt.assumptionName)}" in "${this._escape(stmt.reportName)}"`);
+    this._line(`${intoVar} = new EM.EventMathChallenge('${intoEsc}', '${this._escape(stmt.assumptionName)}', ${reportVar}, __assumptions);`);
+    this._line('');
+  }
+
+  _genCompareStmt(stmt) {
+    const chain1Var  = this._safeName(stmt.chain1Name);
+    const chain2Var  = this._safeName(stmt.chain2Name);
+    const desireVar  = this._safeName(stmt.desireName);
+    const intoVar    = this._safeName(stmt.intoName);
+    const intoEsc    = this._escape(stmt.intoName);
+    this._line(`// compare: "${this._escape(stmt.chain1Name)}" vs "${this._escape(stmt.chain2Name)}" for "${this._escape(stmt.desireName)}"`);
+    this._line(`${intoVar} = new EM.EventMathComparison('${intoEsc}', ${chain1Var}, ${chain2Var}, ${desireVar}, __assumptions);`);
     this._line('');
   }
 }

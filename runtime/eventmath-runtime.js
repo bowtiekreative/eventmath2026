@@ -1348,7 +1348,10 @@
       if (all.indexOf(f) === -1) all.push(f);
       if (all.indexOf(t) === -1) all.push(t);
       sourceSet[f] = true;
-      if (lk.value !== undefined) stateValues[t] = lk.value;
+      // For branching chains (multiple paths to the same node), take the strongest path value
+      if (lk.value !== undefined && (stateValues[t] === undefined || lk.value > stateValues[t])) {
+        stateValues[t] = lk.value;
+      }
     });
     var terminals = all.filter(function (s) { return !sourceSet[s]; });
     return { all: all, terminals: terminals, sources: Object.keys(sourceSet), stateValues: stateValues };
@@ -1373,12 +1376,15 @@
 
   EventMathSatisfactionEngine.prototype._resolveActualValue = function (subject, targetWords, stateValues) {
     var lookup = Object.keys(stateValues);
+    // Subject is the thing being measured; targetWords is the threshold.
+    // Searching by both causes false matches when target words appear in unrelated state names.
+    // Use subject words exclusively when available; fall back to targetWords only when subject is absent.
+    var subjectWords = subject ? subject.split(/\s+/) : [];
+    var searchWords  = subjectWords.length > 0 ? subjectWords : targetWords;
     for (var i = 0; i < lookup.length; i++) {
-      var stateName = lookup[i];
+      var stateName  = lookup[i];
       var stateWords = stateName.split(/\s+/);
-      // Match if any meaningful condition keyword appears in the state name
-      var condKeywords = (subject ? subject.split(/\s+/) : []).concat(targetWords);
-      var matched = condKeywords.some(function (w) {
+      var matched    = searchWords.some(function (w) {
         return w.length > 2 && stateWords.some(function (sw) { return sw.includes(w); });
       });
       if (matched) return stateValues[stateName];
@@ -2022,13 +2028,15 @@
     visited[current] = true;
 
     for (var d = 0; d < links.length; d++) {
+      // For branching chains pick the highest-value predecessor (strongest path backward)
       var found = null;
-      for (var j = links.length - 1; j >= 0; j--) {
+      var foundVal = -Infinity;
+      for (var j = 0; j < links.length; j++) {
         var lkTo = links[j].to.toLowerCase();
         if (!visited[lkTo] &&
             (lkTo === current || current.includes(lkTo) || lkTo.includes(current))) {
-          found = links[j];
-          break;
+          var lkVal = links[j].value !== undefined ? links[j].value : 0;
+          if (found === null || lkVal > foundVal) { found = links[j]; foundVal = lkVal; }
         }
       }
       if (!found) break;
@@ -2184,6 +2192,245 @@
     return lines.join('\n');
   };
 
+  // ── Challenge (assumption sensitivity analysis) ───────────
+  //
+  // `challenge ASSUMPTION in REPORT into RESULT`
+  //
+  // Deactivates one assumption, re-runs the referenced report,
+  // and measures how much each tier score shifts.
+  // Labels the assumption: LOAD-BEARING (high sensitivity),
+  // SIGNIFICANT (medium), or RESILIENT (low / model holds without it).
+  //
+  // The `active` flag on EventMathAssumption was designed for this.
+
+  function EventMathChallenge(name, assumptionName, report, assumptions) {
+    if (!(this instanceof EventMathChallenge)) {
+      return new EventMathChallenge(name, assumptionName, report, assumptions);
+    }
+    this.name            = name           || 'challenge';
+    this.assumptionName  = assumptionName || '';
+    this.report          = report         || null;
+    this.assumptions     = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+
+    this.targetAssumption  = null;
+    this.originalScores    = { tier1: 0, tier2: 0, tier3: 0, gradient: '' };
+    this.challengedScores  = { tier1: 0, tier2: 0, tier3: 0, gradient: '' };
+    this.deltas            = { tier1: 0, tier2: 0, tier3: 0 };
+    this.maxDelta          = 0;
+    this.sensitivity       = 'UNKNOWN';
+    this.verdict           = '';
+    this.found             = false;
+
+    this._challenge();
+  }
+
+  EventMathChallenge.prototype._challenge = function () {
+    // Locate the target assumption
+    var lowerName = this.assumptionName.toLowerCase().trim();
+    for (var i = 0; i < this.assumptions.length; i++) {
+      if (this.assumptions[i].name.toLowerCase().trim() === lowerName) {
+        this.targetAssumption = this.assumptions[i];
+        break;
+      }
+    }
+
+    if (!this.targetAssumption) {
+      this.verdict = 'Assumption "' + this.assumptionName + '" not found. Check your assume statements.';
+      return;
+    }
+    this.found = true;
+
+    // Capture original scores
+    var r = this.report;
+    if (r && r.tier1Score !== undefined) {
+      this.originalScores = { tier1: r.tier1Score, tier2: r.tier2Score, tier3: r.tier3Score, gradient: r.gradient || '' };
+    } else if (r && r.score !== undefined) {
+      this.originalScores = { tier1: r.score, tier2: r.score, tier3: r.score, gradient: r.score >= 100 ? 'ALIGNED' : 'BLOCKED' };
+    }
+
+    // Deactivate and re-run
+    this.targetAssumption.active = false;
+
+    var ct1 = 0, ct2 = 0, ct3 = 0, cg = '';
+    if (r instanceof EventMathDimensionalReport) {
+      var cr = new EventMathDimensionalReport('challenged_' + (r.name || ''), r.desires, r.chain, r.fractal, this.assumptions);
+      ct1 = cr.tier1Score; ct2 = cr.tier2Score; ct3 = cr.tier3Score; cg = cr.gradient;
+    } else if (r instanceof EventMathSatisfactionEngine) {
+      var ce = new EventMathSatisfactionEngine('challenged', r.desires, r.chain, this.assumptions);
+      ct1 = ct2 = ct3 = ce.score;
+      cg = ce.score >= 100 ? 'ALIGNED' : 'BLOCKED';
+    } else if (r instanceof EventMathDiagnosis) {
+      var cd = new EventMathDiagnosis('challenged_' + (r.name || ''), r.desire, r.chain, this.assumptions);
+      ct1 = cd.isSatisfied ? 100 : 0; ct2 = ct1; ct3 = ct1;
+      cg = cd.isSatisfied ? 'ALIGNED' : 'BLOCKED';
+    }
+
+    // Reactivate
+    this.targetAssumption.active = true;
+
+    this.challengedScores = { tier1: ct1, tier2: ct2, tier3: ct3, gradient: cg };
+    this.deltas = {
+      tier1: ct1 - this.originalScores.tier1,
+      tier2: ct2 - this.originalScores.tier2,
+      tier3: ct3 - this.originalScores.tier3
+    };
+    this.maxDelta = Math.max(
+      Math.abs(this.deltas.tier1),
+      Math.abs(this.deltas.tier2),
+      Math.abs(this.deltas.tier3)
+    );
+
+    if (this.maxDelta > 20) {
+      this.sensitivity = 'HIGH';
+      this.verdict     = 'LOAD-BEARING — removing this assumption collapses the model by ' + this.maxDelta + ' points.';
+    } else if (this.maxDelta > 5) {
+      this.sensitivity = 'MEDIUM';
+      this.verdict     = 'SIGNIFICANT — this assumption matters but the model partially holds without it.';
+    } else {
+      this.sensitivity = 'LOW';
+      this.verdict     = 'RESILIENT — the model holds without this assumption (delta: ' + this.maxDelta + ').';
+    }
+  };
+
+  EventMathChallenge.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ CHALLENGE: "' + this.assumptionName + '"');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+
+    if (!this.found) {
+      lines.push('  ' + this.verdict);
+      return lines.join('\n');
+    }
+
+    var orig = this.originalScores;
+    var chal = this.challengedScores;
+
+    lines.push('  Assumption suspended: "' + this.assumptionName + '" = ' +
+      (this.targetAssumption ? this.targetAssumption.rawValue : '?'));
+    lines.push('');
+    lines.push('  ── Score comparison ──');
+    lines.push('                    Before   After    Δ');
+
+    function fmt(n) { return String(n).padStart(5); }
+    function fmtd(n) { var s = (n >= 0 ? '+' : '') + n; return s.padStart(5); }
+
+    lines.push('  Tier 1 (Surface): ' + fmt(orig.tier1) + '    ' + fmt(chal.tier1) + '    ' + fmtd(this.deltas.tier1));
+    lines.push('  Tier 2 (System):  ' + fmt(orig.tier2) + '    ' + fmt(chal.tier2) + '    ' + fmtd(this.deltas.tier2));
+    lines.push('  Tier 3 (Root):    ' + fmt(orig.tier3) + '    ' + fmt(chal.tier3) + '    ' + fmtd(this.deltas.tier3));
+    lines.push('');
+    lines.push('  Gradient:  ' + orig.gradient + '  →  ' + (chal.gradient || orig.gradient));
+    lines.push('');
+    lines.push('  Sensitivity: ' + this.sensitivity);
+    lines.push('  ' + this.verdict);
+    return lines.join('\n');
+  };
+
+  // ── Comparison (side-by-side chain evaluation) ────────────
+  //
+  // `compare CHAIN and CHAIN for DESIRE into RESULT`
+  //
+  // Runs the satisfaction engine against both chains for the same desire,
+  // applies system-tier fallacy penalties, and declares a winner at each tier.
+  // Shows performance gap and a clear recommendation.
+
+  function EventMathComparison(name, chain1, chain2, desire, assumptions) {
+    if (!(this instanceof EventMathComparison)) {
+      return new EventMathComparison(name, chain1, chain2, desire, assumptions);
+    }
+    this.name        = name        || 'comparison';
+    this.chain1      = chain1      || null;
+    this.chain2      = chain2      || null;
+    this.desire      = desire      || null;
+    this.assumptions = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+
+    this.result1   = null;
+    this.result2   = null;
+    this.winners   = {};
+    this.verdict   = '';
+
+    this._compare();
+  }
+
+  EventMathComparison.prototype._scoreChain = function (chain) {
+    var eng = new EventMathSatisfactionEngine('cmp', [this.desire], chain, this.assumptions);
+    var det = new EventMathFallacyDetector(chain);
+    var fallacyPenalty = 1.0;
+    det.findings.forEach(function (f) {
+      if (f.name === 'circular reasoning')  fallacyPenalty = Math.min(fallacyPenalty, 0.50);
+      else if (f.name === 'slippery slope risk') fallacyPenalty = Math.min(fallacyPenalty, 0.75);
+      else if (f.name === 'false dichotomy risk') fallacyPenalty = Math.min(fallacyPenalty, 0.85);
+    });
+    var s1 = eng.score;
+    var s2 = Math.round(s1 * fallacyPenalty);
+    return {
+      chain:     chain,
+      surface:   s1,
+      system:    s2,
+      gaps:      eng.gaps,
+      fallacies: det.findings,
+      penalty:   fallacyPenalty
+    };
+  };
+
+  EventMathComparison.prototype._compare = function () {
+    if (!this.chain1 || !this.chain2 || !this.desire) return;
+    this.result1 = this._scoreChain(this.chain1);
+    this.result2 = this._scoreChain(this.chain2);
+
+    var r1 = this.result1, r2 = this.result2;
+    this.winners = {
+      surface:  r1.surface >= r2.surface ? r1.chain.name : r2.chain.name,
+      system:   r1.system  >= r2.system  ? r1.chain.name : r2.chain.name,
+      overall:  (r1.surface + r1.system) >= (r2.surface + r2.system)
+                  ? r1.chain.name : r2.chain.name
+    };
+
+    var winner = this.winners.overall;
+    var gap    = Math.abs((r1.surface + r1.system) - (r2.surface + r2.system));
+    if (r1.surface === r2.surface && r1.system === r2.system) {
+      this.verdict = 'Both chains perform identically for "' + this.desire.name + '".';
+    } else {
+      this.verdict = 'Use "' + winner + '" — outperforms by ' + gap + ' combined tier points.';
+    }
+  };
+
+  EventMathComparison.prototype.render = function () {
+    if (!this.result1 || !this.result2) {
+      return '── Comparison: (incomplete — chain or desire missing) ──';
+    }
+    var r1 = this.result1, r2 = this.result2;
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ COMPARE for desire: "' + this.desire.name + '"');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+
+    function bar(n) { return '[' + '█'.repeat(Math.round(n / 5)) + '░'.repeat(20 - Math.round(n / 5)) + '] ' + n; }
+
+    lines.push('  Chain A: "' + r1.chain.name + '"');
+    lines.push('    Surface D±13:  ' + bar(r1.surface));
+    lines.push('    System  D±26:  ' + bar(r1.system) + (r1.penalty < 1 ? '  (×' + r1.penalty.toFixed(2) + ' fallacy penalty)' : ''));
+    if (r1.fallacies.length > 0) lines.push('    Fallacies: ' + r1.fallacies.map(function(f){ return f.name; }).join(', '));
+    if (r1.gaps.length > 0)      lines.push('    Gaps: ' + r1.gaps.map(function(g){ return g.desire; }).join(', '));
+    lines.push('');
+
+    lines.push('  Chain B: "' + r2.chain.name + '"');
+    lines.push('    Surface D±13:  ' + bar(r2.surface));
+    lines.push('    System  D±26:  ' + bar(r2.system) + (r2.penalty < 1 ? '  (×' + r2.penalty.toFixed(2) + ' fallacy penalty)' : ''));
+    if (r2.fallacies.length > 0) lines.push('    Fallacies: ' + r2.fallacies.map(function(f){ return f.name; }).join(', '));
+    if (r2.gaps.length > 0)      lines.push('    Gaps: ' + r2.gaps.map(function(g){ return g.desire; }).join(', '));
+    lines.push('');
+
+    lines.push('  ── Winners ──');
+    lines.push('  Surface tier: ' + this.winners.surface);
+    lines.push('  System tier:  ' + this.winners.system);
+    lines.push('  Overall:      ' + this.winners.overall);
+    lines.push('');
+    lines.push('  Recommendation: ' + this.verdict);
+    return lines.join('\n');
+  };
+
   // ── Default Timeline ─────────────────────────────────────
 
   var defaultTimeline = new EventMathTimeline('default');
@@ -2211,6 +2458,8 @@
     EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
     EventMathDimensionalReport:     EventMathDimensionalReport,
     EventMathDiagnosis:             EventMathDiagnosis,
+    EventMathChallenge:             EventMathChallenge,
+    EventMathComparison:            EventMathComparison,
     EventMathFractalAxis:           EventMathFractalAxis,
     FALLACY_PATTERNS:        FALLACY_PATTERNS,
     TimelineEntry:           TimelineEntry,

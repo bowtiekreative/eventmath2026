@@ -118,6 +118,8 @@ class EventMathParser {
     if (t.type === 'EVALUATE_STMT')         return this._parseEvaluateStmt();
     if (t.type === 'DIMENSIONAL_STMT')      return this._parseDimensionalStmt();
     if (t.type === 'WHY_STMT')              return this._parseWhyStmt();
+    if (t.type === 'CHALLENGE_STMT')        return this._parseChallengeStmt();
+    if (t.type === 'COMPARE_STMT')          return this._parseCompareStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1167,6 +1169,27 @@ class EventMathParser {
       desireName: t.value.desireName,
       chainName:  t.value.chainName,
       intoName:   t.value.intoName,
+    });
+  }
+
+  _parseChallengeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ChallengeStmt', {
+      assumptionName: t.value.assumptionName,
+      reportName:     t.value.reportName,
+      intoName:       t.value.intoName,
+    });
+  }
+
+  _parseCompareStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('CompareStmt', {
+      chain1Name:  t.value.chain1,
+      chain2Name:  t.value.chain2,
+      desireName:  t.value.desireName,
+      intoName:    t.value.intoName,
     });
   }
 

@@ -107,6 +107,8 @@ class EventMathFormatter {
       case 'EvaluateStmt':       return this._formatEvaluateStmt(stmt);
       case 'DimensionalStmt':    return this._formatDimensionalStmt(stmt);
       case 'DiagnoseStmt':       return this._formatDiagnoseStmt(stmt);
+      case 'ChallengeStmt':      return this._formatChallengeStmt(stmt);
+      case 'CompareStmt':        return this._formatCompareStmt(stmt);
     }
   }
 
@@ -712,6 +714,14 @@ class EventMathFormatter {
 
   _formatDiagnoseStmt(stmt) {
     this._line(`why ${stmt.desireName} is not satisfied in ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatChallengeStmt(stmt) {
+    this._line(`challenge ${stmt.assumptionName} in ${stmt.reportName} into ${stmt.intoName}`);
+  }
+
+  _formatCompareStmt(stmt) {
+    this._line(`compare ${stmt.chain1Name} and ${stmt.chain2Name} for ${stmt.desireName} into ${stmt.intoName}`);
   }
 }
 

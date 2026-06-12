@@ -39,6 +39,8 @@ const KEYWORDS = new Set([
   'satisfy', 'evaluate', 'against',
   // v2.6 — backward satisfaction diagnosis
   'why', 'satisfied',
+  // v2.7 — sensitivity analysis + chain comparison
+  'challenge', 'compare', 'for',
 ]);
 
 class Token {
@@ -156,6 +158,16 @@ class EventMathTokenizer {
     // why <desire> is not satisfied in <chain> into <result>
     if (lead === 'why') {
       return this._tokenizeWhyStmt(words, lineNum);
+    }
+
+    // challenge ASSUMPTION in REPORT into RESULT
+    if (lead === 'challenge') {
+      return this._tokenizeChallengeStmt(words, lineNum);
+    }
+
+    // compare CHAIN and CHAIN for DESIRE into RESULT
+    if (lead === 'compare') {
+      return this._tokenizeCompareStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1698,6 +1710,42 @@ class EventMathTokenizer {
     const chainName = middleWords.join(' ');
     const intoName  = words.slice(intoIdx + 1).join(' ');
     return [new Token('EVALUATE_STMT', { desireNames, chainName, intoName }, lineNum)];
+  }
+
+  /**
+   * Challenge statement: challenge ASSUMPTION in REPORT into RESULT
+   * Deactivates one assumption, re-runs the referenced report, shows the delta.
+   * Example: challenge market rate in leverage report into market sensitivity
+   */
+  _tokenizeChallengeStmt(words, lineNum) {
+    const inIdx   = this._indexOf(words, 'in');
+    const intoIdx = this._indexOf(words, 'into');
+    if (inIdx < 0 || intoIdx < 0 || intoIdx <= inIdx) {
+      return [new Token('KEYWORD', 'challenge', lineNum)];
+    }
+    const assumptionName = words.slice(1, inIdx).join(' ');
+    const reportName     = words.slice(inIdx + 1, intoIdx).join(' ');
+    const intoName       = words.slice(intoIdx + 1).join(' ');
+    return [new Token('CHALLENGE_STMT', { assumptionName, reportName, intoName }, lineNum)];
+  }
+
+  /**
+   * Compare statement: compare CHAIN and CHAIN for DESIRE into RESULT
+   * Side-by-side chain comparison: tier scores, fallacy penalties, winner per tier.
+   * Example: compare waiting chain and leverage chain for fair payment into path comparison
+   */
+  _tokenizeCompareStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const forIdx  = this._indexOf(words, 'for');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || forIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'compare', lineNum)];
+    }
+    const chain1     = words.slice(1, andIdx).join(' ');
+    const chain2     = words.slice(andIdx + 1, forIdx).join(' ');
+    const desireName = words.slice(forIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('COMPARE_STMT', { chain1, chain2, desireName, intoName }, lineNum)];
   }
 
   /**
