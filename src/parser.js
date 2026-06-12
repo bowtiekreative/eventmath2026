@@ -852,20 +852,43 @@ class EventMathParser {
   _parsePredictStmt() {
     this.expect('KEYWORD', 'predict');
     const subjectTok = this.expect('NAME');
+    const subject = subjectTok ? subjectTok.value : '';
+
     this.expect('KEYWORD', 'across');
-    const dirTok = this.expect('NAME');
-    this.expect('KEYWORD', 'and');
-    const lensTok = this.expect('NAME');
-    this.expect('KEYWORD', 'and');
-    const qtyTok = this.expect('NAME');
+
+    // Collect N condition dimensions separated by 'and'
+    const dimensions = [];
+    const firstDim = this.expect('NAME');
+    if (firstDim) dimensions.push(firstDim.value);
+
+    while (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'and') {
+      this.advance(); // consume 'and'
+      const dimTok = this.expect('NAME');
+      if (dimTok) dimensions.push(dimTok.value);
+    }
+
+    // Optional 'through FRACTAL' — routes all condition dimensions through the
+    // fractal's three structural tiers (surface D±13, system D±26, root D±39).
+    // Without this, predict produces a flat cartesian product.
+    let fractalName = null;
+    if (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'through') {
+      this.advance(); // consume 'through'
+      const fractalTok = this.expect('NAME');
+      if (fractalTok) fractalName = fractalTok.value;
+    }
+
     this.expect('KEYWORD', 'into');
     const intoTok = this.expect('NAME');
+
     return ast('PredictStmt', {
-      subject: subjectTok ? subjectTok.value : '',
-      directionsLayer: dirTok ? dirTok.value : '',
-      lensesLayer: lensTok ? lensTok.value : '',
-      quantitiesLayer: qtyTok ? qtyTok.value : '',
+      subject,
+      dimensions,
+      fractalName,
       intoLayer: intoTok ? intoTok.value : '',
+      // backward compat aliases
+      directionsLayer: dimensions[0] || '',
+      lensesLayer:     dimensions[1] || '',
+      quantitiesLayer: dimensions[2] || '',
     });
   }
 

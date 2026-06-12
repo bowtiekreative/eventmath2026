@@ -731,20 +731,46 @@ class EventMathCodeGen {
   // ── Prediction statements ────────────────────────────────────────
 
   _genPredictStmt(stmt) {
-    const intoName = this._safeName(stmt.intoLayer);
-    const dirName = this._safeName(stmt.directionsLayer);
-    const lensName = this._safeName(stmt.lensesLayer);
-    const qtyName = this._safeName(stmt.quantitiesLayer);
-    const subject = this._escape(stmt.subject);
+    // Resolve the dimension list — support both new (dimensions[]) and old (dir/lens/qty) forms
+    const dims = (stmt.dimensions && stmt.dimensions.length > 0)
+      ? stmt.dimensions
+      : [stmt.directionsLayer, stmt.lensesLayer, stmt.quantitiesLayer].filter(Boolean);
 
-    this._line(`// predict: "${this._escape(stmt.subject)}" → ${this._escape(stmt.intoLayer)}`);
+    const intoName   = this._safeName(stmt.intoLayer);
+    const subject    = this._escape(stmt.subject);
+    const dimCount   = dims.length;
+    const fractalVar = stmt.fractalName ? this._safeName(stmt.fractalName) : null;
+    const fractalEsc = stmt.fractalName ? this._escape(stmt.fractalName) : '';
+
+    const tierNote = fractalVar
+      ? `${dimCount} dimensions through "${fractalEsc}" (surface D±13 → system D±26 → root D±39)`
+      : `${dimCount} dimensions (flat — add 'through FRACTAL' to route through the three tiers)`;
+    this._line(`// predict: "${subject}" → ${this._escape(stmt.intoLayer)} — ${tierNote}`);
     this._line(`const ${intoName} = new EM.EventMathLayer('${this._escape(stmt.intoLayer)}', []);`);
-    this._line(`${dirName}.events.forEach(_dir => {`);
-    this.indent++;
-    this._line(`${lensName}.events.forEach(_lens => {`);
-    this.indent++;
-    this._line(`${qtyName}.events.forEach(_qty => {`);
-    this.indent++;
+
+    // Emit N nested forEach loops
+    const varNames = dims.map((_, i) => `_dim_${i}`);
+    for (let i = 0; i < dimCount; i++) {
+      const layerVar = this._safeName(dims[i]);
+      const axisEsc  = this._escape(dims[i]);
+      this._line(`${layerVar}.events.forEach(function(${varNames[i]}) { // axis: ${axisEsc}`);
+      this.indent++;
+    }
+
+    // Fractal tier routing context
+    if (fractalVar) {
+      this._line(`var _tierCtx = typeof ${fractalVar} !== 'undefined' && ${fractalVar} ? {`);
+      this.indent++;
+      this._line(`fractal: '${fractalEsc}',`);
+      this._line(`tier1: (${fractalVar}.posDim || 0) >= 13,`);
+      this._line(`tier2: (${fractalVar}.posDim || 0) >= 26,`);
+      this._line(`tier3: (${fractalVar}.posDim || 0) >= 39,`);
+      this._line(`active_tiers: [(${fractalVar}.posDim || 0) >= 13, (${fractalVar}.posDim || 0) >= 26, (${fractalVar}.posDim || 0) >= 39].filter(Boolean).length`);
+      this.indent--;
+      this._line(`} : null;`);
+    }
+
+    // Build the prediction event
     this._line(`${intoName}.events.push(new EM.EventMathEvent(`);
     this.indent++;
     this._line(`'prediction_' + Date.now() + '_' + Math.random().toString(36).slice(2),`);
@@ -752,10 +778,25 @@ class EventMathCodeGen {
     this._line(`{`);
     this.indent++;
     this._line(`subject: '${subject}',`);
-    this._line(`direction: _dir.matter ? _dir.matter.name : String(_dir.id),`);
-    this._line(`lens: _lens.matter ? _lens.matter.name : String(_lens.id),`);
-    this._line(`quantity: _qty.matter ? _qty.matter.name : String(_qty.id),`);
-    this._line(`predicted_state: (_dir.matter ? _dir.matter.name : '') + ' change through ' + (_lens.matter ? _lens.matter.name : '') + ' lens affecting ' + (_qty.matter ? _qty.matter.name : ''),`);
+
+    // Backward compat fields for 3-dim predict
+    if (dimCount >= 1) this._line(`direction: ${varNames[0]}.matter ? ${varNames[0]}.matter.name : String(${varNames[0]}.id),`);
+    if (dimCount >= 2) this._line(`lens:      ${varNames[1]}.matter ? ${varNames[1]}.matter.name : String(${varNames[1]}.id),`);
+    if (dimCount >= 3) this._line(`quantity:  ${varNames[2]}.matter ? ${varNames[2]}.matter.name : String(${varNames[2]}.id),`);
+
+    // N-dim array (canonical form)
+    const dimEntries = varNames.map((v, i) =>
+      `{ axis: '${this._escape(dims[i])}', matter: ${v}.matter }`
+    ).join(', ');
+    this._line(`dimensions: [${dimEntries}],`);
+
+    // predicted_state: all dimension names joined with ×
+    const stateExpr = varNames.map(v =>
+      `(${v}.matter ? ${v}.matter.name || String(${v}.id) : String(${v}.id))`
+    ).join(` + ' × ' + `);
+    this._line(`predicted_state: ${stateExpr},`);
+
+    if (fractalVar) this._line(`tier_routing: _tierCtx,`);
     this._line(`confidence: 0.5,`);
     this._line(`resolved: false,`);
     this._line(`correct: null`);
@@ -763,12 +804,12 @@ class EventMathCodeGen {
     this._line(`}`);
     this.indent--;
     this._line(`));`);
-    this.indent--;
-    this._line(`});`);
-    this.indent--;
-    this._line(`});`);
-    this.indent--;
-    this._line(`});`);
+
+    // Close all N forEach loops
+    for (let i = dimCount - 1; i >= 0; i--) {
+      this.indent--;
+      this._line(`}); // end axis: ${this._escape(dims[i])}`);
+    }
     this._line('');
   }
 

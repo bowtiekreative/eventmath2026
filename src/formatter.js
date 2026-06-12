@@ -521,10 +521,15 @@ class EventMathFormatter {
   // ── Prediction statements ─────────────────────────────────
 
   _formatPredictStmt(stmt) {
+    const dims = (stmt.dimensions && stmt.dimensions.length > 0)
+      ? stmt.dimensions
+      : [stmt.directionsLayer, stmt.lensesLayer, stmt.quantitiesLayer].filter(Boolean);
     this._line(`predict ${stmt.subject}`);
-    this._line(`across ${stmt.directionsLayer}`);
-    this._line(`and ${stmt.lensesLayer}`);
-    this._line(`and ${stmt.quantitiesLayer}`);
+    if (dims.length > 0) {
+      this._line(`across ${dims[0]}`);
+      for (let i = 1; i < dims.length; i++) this._line(`and ${dims[i]}`);
+    }
+    if (stmt.fractalName) this._line(`through ${stmt.fractalName}`);
     this._line(`into ${stmt.intoLayer}`);
   }
 

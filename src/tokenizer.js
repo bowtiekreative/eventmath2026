@@ -26,7 +26,7 @@ const KEYWORDS = new Set([
   'merge', 'break', 'add', 'remove', 'before', 'after', 'rewind', 'forward',
   'and', 'not', 'until', 'overlap', 'note', 'broken', 'check', 'use',
   'sort', 'filter', 'find', 'count', 'where', 'descending',
-  'predict', 'across', 'resolve',
+  'predict', 'across', 'through', 'resolve',
   'zoom', 'show',
   'spin', 'vibrate', 'cycle', 'resonate',
   'weight', 'explain', 'analogy', 'bound',
@@ -339,6 +339,16 @@ class EventMathTokenizer {
     // Only emit as bare continuation if no other keyword context handles it
     if (lead === 'into') {
       const tokens = [new Token('KEYWORD', 'into', lineNum)];
+      if (words.length > 1) {
+        tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    // through → continuation of predict statement (multi-line syntax)
+    // Routes condition dimensions through the fractal's three structural tiers
+    if (lead === 'through') {
+      const tokens = [new Token('KEYWORD', 'through', lineNum)];
       if (words.length > 1) {
         tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
       }
@@ -1434,54 +1444,65 @@ class EventMathTokenizer {
   }
 
   /**
-   * Predict statement: predict <subject> [across <dir> and <lens> and <qty> into <out>]
+   * Predict statement: predict <subject> across <d1> and <d2> ... [through <fractal>] into <out>
    * words[0] = 'predict'
    *
    * Supports both single-line and multi-line forms:
    *   Single: predict price across directions and lenses and quantities into results
+   *           predict blueprint across industry and price and awareness through leverage axis into predictions
    *   Multi:  predict price          (just emits KEYWORD + NAME for subject)
    *           across directions      (handled by 'across' branch in _tokenizeLine)
    *           and lenses             (handled by bare 'and' branch)
-   *           and quantities
+   *           and awareness
+   *           through leverage axis  (handled by 'through' branch in _tokenizeLine)
    *           into results           (handled by 'into' branch)
+   *
+   * All condition dimensions pass through the fractal's three structural tiers
+   * (surface D±13, system D±26, root D±39). Add 'through FRACTAL' to enforce
+   * dimensional routing. Without it, dimensions are a flat cartesian product.
    */
   _tokenizePredictStmt(words, lineNum) {
     const tokens = [new Token('KEYWORD', 'predict', lineNum)];
     const acrossIdx = this._indexOf(words, 'across');
 
     if (acrossIdx > 0) {
-      // Single-line form: everything on one line
+      // Single-line form: parse subject, then collect N dimensions, optional through, then into
       const subject = words.slice(1, acrossIdx).join(' ');
       tokens.push(new Token('NAME', subject, lineNum));
       tokens.push(new Token('KEYWORD', 'across', lineNum));
 
       const afterAcross = words.slice(acrossIdx + 1);
-      const firstAndIdx = this._indexOf(afterAcross, 'and');
-      if (firstAndIdx < 0) return tokens;
+      const intoIdx    = this._indexOf(afterAcross, 'into');
+      if (intoIdx < 0) return tokens;
 
-      const directionsLayer = afterAcross.slice(0, firstAndIdx).join(' ');
-      tokens.push(new Token('NAME', directionsLayer, lineNum));
-      tokens.push(new Token('KEYWORD', 'and', lineNum));
+      const throughIdx = this._indexOf(afterAcross, 'through');
+      const dimEnd     = throughIdx >= 0 && throughIdx < intoIdx ? throughIdx : intoIdx;
 
-      const afterFirstAnd = afterAcross.slice(firstAndIdx + 1);
-      const secondAndIdx = this._indexOf(afterFirstAnd, 'and');
-      const intoInAfter = this._indexOf(afterFirstAnd, 'into');
-      if (secondAndIdx < 0 || intoInAfter < 0) return tokens;
+      // Split dimension words by 'and' — supports multi-word names like "industry type"
+      const dimWords = afterAcross.slice(0, dimEnd);
+      let current = [];
+      for (const w of dimWords) {
+        if (w === 'and') {
+          if (current.length > 0) {
+            tokens.push(new Token('NAME', current.join(' '), lineNum));
+            tokens.push(new Token('KEYWORD', 'and', lineNum));
+            current = [];
+          }
+        } else {
+          current.push(w);
+        }
+      }
+      if (current.length > 0) tokens.push(new Token('NAME', current.join(' '), lineNum));
 
-      const lensesLayer = afterFirstAnd.slice(0, secondAndIdx).join(' ');
-      tokens.push(new Token('NAME', lensesLayer, lineNum));
-      tokens.push(new Token('KEYWORD', 'and', lineNum));
+      // Optional fractal routing
+      if (throughIdx >= 0 && throughIdx < intoIdx) {
+        tokens.push(new Token('KEYWORD', 'through', lineNum));
+        const fractalWords = afterAcross.slice(throughIdx + 1, intoIdx);
+        tokens.push(new Token('NAME', fractalWords.join(' '), lineNum));
+      }
 
-      const afterSecondAnd = afterFirstAnd.slice(secondAndIdx + 1);
-      const intoInAfterSecond = this._indexOf(afterSecondAnd, 'into');
-      if (intoInAfterSecond < 0) return tokens;
-
-      const quantitiesLayer = afterSecondAnd.slice(0, intoInAfterSecond).join(' ');
-      tokens.push(new Token('NAME', quantitiesLayer, lineNum));
       tokens.push(new Token('KEYWORD', 'into', lineNum));
-
-      const intoLayer = afterSecondAnd.slice(intoInAfterSecond + 1).join(' ');
-      tokens.push(new Token('NAME', intoLayer, lineNum));
+      tokens.push(new Token('NAME', afterAcross.slice(intoIdx + 1).join(' '), lineNum));
     } else {
       // Multi-line form: just emit subject on this line; rest follows on subsequent lines
       const subject = words.slice(1).join(' ');

@@ -208,6 +208,21 @@ class EventMathValidator {
           }
           break;
 
+        case 'PredictStmt': {
+          const dims = (stmt.dimensions && stmt.dimensions.length > 0)
+            ? stmt.dimensions
+            : [stmt.directionsLayer, stmt.lensesLayer, stmt.quantitiesLayer].filter(Boolean);
+          if (dims.length > 3 && !stmt.fractalName) {
+            this.warnings.push(
+              `"predict ${stmt.subject}" crosses ${dims.length} condition dimensions without routing through a fractal axis. ` +
+              `All condition dimensions must pass through the three structural tiers (surface D±13, system D±26, root D±39). ` +
+              `Add "through FRACTAL" to enforce dimensional routing, ` +
+              `e.g.: predict ${stmt.subject} across ${dims.slice(0, 2).join(' and ')} ... through my axis into ${stmt.intoLayer}`
+            );
+          }
+          break;
+        }
+
         case 'Walk':
           // Walk target must be a declared layer
           if (stmt.layer && !this.layers.has(stmt.layer)) {
