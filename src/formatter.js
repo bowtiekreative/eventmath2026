@@ -93,7 +93,16 @@ class EventMathFormatter {
       case 'AnalogyStmt':   return this._formatAnalogyStmt(stmt);
       case 'LandscapeStmt': return this._formatLandscapeStmt(stmt);
       case 'ForecastStmt':  return this._formatForecastStmt(stmt);
-      case 'BoundStmt':     return this._formatBoundStmt(stmt);
+      case 'BoundStmt':          return this._formatBoundStmt(stmt);
+      case 'ActorStmt':          return this._formatActorStmt(stmt);
+      case 'ChainStmt':          return this._formatChainStmt(stmt);
+      case 'EventLikeStmt':      return this._formatEventLikeStmt(stmt);
+      case 'AsymmetryStmt':      return this._formatAsymmetryStmt(stmt);
+      case 'RootOfStmt':         return this._formatRootOfStmt(stmt);
+      case 'InvertStmt':         return this._formatInvertStmt(stmt);
+      case 'AssumeStmt':         return this._formatAssumeStmt(stmt);
+      case 'DetectFallaciesStmt':return this._formatDetectFallaciesStmt(stmt);
+      case 'FractalStmt':        return this._formatFractalStmt(stmt);
     }
   }
 
@@ -605,6 +614,77 @@ class EventMathFormatter {
       this.indent--;
     }
     this._line('end');
+  }
+
+  // ── v2.0 format methods ───────────────────────────────────
+
+  _formatActorStmt(stmt) {
+    this._line(`actor ${stmt.name}`);
+    this.indent++;
+    if (stmt.category) this._line(`category ${stmt.category}`);
+    if (stmt.matter && stmt.matter.fields && stmt.matter.fields.length > 0) {
+      this._line('matter');
+      this.indent++;
+      for (const f of stmt.matter.fields) {
+        this._line(f.kind === 'literal' ? `${f.key} is ${f.value}` : `${f.key} from ${f.value}`);
+      }
+      this.indent--;
+      this._line('end');
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatChainStmt(stmt) {
+    this._line(`chain ${stmt.name}`);
+    this.indent++;
+    for (const link of (stmt.links || [])) {
+      this._line(`${link.from} leads to ${link.to}`);
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatEventLikeStmt(stmt) {
+    this._line(`${stmt.keyword} ${stmt.name}`);
+    this.indent++;
+    if (stmt.category) this._line(`category ${stmt.category}`);
+    if (stmt.matter && stmt.matter.fields && stmt.matter.fields.length > 0) {
+      this._line('matter');
+      this.indent++;
+      for (const f of stmt.matter.fields) {
+        this._line(f.kind === 'literal' ? `${f.key} is ${f.value}` : `${f.key} from ${f.value}`);
+      }
+      this.indent--;
+      this._line('end');
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatAsymmetryStmt(stmt) {
+    this._line(`asymmetry from ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
+  }
+
+  _formatRootOfStmt(stmt) {
+    const chain = stmt.chainName ? ` in ${stmt.chainName}` : '';
+    this._line(`root of ${stmt.stateName}${chain} into ${stmt.intoName}`);
+  }
+
+  _formatInvertStmt(stmt) {
+    this._line(`invert ${stmt.sourceName} into ${stmt.intoName}`);
+  }
+
+  _formatAssumeStmt(stmt) {
+    this._line(`assume ${stmt.text}`);
+  }
+
+  _formatDetectFallaciesStmt(stmt) {
+    this._line(`detect fallacies in ${stmt.chainName} into ${stmt.intoName}`);
+  }
+
+  _formatFractalStmt(stmt) {
+    this._line(`fractal ${stmt.firstName} and ${stmt.secondName} into ${stmt.intoName}`);
   }
 }
 

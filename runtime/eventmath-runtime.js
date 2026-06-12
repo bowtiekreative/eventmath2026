@@ -434,9 +434,13 @@
   // Space between two toruses at D1 and D2 auto-generates a bridge at max(D1,D2)+1.
 
   var SHAPE_NAMES = {
-    2:  'square',      3:  'triangle',  4:  'square',      5:  'pentagon',
-    6:  'hexagon',     7:  'heptagon',  8:  'octagon',     9:  'nonagon',
-    10: 'decagon',     11: 'hendecagon', 12: 'dodecagon',  13: 'tridecagon'
+    2:  'square',        3:  'triangle',      4:  'square',        5:  'pentagon',
+    6:  'hexagon',       7:  'heptagon',      8:  'octagon',       9:  'nonagon',
+    10: 'decagon',       11: 'hendecagon',    12: 'dodecagon',     13: 'tridecagon',
+    14: 'tetradecagon',  15: 'pentadecagon',  16: 'hexadecagon',   17: 'heptadecagon',
+    18: 'octadecagon',   19: 'enneadecagon',  20: 'icosagon',      21: 'icosihenagon',
+    22: 'icosidigon',    23: 'icositrigon',   24: 'icositetragon', 25: 'icosipentagon',
+    26: 'icosihexagon'
   };
 
   function getShapeName(D) {
@@ -496,7 +500,7 @@
     var d = typeof dimension === 'number' ? Math.floor(dimension) : 2;
     var absD = Math.abs(d);
     if (absD < 2) absD = 2;
-    if (absD > 13) absD = 13;
+    if (absD > 26) absD = 26;
     this.dimension = d < 0 ? -absD : absD;
     return this;
   };
@@ -642,7 +646,7 @@
 
     var negDim   = negative && negative.dimension ? Math.abs(negative.dimension) : 2;
     var posDim   = positive && positive.dimension ? Math.abs(positive.dimension) : 2;
-    var bridgeDim = Math.min(13, Math.max(negDim, posDim) + 1);
+    var bridgeDim = Math.max(negDim, posDim) + 1;
 
     // bridge = i (the imaginary unit — the control between negative and positive)
     this.bridge = new EventMathTimeline(name + '_bridge');
@@ -879,6 +883,408 @@
     return lines.join('\n');
   };
 
+  // ── Actor ─────────────────────────────────────────────────
+  //
+  // One of 8 functionally distinct actors: user, beneficiary, decider,
+  // payer, designer, builder, seller, communicator.
+  // Each actor has a power level and declares what it controls vs. needs.
+
+  function EventMathActor(name, matter) {
+    if (!(this instanceof EventMathActor)) return new EventMathActor(name, matter);
+    this.name     = name   || '';
+    this.matter   = matter || {};
+    this.power    = parseFloat(matter.power    || 0);
+    this.controls = matter.controls || '';
+    this.needs    = matter.needs    || '';
+    this.role     = matter.role     || matter.type || 'actor';
+  }
+
+  EventMathActor.prototype.render = function () {
+    var lines = ['── Actor: ' + this.name + ' ──'];
+    lines.push('  Role: ' + this.role);
+    lines.push('  Power level: ' + this.power);
+    if (this.controls) lines.push('  Controls: ' + this.controls);
+    if (this.needs)    lines.push('  Needs: '    + this.needs);
+    for (var k in this.matter) {
+      if (this.matter.hasOwnProperty(k) &&
+          k !== 'power' && k !== 'controls' && k !== 'needs' && k !== 'role' && k !== 'type') {
+        lines.push('  ' + k + ': ' + this.matter[k]);
+      }
+    }
+    return lines.join('\n');
+  };
+
+  // ── Power Gap ─────────────────────────────────────────────
+  //
+  // `asymmetry from A and B into gap`
+  // Computes who holds leverage and what the correction path is.
+  // Works with EventMathActor or any EventMathEvent with matter.power/controls/needs.
+
+  function EventMathPowerGap(name, actorA, actorB) {
+    if (!(this instanceof EventMathPowerGap)) return new EventMathPowerGap(name, actorA, actorB);
+    this.name   = name   || '';
+    this.actorA = actorA || null;
+    this.actorB = actorB || null;
+
+    var pA = parseFloat((actorA && (actorA.power || (actorA.matter && actorA.matter.power))) || 0);
+    var pB = parseFloat((actorB && (actorB.power || (actorB.matter && actorB.matter.power))) || 0);
+
+    this.powerA       = pA;
+    this.powerB       = pB;
+    this.gap          = Math.abs(pA - pB);
+    this.dominant     = pA >= pB ? actorA : actorB;
+    this.subordinate  = pA >= pB ? actorB : actorA;
+    this.leverage     = this._findLeverage();
+    this.correction   = this._findCorrection();
+  }
+
+  EventMathPowerGap.prototype._findLeverage = function () {
+    if (!this.dominant || !this.subordinate) return 'insufficient data';
+    var domNeeds = String((this.dominant.needs   || (this.dominant.matter   && this.dominant.matter.needs)   || '')).toLowerCase();
+    var subCtrls = String((this.subordinate.controls || (this.subordinate.matter && this.subordinate.matter.controls) || '')).toLowerCase();
+    if (!domNeeds || !subCtrls) return 'map controls and needs to reveal leverage';
+    var needsArr = domNeeds.split(/[\s,]+/).filter(Boolean);
+    var ctrlArr  = subCtrls.split(/[\s,]+/).filter(Boolean);
+    var overlap  = needsArr.filter(function (n) {
+      return ctrlArr.some(function (c) { return c.includes(n) || n.includes(c); });
+    });
+    var subName = (this.subordinate.name || 'subordinate');
+    var domName = (this.dominant.name    || 'dominant');
+    if (overlap.length > 0) {
+      return subName + ' controls "' + overlap.join(', ') + '" — exactly what ' + domName + ' needs';
+    }
+    return subName + ' controls: [' + subCtrls + ']  |  ' + domName + ' needs: [' + domNeeds + ']';
+  };
+
+  EventMathPowerGap.prototype._findCorrection = function () {
+    if (this.gap === 0) return 'power is balanced — no correction needed';
+    var subName = (this.subordinate && this.subordinate.name) || 'subordinate';
+    var domName = (this.dominant    && this.dominant.name)    || 'dominant';
+    return subName + ' must make ' + domName + ' explicitly dependent on what only ' +
+           subName + ' controls. ' + this.leverage +
+           '. Name that dependency before negotiating price.';
+  };
+
+  EventMathPowerGap.prototype.render = function () {
+    var a = (this.actorA && this.actorA.name) || 'actor A';
+    var b = (this.actorB && this.actorB.name) || 'actor B';
+    var domName = (this.dominant    && this.dominant.name)    || 'dominant';
+    var subName = (this.subordinate && this.subordinate.name) || 'subordinate';
+    var lines = [];
+    lines.push('══════════════════════════════════════════════');
+    lines.push('Power Gap: ' + this.name);
+    lines.push('══════════════════════════════════════════════');
+    lines.push('  ' + a + '  power: ' + this.powerA);
+    lines.push('  ' + b + '  power: ' + this.powerB);
+    lines.push('  Gap: ' + this.gap + '  (dominant: ' + domName + ' / subordinate: ' + subName + ')');
+    lines.push('');
+    lines.push('  Leverage:');
+    lines.push('    ' + this.leverage);
+    lines.push('');
+    lines.push('  Correction path:');
+    lines.push('    ' + this.correction);
+    lines.push('══════════════════════════════════════════════');
+    return lines.join('\n');
+  };
+
+  // ── Function Chain ────────────────────────────────────────
+  //
+  // `chain <name>` block with `<A> leads to <B>` links.
+  // Models causal / functional flow: component → function → outcome → desire.
+  // The chain can be traversed forward (predict) or backward (root of).
+
+  function EventMathChain(name) {
+    if (!(this instanceof EventMathChain)) return new EventMathChain(name);
+    this.name  = name || '';
+    this.links = [];
+  }
+
+  EventMathChain.prototype.addLink = function (from, to) {
+    this.links.push({ from: from, to: to });
+    return this;
+  };
+
+  EventMathChain.prototype.trace = function (targetState) {
+    return new EventMathRootTrace(this, targetState);
+  };
+
+  EventMathChain.prototype.invert = function () {
+    var inv = new EventMathChain('invert_' + this.name);
+    for (var i = this.links.length - 1; i >= 0; i--) {
+      inv.addLink(this.links[i].to, this.links[i].from);
+    }
+    return inv;
+  };
+
+  EventMathChain.prototype.render = function () {
+    var lines = ['── Chain: ' + this.name + ' ──'];
+    if (this.links.length === 0) {
+      lines.push('  (empty chain)');
+    } else {
+      for (var i = 0; i < this.links.length; i++) {
+        lines.push('  ' + this.links[i].from + '  →  ' + this.links[i].to);
+      }
+      lines.push('  [' + this.links.length + ' link' + (this.links.length === 1 ? '' : 's') + ']');
+    }
+    return lines.join('\n');
+  };
+
+  // ── Root Trace (backward causation) ──────────────────────
+  //
+  // `root of STATE in CHAIN into Z`
+  // Walks the chain in reverse from the observed state to find the root cause.
+  // Complements forecast (forward) — together they close the predict/diagnose loop.
+
+  function EventMathRootTrace(chain, targetState) {
+    if (!(this instanceof EventMathRootTrace)) return new EventMathRootTrace(chain, targetState);
+    this.chain  = chain       || null;
+    this.target = String(targetState || '');
+    this.path   = this._trace();
+    this.root   = this.path.length > 1 ? this.path[0] : this.target;
+  }
+
+  EventMathRootTrace.prototype._trace = function () {
+    if (!this.chain || !this.chain.links || this.chain.links.length === 0) {
+      return [this.target];
+    }
+    var path    = [this.target];
+    var current = this.target.toLowerCase();
+    var links   = this.chain.links;
+    var visited = {};
+    visited[current] = true;
+
+    for (var depth = 0; depth < links.length + 1; depth++) {
+      var prev = null;
+      for (var i = 0; i < links.length; i++) {
+        var toLower = links[i].to.toLowerCase();
+        if (toLower === current ||
+            current.includes(toLower) ||
+            toLower.includes(current)) {
+          prev = links[i].from;
+          break;
+        }
+      }
+      if (!prev || visited[prev.toLowerCase()]) break;
+      path.unshift(prev);
+      current = prev.toLowerCase();
+      visited[current] = true;
+    }
+    return path;
+  };
+
+  EventMathRootTrace.prototype.render = function () {
+    var lines = ['── Root Trace → "' + this.target + '" ──'];
+    if (this.path.length <= 1) {
+      lines.push('  Root cause: unknown — no matching chain found');
+      lines.push('  Define a chain with "leads to" statements to enable backward tracing');
+    } else {
+      lines.push('  Causal path (' + this.path.length + ' steps):');
+      for (var i = 0; i < this.path.length; i++) {
+        var tag = i === 0 ? '  ← ROOT CAUSE' : (i === this.path.length - 1 ? '  ← OBSERVED STATE' : '');
+        lines.push('  [' + (i + 1) + '] ' + this.path[i] + tag);
+        if (i < this.path.length - 1) lines.push('        ↓');
+      }
+      lines.push('');
+      lines.push('  Root cause: "' + this.root + '"');
+      lines.push('  Flip "' + this.root + '" to change "' + this.target + '"');
+    }
+    return lines.join('\n');
+  };
+
+  // ── Fallacy Library ───────────────────────────────────────
+  //
+  // 25 built-in logical fallacy patterns.
+  // `detect fallacies in CHAIN into Z` scans a chain for structural fallacies.
+  // Custom fallacies can be added via the EventMathFallacyDetector constructor.
+  // This is the first programmatic fallacy-detection system in any language.
+
+  var FALLACY_PATTERNS = {
+    'ad hominem':           'attacking the person instead of the argument',
+    'straw man':            'misrepresenting the argument to make it easier to attack',
+    'false dichotomy':      'presenting only two options when more exist',
+    'slippery slope':       'assuming a chain of events without evidence for each step',
+    'circular reasoning':   'using the conclusion as a premise (A causes A)',
+    'hasty generalization': 'broad claim drawn from insufficient examples',
+    'appeal to authority':  'citing authority as proof rather than reasoning',
+    'appeal to emotion':    'manipulating emotions instead of using logic',
+    'red herring':          'irrelevant distraction from the actual argument',
+    'post hoc':             'assuming causation from temporal correlation',
+    'tu quoque':            'deflecting by pointing to the same flaw in others',
+    'appeal to ignorance':  'absence of disproof treated as proof',
+    'bandwagon':            'using popularity as justification for truth',
+    'false cause':          'asserting an incorrect causal relationship',
+    'equivocation':         'using the same word with shifting meanings',
+    'loaded question':      'question with an embedded false assumption',
+    'composition':          'what is true of a part assumed true of the whole',
+    'division':             'what is true of the whole assumed true of every part',
+    'appeal to nature':     'natural equals good; unnatural equals bad',
+    'anecdotal':            'personal experience used as universal evidence',
+    'genetic':              'judging an argument by its origin rather than its merit',
+    'no true scotsman':     'moving the goalposts to exclude counterexamples',
+    'black and white':      'oversimplifying to two extremes when a spectrum exists',
+    'middle ground':        'assuming compromise is always true',
+    'sunk cost':            'past investment used to justify continuing a failing course'
+  };
+
+  function EventMathFallacyDetector(chain, customFallacies) {
+    if (!(this instanceof EventMathFallacyDetector)) {
+      return new EventMathFallacyDetector(chain, customFallacies);
+    }
+    this.chain    = chain || null;
+    this.patterns = Object.assign({}, FALLACY_PATTERNS, customFallacies || {});
+    this.findings = this._detect();
+  }
+
+  EventMathFallacyDetector.prototype._detect = function () {
+    var findings = [];
+    if (!this.chain || !this.chain.links) return findings;
+    var links = this.chain.links;
+
+    // Circular reasoning: A → B → A
+    var seen = {};
+    for (var i = 0; i < links.length; i++) {
+      for (var j = 0; j < links.length; j++) {
+        if (j !== i &&
+            links[j].from.toLowerCase() === links[i].to.toLowerCase() &&
+            links[j].to.toLowerCase()   === links[i].from.toLowerCase()) {
+          var key = [links[i].from, links[i].to].sort().join('↔');
+          if (!seen[key]) {
+            seen[key] = true;
+            findings.push({
+              fallacy: 'circular reasoning',
+              description: this.patterns['circular reasoning'],
+              evidence: '"' + links[i].from + '" ↔ "' + links[i].to + '" (mutual causation)'
+            });
+          }
+        }
+      }
+    }
+
+    // Slippery slope: chain longer than 4 steps with no branching (linear cascade)
+    if (links.length > 4) {
+      var targets = {};
+      for (var s = 0; s < links.length; s++) targets[links[s].to] = true;
+      var roots = links.filter(function (l) { return !targets[l.from]; });
+      if (roots.length <= 1) {
+        findings.push({
+          fallacy: 'slippery slope risk',
+          description: this.patterns['slippery slope'],
+          evidence: 'Linear chain of ' + links.length + ' steps — verify each causal link has evidence'
+        });
+      }
+    }
+
+    // False dichotomy: exactly two root nodes feeding into many outcomes
+    var sourceCount = {};
+    for (var r = 0; r < links.length; r++) sourceCount[links[r].from] = true;
+    var targetSet = {};
+    for (var t = 0; t < links.length; t++) targetSet[links[t].to] = true;
+    var rootNodes = Object.keys(sourceCount).filter(function (k) { return !targetSet[k]; });
+    if (rootNodes.length === 2 && links.length > 3) {
+      findings.push({
+        fallacy: 'false dichotomy risk',
+        description: this.patterns['false dichotomy'],
+        evidence: 'Only two root nodes found: "' + rootNodes.join('" and "') + '" — verify no third path exists'
+      });
+    }
+
+    return findings;
+  };
+
+  EventMathFallacyDetector.prototype.render = function () {
+    var chainName = (this.chain && this.chain.name) || 'unknown';
+    var lines = ['── Fallacy Scan: ' + chainName + ' ──'];
+    lines.push('  Patterns in library: ' + Object.keys(this.patterns).length);
+    lines.push('  Findings: ' + this.findings.length);
+    lines.push('');
+
+    if (this.findings.length === 0) {
+      lines.push('  ✓ No structural fallacies detected in this chain');
+    } else {
+      for (var i = 0; i < this.findings.length; i++) {
+        var f = this.findings[i];
+        lines.push('  [' + (i + 1) + '] ' + f.fallacy.toUpperCase());
+        lines.push('      ' + f.description);
+        lines.push('      Evidence: ' + f.evidence);
+        lines.push('');
+      }
+    }
+
+    lines.push('  Full fallacy library:');
+    Object.keys(FALLACY_PATTERNS).forEach(function (k) {
+      lines.push('    • ' + k);
+    });
+    return lines.join('\n');
+  };
+
+  // ── Fractal Axis (D±26, tier 2) ───────────────────────────
+  //
+  // `fractal X and Y into Z` where X and Y are toruses at D±26.
+  // A two-tier self-similar axis: Tier 1 = D±13 (foundation),
+  // Tier 2 = D±26 (built on Tier 1's grand axis as its bridge).
+  // Each tier repeats the same 6-layer complex structure.
+  // Next pass: D±39 (tier 3), D±52 (tier 4), multiples of 13 indefinitely.
+
+  function EventMathFractalAxis(name, negative, positive) {
+    if (!(this instanceof EventMathFractalAxis)) {
+      return new EventMathFractalAxis(name, negative, positive);
+    }
+    this.name     = name     || '';
+    this.negative = negative || null;
+    this.positive = positive || null;
+
+    var negDim = Math.abs((negative && negative.dimension) || 2);
+    var posDim = Math.abs((positive && positive.dimension) || 2);
+    var maxDim = Math.max(negDim, posDim);
+
+    // Tier 1: foundation at D±13 (or the lower-magnitude pair)
+    var t1n = new EventMathTorus(name + '_t1_neg');
+    t1n.spinFrom(null, -Math.min(13, negDim));
+    var t1p = new EventMathTorus(name + '_t1_pos');
+    t1p.spinFrom(null,  Math.min(13, posDim));
+    this.tier1 = new EventMathAxis(name + '_tier1', t1n, t1p);
+
+    // Tier 2: full D±26 axis
+    this.tier2 = new EventMathAxis(name + '_tier2', negative, positive);
+
+    // Fractal link: tier1 grand axis (C at D15) feeds into tier2 bridge
+    this.tier2.bridge.fractalFrom = this.tier1.grandAxis.name;
+
+    this.dimension    = maxDim;
+    this.presentLine  = this.tier2.presentLine;
+    this.fractalDepth = 2;
+    this.signature    = 'D±' + Math.min(13, posDim) + ' ⊂ D±' + maxDim;
+  }
+
+  EventMathFractalAxis.prototype.render = function () {
+    var lines = [];
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ EventMath Fractal Axis: ' + this.name);
+    lines.push('║ Signature: ' + this.signature + '  [2 tiers, self-similar]');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    lines.push('');
+    lines.push('  TIER 1  D±' + Math.abs(this.tier1.dimension) +
+               '  →  D' + this.tier1.grandAxis.zoomLevel + ' governance  [foundation]');
+    lines.push('  ' + '─'.repeat(50));
+    var t1 = this.tier1.render().split('\n');
+    for (var i = 0; i < t1.length; i++) lines.push('    ' + t1[i]);
+    lines.push('');
+    lines.push('  TIER 2  D±' + Math.abs(this.tier2.dimension) +
+               '  →  D' + this.tier2.grandAxis.zoomLevel + ' governance');
+    lines.push('  (Tier 1 grand axis feeds Tier 2 bridge — fractal self-similarity)');
+    lines.push('  ' + '─'.repeat(50));
+    var t2 = this.tier2.render().split('\n');
+    for (var j = 0; j < t2.length; j++) lines.push('    ' + t2[j]);
+    lines.push('');
+    lines.push('  Fractal present line: ' + this.presentLine);
+    lines.push('  Fractal depth: ' + this.fractalDepth +
+               '  [D±39 available next pass — multiples of 13]');
+    lines.push('╔' + '═'.repeat(58) + '╗');
+    lines.push('║ COMPLETE  [12 layers, D' + this.tier2.grandAxis.zoomLevel + ' max governance]');
+    lines.push('╚' + '═'.repeat(58) + '╝');
+    return lines.join('\n');
+  };
+
   // ── Default Timeline ─────────────────────────────────────
 
   var defaultTimeline = new EventMathTimeline('default');
@@ -890,19 +1296,26 @@
   // ── Exports ──────────────────────────────────────────────
 
   return {
-    EventMathEvent:     EventMathEvent,
-    EventMathLayer:     EventMathLayer,
-    EventMathTimeline:  EventMathTimeline,
-    EventMathTorus:     EventMathTorus,
-    EventMathLandscape: EventMathLandscape,
-    EventMathAxis:      EventMathAxis,
-    TimelineEntry:      TimelineEntry,
-    getDefaultTimeline: getDefaultTimeline,
-    SNAPSHOT_INTERVAL:  SNAPSHOT_INTERVAL,
-    isFibonacci:        isFibonacci,
-    isNStepFib:         isNStepFib,
-    nStepFib:           nStepFib,
-    getShapeName:       getShapeName,
+    EventMathEvent:          EventMathEvent,
+    EventMathLayer:          EventMathLayer,
+    EventMathTimeline:       EventMathTimeline,
+    EventMathTorus:          EventMathTorus,
+    EventMathLandscape:      EventMathLandscape,
+    EventMathAxis:           EventMathAxis,
+    EventMathActor:          EventMathActor,
+    EventMathPowerGap:       EventMathPowerGap,
+    EventMathChain:          EventMathChain,
+    EventMathRootTrace:      EventMathRootTrace,
+    EventMathFallacyDetector:EventMathFallacyDetector,
+    EventMathFractalAxis:    EventMathFractalAxis,
+    FALLACY_PATTERNS:        FALLACY_PATTERNS,
+    TimelineEntry:           TimelineEntry,
+    getDefaultTimeline:      getDefaultTimeline,
+    SNAPSHOT_INTERVAL:       SNAPSHOT_INTERVAL,
+    isFibonacci:             isFibonacci,
+    isNStepFib:              isNStepFib,
+    nStepFib:                nStepFib,
+    getShapeName:            getShapeName,
   };
 
 });

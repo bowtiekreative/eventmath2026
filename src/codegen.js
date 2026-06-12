@@ -288,6 +288,28 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        case 'AsymmetryStmt':
+        case 'RootOfStmt':
+        case 'InvertStmt':
+        case 'DetectFallaciesStmt':
+        case 'FractalStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'ActorStmt':
+          this._eventNames.add(stmt.name);
+          break;
+        case 'ChainStmt':
+          if (!this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
+          }
+          break;
+        case 'EventLikeStmt':
+          this._eventNames.add(stmt.name);
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -359,7 +381,16 @@ class EventMathCodeGen {
       case 'AnalogyStmt':    return this._genAnalogyStmt(stmt);
       case 'LandscapeStmt':  return this._genLandscapeStmt(stmt);
       case 'ForecastStmt':   return this._genForecastStmt(stmt);
-      case 'BoundStmt':      return this._genBoundStmt(stmt);
+      case 'BoundStmt':           return this._genBoundStmt(stmt);
+      case 'ActorStmt':           return this._genActorStmt(stmt);
+      case 'ChainStmt':           return this._genChainStmt(stmt);
+      case 'EventLikeStmt':       return this._genEventLikeStmt(stmt);
+      case 'AsymmetryStmt':       return this._genAsymmetryStmt(stmt);
+      case 'RootOfStmt':          return this._genRootOfStmt(stmt);
+      case 'InvertStmt':          return this._genInvertStmt(stmt);
+      case 'AssumeStmt':          return this._genAssumeStmt(stmt);
+      case 'DetectFallaciesStmt': return this._genDetectFallaciesStmt(stmt);
+      case 'FractalStmt':         return this._genFractalStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -915,12 +946,12 @@ class EventMathCodeGen {
     const intoEsc   = this._escape(stmt.intoName);
     const srcEsc    = this._escape(stmt.sourceName);
 
-    // Accept negative dimensions (-13 to -2) as well as positive (2 to 13)
+    // Accept negative dimensions (-26 to -2) as well as positive (2 to 26)
     const rawDim = typeof stmt.dimension === 'number' ? stmt.dimension : 2;
     const absD   = Math.abs(rawDim);
-    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 13 ? 13 : absD)
-                              : (absD < 2 ? 2 : absD > 13 ? 13 : absD);
-    const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D' + dim;
+    const dim    = rawDim < 0 ? -(absD < 2 ? 2 : absD > 26 ? 26 : absD)
+                              : (absD < 2 ? 2 : absD > 26 ? 26 : absD);
+    const dimLabel = dim < 0 ? 'D-' + Math.abs(dim) : 'D+' + dim;
     this._line(`// spin ${srcEsc} into ${intoEsc}  [${dimLabel}]`);
     this._line(`const ${torusVar} = new EM.EventMathTorus('${intoEsc}');`);
     this._line(`${torusVar}.spinFrom(${sourceVar}, ${dim});`);
@@ -1682,6 +1713,137 @@ class EventMathCodeGen {
       .replace(/"/g, '\\"')
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r');
+  }
+
+  // ── v2.0 code generators ────────────────────────────────────────
+
+  _genActorStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    this._line(`// Actor: "${nameEsc}"`);
+    this._line(`const ${varName} = new EM.EventMathActor(`);
+    this.indent++;
+    this._line(`"${nameEsc}",`);
+    if (stmt.matter && stmt.matter.fields.length > 0) {
+      this._line(`{`);
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${this._safeKey(field.key)}: "${this._escape(field.value)}",`);
+        } else {
+          this._line(`${this._safeKey(field.key)}: ${this._safeRef(field.value)},`);
+        }
+      }
+      this.indent--;
+      this._line(`}`);
+    } else {
+      this._line(`{}`);
+    }
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genChainStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    this._line(`// Chain: "${nameEsc}"`);
+    this._line(`${varName} = new EM.EventMathChain('${nameEsc}');`);
+    for (const link of (stmt.links || [])) {
+      const fromEsc = this._escape(link.from);
+      const toEsc   = this._escape(link.to);
+      this._line(`${varName}.addLink('${fromEsc}', '${toEsc}');`);
+    }
+    this._line('');
+  }
+
+  _genEventLikeStmt(stmt) {
+    const varName  = this._safeName(stmt.name);
+    const nameEsc  = this._escape(stmt.name);
+    const catEsc   = this._escape(stmt.category || stmt.keyword || 'event');
+    this._line(`// ${stmt.keyword}: "${nameEsc}"`);
+    this._line(`const ${varName} = new EM.EventMathEvent(`);
+    this.indent++;
+    this._line(`"${nameEsc}",`);
+    this._line(`"${catEsc}",`);
+    if (stmt.matter && stmt.matter.fields.length > 0) {
+      this._line(`{`);
+      this.indent++;
+      for (const field of stmt.matter.fields) {
+        if (field.kind === 'literal') {
+          this._line(`${this._safeKey(field.key)}: "${this._escape(field.value)}",`);
+        } else {
+          this._line(`${this._safeKey(field.key)}: ${this._safeRef(field.value)},`);
+        }
+      }
+      this.indent--;
+      this._line(`}`);
+    } else {
+      this._line(`{}`);
+    }
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genAsymmetryStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// asymmetry: power gap between "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}"`);
+    this._line(`${intoVar} = new EM.EventMathPowerGap('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
+  }
+
+  _genRootOfStmt(stmt) {
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    const stateEsc = this._escape(stmt.stateName);
+    this._line(`// root of: trace "${stateEsc}" backward through chain`);
+    if (stmt.chainName) {
+      const chainVar = this._safeName(stmt.chainName);
+      this._line(`${intoVar} = ${chainVar}.trace('${stateEsc}');`);
+    } else {
+      // No chain specified — emit a note; trace requires a chain at runtime
+      this._line(`${intoVar} = new EM.EventMathRootTrace(null, '${stateEsc}');`);
+    }
+    this._line('');
+  }
+
+  _genInvertStmt(stmt) {
+    const srcVar  = this._safeName(stmt.sourceName);
+    const intoVar = this._safeName(stmt.intoName);
+    const intoEsc = this._escape(stmt.intoName);
+    this._line(`// invert: reverse chain "${this._escape(stmt.sourceName)}"`);
+    this._line(`${intoVar} = (${srcVar} && typeof ${srcVar}.invert === 'function') ? ${srcVar}.invert() : new EM.EventMathChain('${intoEsc}');`);
+    this._line('');
+  }
+
+  _genAssumeStmt(stmt) {
+    const textEsc = this._escape(stmt.text || '');
+    this._line(`// assumption: "${textEsc}"`);
+    this._line(`console.log('ASSUMPTION: ${textEsc}');`);
+    this._line('');
+  }
+
+  _genDetectFallaciesStmt(stmt) {
+    const chainVar = this._safeName(stmt.chainName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const intoEsc  = this._escape(stmt.intoName);
+    this._line(`// detect fallacies in "${this._escape(stmt.chainName)}"`);
+    this._line(`${intoVar} = new EM.EventMathFallacyDetector(${chainVar});`);
+    this._line('');
+  }
+
+  _genFractalStmt(stmt) {
+    const firstVar  = this._safeName(stmt.firstName);
+    const secondVar = this._safeName(stmt.secondName);
+    const intoVar   = this._safeName(stmt.intoName);
+    const intoEsc   = this._escape(stmt.intoName);
+    this._line(`// fractal axis: "${this._escape(stmt.firstName)}" and "${this._escape(stmt.secondName)}" → "${intoEsc}"`);
+    this._line(`${intoVar} = new EM.EventMathFractalAxis('${intoEsc}', ${firstVar}, ${secondVar});`);
+    this._line('');
   }
 }
 

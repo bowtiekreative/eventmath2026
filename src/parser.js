@@ -106,8 +106,14 @@ class EventMathParser {
     if (t.type === 'EXPLAIN_STMT')  return this._parseExplainStmt();
     if (t.type === 'ANALOGY_STMT')   return this._parseAnalogyStmt();
     if (t.type === 'BOUND_STMT')    return this._parseBoundStmt();
-    if (t.type === 'LANDSCAPE_STMT') return this._parseLandscapeStmt();
-    if (t.type === 'FORECAST_STMT')  return this._parseForecastStmt();
+    if (t.type === 'LANDSCAPE_STMT')        return this._parseLandscapeStmt();
+    if (t.type === 'FORECAST_STMT')         return this._parseForecastStmt();
+    if (t.type === 'ASYMMETRY_STMT')        return this._parseAsymmetryStmt();
+    if (t.type === 'ROOT_OF_STMT')          return this._parseRootOfStmt();
+    if (t.type === 'INVERT_STMT')           return this._parseInvertStmt();
+    if (t.type === 'ASSUME_STMT')           return this._parseAssumeStmt();
+    if (t.type === 'DETECT_FALLACIES_STMT') return this._parseDetectFallaciesStmt();
+    if (t.type === 'FRACTAL_STMT')          return this._parseFractalStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -139,6 +145,14 @@ class EventMathParser {
       case 'count':    return this._parseCountInLayer();
       case 'predict':  return this._parsePredictStmt();
       case 'resolve':  return this._parseResolveStmt();
+      // v2.0
+      case 'actor':    return this._parseActorBlock();
+      case 'chain':    return this._parseChainBlock();
+      case 'desire':   return this._parseEventLike('desire');
+      case 'outcome':  return this._parseEventLike('outcome');
+      case 'scenario': return this._parseEventLike('scenario');
+      case 'fallacy':  return this._parseEventLike('fallacy');
+      case 'dilemma':  return this._parseEventLike('dilemma');
       default:         return this._parseBodyName();
     }
   }
@@ -977,6 +991,114 @@ class EventMathParser {
     return ast('ForecastStmt', {
       landscapeName: t.value.landscapeName,
       intoName:      t.value.intoName
+    });
+  }
+
+  // ── v2.0 parse methods ──────────────────────────────────────────
+
+  // actor block — same structure as event
+  _parseActorBlock() {
+    this.expect('KEYWORD', 'actor');
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock('actor');
+    const result = ast('ActorStmt', { name: nameToken.value, category: null, matter: null });
+    if (this.isKeyword('category') || this.isKeyword('cat')) {
+      this.advance();
+      const catName = this.expect('NAME');
+      if (catName) result.category = catName.value;
+    }
+    if (this.isKeyword('matter')) {
+      this.advance();
+      result.matter = this._parseMatterBlock();
+    }
+    this.expect('KEYWORD', 'end');
+    return result;
+  }
+
+  // chain block — collects leads-to links until 'end'
+  _parseChainBlock() {
+    this.expect('KEYWORD', 'chain');
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock('chain');
+    const links = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < MAX_ITERATIONS) {
+      const t = this.peek();
+      if (t && t.type === 'LEADS_TO_STMT') {
+        const lt = this.advance();
+        links.push({ from: lt.value.from, to: lt.value.to });
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ChainStmt', { name: nameToken.value, links });
+  }
+
+  // generic event-like block for desire/outcome/scenario/fallacy/dilemma
+  _parseEventLike(keyword) {
+    this.expect('KEYWORD', keyword);
+    const nameToken = this.expect('NAME');
+    if (!nameToken) return this._skipBlock(keyword);
+    const result = ast('EventLikeStmt', { keyword, name: nameToken.value, category: null, matter: null });
+    if (this.isKeyword('category') || this.isKeyword('cat')) {
+      this.advance();
+      const catName = this.expect('NAME');
+      if (catName) result.category = catName.value;
+    }
+    if (this.isKeyword('matter')) {
+      this.advance();
+      result.matter = this._parseMatterBlock();
+    }
+    this.expect('KEYWORD', 'end');
+    return result;
+  }
+
+  _parseAsymmetryStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AsymmetryStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
+    });
+  }
+
+  _parseRootOfStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('RootOfStmt', {
+      stateName: t.value.stateName,
+      chainName: t.value.chainName,
+      intoName:  t.value.intoName
+    });
+  }
+
+  _parseInvertStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('InvertStmt', { sourceName: t.value.sourceName, intoName: t.value.intoName });
+  }
+
+  _parseAssumeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('AssumeStmt', { text: t.value.text });
+  }
+
+  _parseDetectFallaciesStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('DetectFallaciesStmt', { chainName: t.value.chainName, intoName: t.value.intoName });
+  }
+
+  _parseFractalStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('FractalStmt', {
+      firstName:  t.value.firstName,
+      secondName: t.value.secondName,
+      intoName:   t.value.intoName
     });
   }
 

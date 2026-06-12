@@ -31,6 +31,10 @@ const KEYWORDS = new Set([
   'spin', 'vibrate', 'cycle', 'resonate',
   'weight', 'explain', 'analogy', 'bound',
   'landscape', 'forecast', 'dimension',
+  // v2.0 — innovation framework
+  'actor', 'asymmetry', 'chain', 'leads', 'root',
+  'invert', 'desire', 'outcome', 'scenario',
+  'fallacy', 'detect', 'dilemma', 'assume', 'fractal',
 ]);
 
 class Token {
@@ -80,6 +84,12 @@ class EventMathTokenizer {
 
     if (words.length === 0) return [];
 
+    // ── 'leads to' detection (chain body) — must precede all other dispatch ──
+    const leadsIdx = this._findPhrase(words, ['leads', 'to']);
+    if (leadsIdx >= 0) {
+      return this._leadsToStmt(words, leadsIdx, lineNum);
+    }
+
     const lead = words[0].toLowerCase();
 
     // ── Dispatch by leading keyword ──────────────────────────
@@ -87,6 +97,46 @@ class EventMathTokenizer {
     // event, action, layer, timeline, path  →  consume NAME after
     if (KEYWORDS.has(lead) && ['event', 'action', 'layer', 'timeline', 'path'].includes(lead)) {
       return this._keywordName(lead, words.slice(1), lineNum);
+    }
+
+    // v2.0 block-opener keywords that work exactly like 'event'
+    if (['actor', 'desire', 'outcome', 'scenario', 'fallacy', 'dilemma'].includes(lead)) {
+      return this._keywordName(lead, words.slice(1), lineNum);
+    }
+
+    // chain <name>  — opens a chain block
+    if (lead === 'chain') {
+      return this._keywordName('chain', words.slice(1), lineNum);
+    }
+
+    // asymmetry from <X> and <Y> into <Z>
+    if (lead === 'asymmetry') {
+      return this._asymmetryStmt(words, lineNum);
+    }
+
+    // root of <state> in <chain> into <result>
+    if (lead === 'root') {
+      return this._rootOfStmt(words, lineNum);
+    }
+
+    // invert <source> into <result>
+    if (lead === 'invert') {
+      return this._invertStmt(words, lineNum);
+    }
+
+    // assume <text>
+    if (lead === 'assume') {
+      return this._assumeStmt(words, lineNum);
+    }
+
+    // detect fallacies in <chain> into <result>
+    if (lead === 'detect') {
+      return this._detectFallaciesStmt(words, lineNum);
+    }
+
+    // fractal <X> and <Y> into <Z>  — two-tier fractal axis
+    if (lead === 'fractal') {
+      return this._fractalStmt(words, lineNum);
     }
 
     // category, cat → consume category name
@@ -1454,6 +1504,81 @@ class EventMathTokenizer {
     tokens.push(new Token('NAME', outcome, lineNum));
 
     return tokens;
+  }
+
+  // ── v2.0 statement handlers ──────────────────────────────
+
+  // <A> leads to <B>  (inside a chain block)
+  _leadsToStmt(words, leadsIdx, lineNum) {
+    const from = words.slice(0, leadsIdx).join(' ');
+    const to   = words.slice(leadsIdx + 2).join(' ');
+    return [new Token('LEADS_TO_STMT', { from, to }, lineNum)];
+  }
+
+  // asymmetry from <X> and <Y> into <Z>
+  _asymmetryStmt(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (fromIdx < 0 || andIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'asymmetry', lineNum)];
+    const firstName  = words.slice(fromIdx + 1, andIdx).join(' ');
+    const secondName = words.slice(andIdx  + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('ASYMMETRY_STMT', { firstName, secondName, intoName }, lineNum)];
+  }
+
+  // root of <state> [in <chain>] into <result>
+  _rootOfStmt(words, lineNum) {
+    const ofIdx   = this._indexOf(words, 'of');
+    const inIdx   = this._indexOf(words, 'in');
+    const intoIdx = this._indexOf(words, 'into');
+    if (ofIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'root', lineNum)];
+    let stateName, chainName;
+    if (inIdx > ofIdx && inIdx < intoIdx) {
+      stateName = words.slice(ofIdx + 1, inIdx).join(' ');
+      chainName = words.slice(inIdx + 1, intoIdx).join(' ');
+    } else {
+      stateName = words.slice(ofIdx + 1, intoIdx).join(' ');
+      chainName = '';
+    }
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('ROOT_OF_STMT', { stateName, chainName, intoName }, lineNum)];
+  }
+
+  // invert <source> into <result>
+  _invertStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) return [new Token('KEYWORD', 'invert', lineNum)];
+    const sourceName = words.slice(1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('INVERT_STMT', { sourceName, intoName }, lineNum)];
+  }
+
+  // assume <text>
+  _assumeStmt(words, lineNum) {
+    const text = words.slice(1).join(' ');
+    return [new Token('ASSUME_STMT', { text }, lineNum)];
+  }
+
+  // detect fallacies in <chain> into <result>
+  _detectFallaciesStmt(words, lineNum) {
+    const inIdx   = this._indexOf(words, 'in');
+    const intoIdx = this._indexOf(words, 'into');
+    if (inIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'detect', lineNum)];
+    const chainName = words.slice(inIdx + 1, intoIdx).join(' ');
+    const intoName  = words.slice(intoIdx + 1).join(' ');
+    return [new Token('DETECT_FALLACIES_STMT', { chainName, intoName }, lineNum)];
+  }
+
+  // fractal <X> and <Y> into <Z>  (two-tier fractal axis)
+  _fractalStmt(words, lineNum) {
+    const andIdx  = this._indexOf(words, 'and');
+    const intoIdx = this._indexOf(words, 'into');
+    if (andIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'fractal', lineNum)];
+    const firstName  = words.slice(1, andIdx).join(' ');
+    const secondName = words.slice(andIdx  + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('FRACTAL_STMT', { firstName, secondName, intoName }, lineNum)];
   }
 
   /**

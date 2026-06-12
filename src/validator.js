@@ -120,9 +120,23 @@ class EventMathValidator {
           }
           break;
         case 'BoundStmt':
-          if (stmt.intoName) {
-            this.marks.set(stmt.intoName, true);
-          }
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
+        case 'ActorStmt':
+          this._registerSymbol('actor', stmt.name, this.events);
+          break;
+        case 'ChainStmt':
+          this.marks.set(stmt.name, true);
+          break;
+        case 'EventLikeStmt':
+          this._registerSymbol(stmt.keyword, stmt.name, this.events);
+          break;
+        case 'AsymmetryStmt':
+        case 'RootOfStmt':
+        case 'InvertStmt':
+        case 'DetectFallaciesStmt':
+        case 'FractalStmt':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
           break;
       }
     }
