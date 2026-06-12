@@ -118,6 +118,22 @@ class EventMathFormatter {
       case 'TraceStmt':          return this._formatTraceStmt(stmt);
       case 'ScrubStmt':          return this._formatScrubStmt(stmt);
       case 'GradeStmt':          return this._formatGradeStmt(stmt);
+      // v2.11
+      case 'RainStmt':           return this._formatRainStmt(stmt);
+      case 'StarStmt':           return this._formatStarStmt(stmt);
+      case 'ZoneStmt':           return this._formatZoneStmt(stmt);
+      case 'SkyStmt':            return this._formatSkyStmt(stmt);
+      case 'UniverseStmt':       return this._formatUniverseStmt(stmt);
+      case 'OrbitStmt':          return this._formatOrbitStmt(stmt);
+      case 'LensStmt':           return this._formatLensStmt(stmt);
+      case 'AttemptStmt':        return this._formatAttemptStmt(stmt);
+      case 'CloudStmt':          return this._formatCloudStmt(stmt);
+      case 'ReflectStmt':        return this._formatReflectStmt(stmt);
+      case 'NodeStmt':           return this._formatNodeStmt(stmt);
+      case 'AtmosphereStmt':     return this._formatAtmosphereStmt(stmt);
+      case 'EarthStmt':          return this._formatEarthStmt(stmt);
+      case 'TravelStmt':         return this._formatTravelStmt(stmt);
+      case 'MapStmt':            return this._formatMapStmt(stmt);
     }
   }
 
@@ -770,6 +786,80 @@ class EventMathFormatter {
 
   _formatScrubStmt(stmt) {
     this._line(`scrub ${stmt.conflictName} into ${stmt.intoName}`);
+  }
+
+  // ── v2.11 web layer ──────────────────────────────────────────────
+
+  _formatRainStmt(stmt)  { this._line(`rain ${stmt.name} is ${stmt.value}`); }
+  _formatStarStmt(stmt)  { this._line(`star ${stmt.name} is ${stmt.value}`); }
+  _formatZoneStmt(stmt)  { this._line(`zone ${stmt.name} is ${stmt.expression}`); }
+  _formatSkyStmt(stmt)   { this._line(`sky ${stmt.name} is ${stmt.expression}`); }
+  _formatLensStmt(stmt)  { this._line(`lens ${stmt.name} is ${stmt.expression}`); }
+  _formatReflectStmt(stmt) { this._line(`reflect ${stmt.expression}`); }
+  _formatNodeStmt(stmt)  { this._line(`node ${stmt.nodeType}${stmt.text ? ' ' + stmt.text : ''}`); }
+  _formatTravelStmt(stmt){ this._line(`travel ${stmt.path}`); }
+
+  _formatUniverseStmt(stmt) {
+    this._line(`universe ${stmt.name}`);
+    this.indent++;
+    for (const f of (stmt.fields || [])) this._line(`field ${f.name} is ${f.type}`);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatOrbitStmt(stmt) {
+    this._line(`orbit ${stmt.itemName} in ${stmt.collectionName}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatAttemptStmt(stmt) {
+    this._line('attempt');
+    this.indent++;
+    for (const s of (stmt.tryBody || [])) this._formatStatement(s);
+    this.indent--;
+    this._line(`collapse ${stmt.errName || '_err'}`);
+    this.indent++;
+    for (const s of (stmt.catchBody || [])) this._formatStatement(s);
+    this.indent--;
+    if ((stmt.alwaysBody || []).length > 0) {
+      this._line('always');
+      this.indent++;
+      for (const s of (stmt.alwaysBody || [])) this._formatStatement(s);
+      this.indent--;
+    }
+    this._line('end');
+  }
+
+  _formatCloudStmt(stmt) {
+    this._line(`${stmt.isAsync ? 'expand ' : ''}cloud ${stmt.name}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatAtmosphereStmt(stmt) {
+    this._line(`atmosphere ${stmt.name}`);
+    this.indent++;
+    for (const [k, v] of Object.entries(stmt.props || {})) this._line(`style ${k} is ${v}`);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatMapStmt(stmt) {
+    this._line('map');
+    this.indent++;
+    for (const r of (stmt.routes || [])) this._line(`route ${r.name} ${r.path} as ${r.cloudName}`);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatEarthStmt(stmt) {
+    const body = stmt.bodyName ? ` with ${stmt.bodyName}` : '';
+    this._line(`earth ${stmt.method} ${stmt.path}${body} into ${stmt.intoName}`);
   }
 }
 

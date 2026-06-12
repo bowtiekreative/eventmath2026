@@ -129,6 +129,22 @@ class EventMathParser {
     if (t.type === 'EXTEND_STMT')           return this._parseExtendStmt();
     if (t.type === 'TRACE_STMT')            return this._parseTraceStmt();
     if (t.type === 'SCRUB_STMT')            return this._parseScrubStmt();
+    // v2.11
+    if (t.type === 'RAIN_STMT')             return this._parseRainStmt();
+    if (t.type === 'STAR_STMT')             return this._parseStarStmt();
+    if (t.type === 'ZONE_STMT')             return this._parseZoneStmt();
+    if (t.type === 'SKY_STMT')              return this._parseSkyStmt();
+    if (t.type === 'UNIVERSE_STMT')         return this._parseUniverseStmt();
+    if (t.type === 'ORBIT_STMT')            return this._parseOrbitStmt();
+    if (t.type === 'LENS_STMT')             return this._parseLensStmt();
+    if (t.type === 'CLOUD_STMT')            return this._parseCloudStmt();
+    if (t.type === 'REFLECT_STMT')          return this._parseReflectStmt();
+    if (t.type === 'NODE_STMT')             return this._parseNodeStmt();
+    if (t.type === 'ATMOSPHERE_STMT')       return this._parseAtmosphereStmt();
+    if (t.type === 'EARTH_STMT')            return this._parseEarthStmt();
+    if (t.type === 'TRAVEL_STMT')           return this._parseTravelStmt();
+    if (t.value === 'attempt')              return this._parseAttemptStmt();
+    if (t.value === 'map')                  return this._parseMapStmt();
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -1289,6 +1305,187 @@ class EventMathParser {
       conflictName: t.value.conflictName,
       intoName:     t.value.intoName,
     });
+  }
+
+  // ── v2.11 web layer parse methods ────────────────────────────────
+
+  _parseRainStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('RainStmt', { name: t.value.name, value: t.value.value });
+  }
+
+  _parseStarStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('StarStmt', { name: t.value.name, value: t.value.value });
+  }
+
+  _parseZoneStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ZoneStmt', { name: t.value.name, expression: t.value.expression });
+  }
+
+  _parseSkyStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SkyStmt', { name: t.value.name, expression: t.value.expression });
+  }
+
+  _parseUniverseStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    const name = t.value.name;
+    const fields = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const ft = this.peek();
+      if (ft.type === 'UNIVERSE_FIELD') {
+        this.advance();
+        fields.push({ name: ft.value.name, type: ft.value.type });
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('UniverseStmt', { name, fields });
+  }
+
+  _parseOrbitStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    const { itemName, collectionName } = t.value;
+    const body = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const stmt = this._parseStatement();
+      if (stmt) body.push(stmt);
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('OrbitStmt', { itemName, collectionName, body });
+  }
+
+  _parseLensStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('LensStmt', { name: t.value.name, expression: t.value.expression });
+  }
+
+  _parseAttemptStmt() {
+    this.advance(); // consume 'attempt'
+    const _atStop = () => {
+      const p = this.peek();
+      if (!p) return true;
+      if (p.type === 'COLLAPSE_MARKER') return true;
+      if (p.type === 'KEYWORD' && (p.value === 'always' || p.value === 'end')) return true;
+      return false;
+    };
+    const tryBody = [];
+    let guard = 0;
+    while (!_atStop() && guard++ < 1000) {
+      const stmt = this._parseStatement();
+      if (stmt) tryBody.push(stmt);
+    }
+    let errName = '_err', catchBody = [], alwaysBody = [];
+    if (this.peek() && this.peek().type === 'COLLAPSE_MARKER') {
+      const ct = this.advance();
+      errName = ct.value.errName;
+      guard = 0;
+      while (this.peek() && !this.isKeyword('end') && !this.isKeyword('always') && guard++ < 1000) {
+        const stmt = this._parseStatement();
+        if (stmt) catchBody.push(stmt);
+      }
+    }
+    if (this.peek() && this.isKeyword('always')) {
+      this.advance();
+      guard = 0;
+      while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+        const stmt = this._parseStatement();
+        if (stmt) alwaysBody.push(stmt);
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('AttemptStmt', { tryBody, errName, catchBody, alwaysBody });
+  }
+
+  _parseCloudStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    const { name, isAsync } = t.value;
+    const body = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const stmt = this._parseStatement();
+      if (stmt) body.push(stmt);
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('CloudStmt', { name, isAsync: !!isAsync, body });
+  }
+
+  _parseReflectStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('ReflectStmt', { expression: t.value.expression });
+  }
+
+  _parseNodeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('NodeStmt', { nodeType: t.value.type, text: t.value.text });
+  }
+
+  _parseAtmosphereStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    const name = t.value.name;
+    const props = {};
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const pt = this.peek();
+      if (pt.type === 'STYLE_PROP') {
+        this.advance();
+        props[pt.value.key] = pt.value.value;
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('AtmosphereStmt', { name, props });
+  }
+
+  _parseEarthStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('EarthStmt', {
+      method:   t.value.method,
+      path:     t.value.path,
+      bodyName: t.value.bodyName,
+      intoName: t.value.intoName,
+    });
+  }
+
+  _parseTravelStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('TravelStmt', { path: t.value.path });
+  }
+
+  _parseMapStmt() {
+    this.advance(); // consume 'map'
+    const routes = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const rt = this.peek();
+      if (rt.type === 'ROUTE_LINE') {
+        this.advance();
+        routes.push({ name: rt.value.name, path: rt.value.path, cloudName: rt.value.cloudName });
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('MapStmt', { routes });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

@@ -315,9 +315,24 @@ class EventMathCodeGen {
         case 'ExtendStmt':
         case 'TraceStmt':
         case 'ScrubStmt':
+        case 'ZoneStmt':
+        case 'SkyStmt':
+        case 'LensStmt':
+        case 'UniverseStmt':
+        case 'EarthStmt':
+        case 'AtmosphereStmt':
+        case 'MapStmt':
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'RainStmt':
+        case 'StarStmt':
+        case 'CloudStmt':
+          if (stmt.name && !this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
           }
           break;
         case 'AssumeStmt':
@@ -434,6 +449,22 @@ class EventMathCodeGen {
       case 'ExtendStmt':          return this._genExtendStmt(stmt);
       case 'TraceStmt':           return this._genTraceStmt(stmt);
       case 'ScrubStmt':           return this._genScrubStmt(stmt);
+      // v2.11
+      case 'RainStmt':            return this._genRainStmt(stmt);
+      case 'StarStmt':            return this._genStarStmt(stmt);
+      case 'ZoneStmt':            return this._genZoneStmt(stmt);
+      case 'SkyStmt':             return this._genSkyStmt(stmt);
+      case 'UniverseStmt':        return this._genUniverseStmt(stmt);
+      case 'OrbitStmt':           return this._genOrbitStmt(stmt);
+      case 'LensStmt':            return this._genLensStmt(stmt);
+      case 'AttemptStmt':         return this._genAttemptStmt(stmt);
+      case 'CloudStmt':           return this._genCloudStmt(stmt);
+      case 'ReflectStmt':         return this._genReflectStmt(stmt);
+      case 'NodeStmt':            return this._genNodeStmt(stmt);
+      case 'AtmosphereStmt':      return this._genAtmosphereStmt(stmt);
+      case 'EarthStmt':           return this._genEarthStmt(stmt);
+      case 'TravelStmt':          return this._genTravelStmt(stmt);
+      case 'MapStmt':             return this._genMapStmt(stmt);
       default:
         this._line(`// (unknown node type: ${stmt.type})`);
     }
@@ -2120,6 +2151,154 @@ class EventMathCodeGen {
     const intoEsc     = this._escape(stmt.intoName);
     this._line(`// scrub: priority curve for "${this._escape(stmt.conflictName)}"`);
     this._line(`${intoVar} = new EM.EventMathScrub('${intoEsc}', ${conflictVar});`);
+    this._line('');
+  }
+
+  // ── v2.11 web layer codegen ───────────────────────────────────────
+
+  _genRainStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    this._line(`// rain: ${this._escape(stmt.name)}`);
+    this._line(`${v} = ${stmt.value === 'void' ? 'null' : stmt.value};`);
+    this._line('');
+  }
+
+  _genStarStmt(stmt) {
+    const v   = this._safeName(stmt.name);
+    const val = stmt.value === 'void' ? 'null' : stmt.value;
+    this._line(`// star (constant): ${this._escape(stmt.name)}`);
+    this._line(`${v} = ${val};`);
+    this._line('');
+  }
+
+  _genZoneStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    this._line(`// zone: ${this._escape(stmt.name)}`);
+    this._line(`${v} = ${stmt.expression || '{}'};`);
+    this._line('');
+  }
+
+  _genSkyStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    this._line(`// sky: ${this._escape(stmt.name)}`);
+    this._line(`${v} = ${stmt.expression || '[]'};`);
+    this._line('');
+  }
+
+  _genUniverseStmt(stmt) {
+    const ctorName = stmt.name.replace(/\s+/g, '_');
+    const fields   = stmt.fields || [];
+    this._line(`// universe: ${this._escape(stmt.name)}`);
+    this._line(`function ${ctorName}(data) {`);
+    this.indent++;
+    this._line(`data = data || {};`);
+    for (const f of fields) {
+      const fv = this._safeName(f.name);
+      this._line(`this.${fv} = data.${fv} !== undefined ? data.${fv} : null;`);
+    }
+    this.indent--;
+    this._line(`}`);
+    this._line(`${ctorName}.prototype._type = '${this._escape(stmt.name)}';`);
+    this._line('');
+  }
+
+  _genOrbitStmt(stmt) {
+    const itemVar = this._safeName(stmt.itemName);
+    const collVar = this._safeName(stmt.collectionName);
+    this._line(`// orbit: ${this._escape(stmt.itemName)} in ${this._escape(stmt.collectionName)}`);
+    this._line(`for (var _oi = 0; _oi < (${collVar} || []).length; _oi++) {`);
+    this.indent++;
+    this._line(`var ${itemVar} = ${collVar}[_oi];`);
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this.indent--;
+    this._line(`}`);
+    this._line('');
+  }
+
+  _genLensStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    this._line(`// lens: ${this._escape(stmt.name)}`);
+    this._line(`${v} = (function() { try { return ${stmt.expression}; } catch(_) { return null; } })();`);
+    this._line('');
+  }
+
+  _genAttemptStmt(stmt) {
+    const errVar = this._safeName(stmt.errName || '_err');
+    this._line(`// attempt`);
+    this._line(`try {`);
+    this.indent++;
+    for (const s of (stmt.tryBody || [])) this._genStatement(s);
+    this.indent--;
+    this._line(`} catch (${errVar}) {`);
+    this.indent++;
+    for (const s of (stmt.catchBody || [])) this._genStatement(s);
+    this.indent--;
+    if ((stmt.alwaysBody || []).length > 0) {
+      this._line(`} finally {`);
+      this.indent++;
+      for (const s of (stmt.alwaysBody || [])) this._genStatement(s);
+      this.indent--;
+    }
+    this._line(`}`);
+    this._line('');
+  }
+
+  _genCloudStmt(stmt) {
+    const fnName  = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    const prefix  = stmt.isAsync ? 'async ' : '';
+    this._line(`// cloud: ${nameEsc}`);
+    this._line(`${prefix}function ${fnName}() {`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this.indent--;
+    this._line(`}`);
+    this._line(`${fnName}._cloud = '${nameEsc}';`);
+    this._line('');
+  }
+
+  _genReflectStmt(stmt) {
+    this._line(`return ${stmt.expression || 'null'};`);
+  }
+
+  _genNodeStmt(stmt) {
+    const typeEsc = this._escape(stmt.nodeType);
+    const textVal = stmt.text ? `'${this._escape(stmt.text)}'` : "''";
+    this._line(`new EM.EventMathNode('${typeEsc}', ${textVal})`);
+  }
+
+  _genAtmosphereStmt(stmt) {
+    const v       = this._safeName(stmt.name);
+    const nameEsc = this._escape(stmt.name);
+    const propsJs = JSON.stringify(stmt.props || {});
+    this._line(`// atmosphere: ${nameEsc}`);
+    this._line(`${v} = new EM.EventMathAtmosphere('${nameEsc}', ${propsJs});`);
+    this._line('');
+  }
+
+  _genEarthStmt(stmt) {
+    const intoVar  = this._safeName(stmt.intoName);
+    const method   = (stmt.method || 'get').toLowerCase();
+    const pathVal  = `'${this._escape(stmt.path)}'`;
+    const bodyPart = stmt.bodyName ? `, ${this._safeName(stmt.bodyName)}` : (method === 'post' || method === 'put' ? ', null' : '');
+    this._line(`// earth.${method}: ${this._escape(stmt.path)}`);
+    this._line(`${intoVar} = await EM.EventMathEarth.${method}(${pathVal}${bodyPart});`);
+    this._line('');
+  }
+
+  _genTravelStmt(stmt) {
+    const pathVal = `'${this._escape(stmt.path)}'`;
+    this._line(`// travel: ${this._escape(stmt.path)}`);
+    this._line(`EM.EventMathEarth._travel ? EM.EventMathEarth._travel(${pathVal}) : (typeof window !== 'undefined' && (window.location.href = ${pathVal}));`);
+    this._line('');
+  }
+
+  _genMapStmt(stmt) {
+    const routeObj = (stmt.routes || []).map(r =>
+      `'${this._escape(r.name)}': { path: '${this._escape(r.path)}', cloud: '${this._escape(r.cloudName)}' }`
+    ).join(', ');
+    this._line(`// map: route definitions`);
+    this._line(`var __router = new EM.EventMathRouter({ ${routeObj} });`);
     this._line('');
   }
 }

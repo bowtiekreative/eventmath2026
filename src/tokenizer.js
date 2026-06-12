@@ -47,6 +47,11 @@ const KEYWORDS = new Set([
   'deepen', 'trace',
   // v2.10 — video editor vocabulary rename
   'anchor', 'spine', 'grade', 'extend', 'scrub',
+  // v2.11 — web layer (TheBigBang integration)
+  'rain', 'star', 'zone', 'sky', 'universe', 'orbit', 'lens',
+  'attempt', 'collapse', 'always',
+  'cloud', 'reflect', 'node', 'atmosphere', 'field', 'style', 'route',
+  'earth', 'travel', 'map', 'expand',
 ]);
 
 class Token {
@@ -220,6 +225,30 @@ class EventMathTokenizer {
     if (lead === 'scrub') {
       return this._tokenizeScrubStmt(words, lineNum);
     }
+
+    // ── v2.11 web layer ────────────────────────────────────────────
+
+    if (lead === 'rain')       return this._tokenizeRainStmt(words, lineNum);
+    if (lead === 'star')       return this._tokenizeStarStmt(words, lineNum);
+    if (lead === 'zone')       return this._tokenizeZoneStmt(words, lineNum);
+    if (lead === 'sky')        return this._tokenizeSkyStmt(words, lineNum);
+    if (lead === 'universe')   return this._tokenizeUniverseStmt(words, lineNum);
+    if (lead === 'field')      return this._tokenizeUniverseField(words, lineNum);
+    if (lead === 'orbit')      return this._tokenizeOrbitStmt(words, lineNum);
+    if (lead === 'lens')       return this._tokenizeLensStmt(words, lineNum);
+    if (lead === 'attempt')    return [new Token('KEYWORD', 'attempt', lineNum)];
+    if (lead === 'collapse')   return [new Token('COLLAPSE_MARKER', { errName: words.slice(1).join(' ') || '_err' }, lineNum)];
+    if (lead === 'always')     return [new Token('KEYWORD', 'always', lineNum)];
+    if (lead === 'expand')     return this._tokenizeExpandStmt(words, lineNum);
+    if (lead === 'cloud')      return this._tokenizeCloudStmt(words, lineNum);
+    if (lead === 'reflect')    return this._tokenizeReflectStmt(words, lineNum);
+    if (lead === 'node')       return this._tokenizeNodeStmt(words, lineNum);
+    if (lead === 'atmosphere') return this._tokenizeAtmosphereStmt(words, lineNum);
+    if (lead === 'style')      return this._tokenizeStyleProp(words, lineNum);
+    if (lead === 'earth')      return this._tokenizeEarthStmt(words, lineNum);
+    if (lead === 'travel')     return this._tokenizeTravelStmt(words, lineNum);
+    if (lead === 'map')        return [new Token('KEYWORD', 'map', lineNum)];
+    if (lead === 'route')      return this._tokenizeRouteLine(words, lineNum);
 
     // category, cat → consume category name
     // But if the next word is "is" or "from", this is a matter field key, not a declaration
@@ -1969,6 +1998,148 @@ class EventMathTokenizer {
     const intoName   = words.slice(intoIdx + 1).join(' ');
 
     return [new Token('WHY_STMT', { desireName, chainName, intoName }, lineNum)];
+  }
+
+  // ── v2.11 web layer tokenizer methods ─────────────────────────────
+
+  // rain NAME is VALUE — mutable variable
+  _tokenizeRainStmt(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx < 0) return [new Token('KEYWORD', 'rain', lineNum)];
+    const name  = words.slice(1, isIdx).join(' ');
+    const value = words.slice(isIdx + 1).join(' ') || 'void';
+    return [new Token('RAIN_STMT', { name, value }, lineNum)];
+  }
+
+  // star NAME is VALUE — constant
+  _tokenizeStarStmt(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx < 0) return [new Token('KEYWORD', 'star', lineNum)];
+    const name  = words.slice(1, isIdx).join(' ');
+    const value = words.slice(isIdx + 1).join(' ') || 'void';
+    return [new Token('STAR_STMT', { name, value }, lineNum)];
+  }
+
+  // zone NAME is { ... } — object literal
+  _tokenizeZoneStmt(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx < 0) return [new Token('UNIVERSE_BLOCK', { name: words.slice(1).join(' ') }, lineNum)];
+    const name       = words.slice(1, isIdx).join(' ');
+    const expression = words.slice(isIdx + 1).join(' ');
+    return [new Token('ZONE_STMT', { name, expression }, lineNum)];
+  }
+
+  // sky NAME is [ ... ] — array literal
+  _tokenizeSkyStmt(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx < 0) return [new Token('SKY_BLOCK', { name: words.slice(1).join(' ') }, lineNum)];
+    const name       = words.slice(1, isIdx).join(' ');
+    const expression = words.slice(isIdx + 1).join(' ');
+    return [new Token('SKY_STMT', { name, expression }, lineNum)];
+  }
+
+  // universe NAME — schema block header
+  _tokenizeUniverseStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('UNIVERSE_STMT', { name }, lineNum)];
+  }
+
+  // field NAME is TYPE — inside universe block
+  _tokenizeUniverseField(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    const name  = isIdx > 0 ? words.slice(1, isIdx).join(' ') : words.slice(1).join(' ');
+    const type  = isIdx > 0 ? words.slice(isIdx + 1).join(' ') : 'One';
+    return [new Token('UNIVERSE_FIELD', { name, type }, lineNum)];
+  }
+
+  // orbit ITEM in COLLECTION — for-of loop block header
+  _tokenizeOrbitStmt(words, lineNum) {
+    const inIdx = this._indexOf(words, 'in');
+    if (inIdx < 0) return [new Token('KEYWORD', 'orbit', lineNum)];
+    const itemName       = words.slice(1, inIdx).join(' ');
+    const collectionName = words.slice(inIdx + 1).join(' ');
+    return [new Token('ORBIT_STMT', { itemName, collectionName }, lineNum)];
+  }
+
+  // lens NAME is EXPRESSION — derived computed value
+  _tokenizeLensStmt(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx < 0) return [new Token('KEYWORD', 'lens', lineNum)];
+    const name       = words.slice(1, isIdx).join(' ');
+    const expression = words.slice(isIdx + 1).join(' ');
+    return [new Token('LENS_STMT', { name, expression }, lineNum)];
+  }
+
+  // expand cloud NAME / expand action NAME — async modifier
+  _tokenizeExpandStmt(words, lineNum) {
+    const target = words[1];
+    if (target === 'cloud') {
+      const name = words.slice(2).join(' ');
+      return [new Token('CLOUD_STMT', { name, isAsync: true }, lineNum)];
+    }
+    return [new Token('KEYWORD', 'expand', lineNum)];
+  }
+
+  // cloud NAME — UI component block header
+  _tokenizeCloudStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('CLOUD_STMT', { name, isAsync: false }, lineNum)];
+  }
+
+  // reflect EXPRESSION — render output of a cloud
+  _tokenizeReflectStmt(words, lineNum) {
+    const expression = words.slice(1).join(' ');
+    return [new Token('REFLECT_STMT', { expression }, lineNum)];
+  }
+
+  // node TYPE [TEXT] — HTML element
+  _tokenizeNodeStmt(words, lineNum) {
+    const type = words[1] || 'div';
+    const text = words.slice(2).join(' ');
+    return [new Token('NODE_STMT', { type, text }, lineNum)];
+  }
+
+  // atmosphere NAME — style block header
+  _tokenizeAtmosphereStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('ATMOSPHERE_STMT', { name }, lineNum)];
+  }
+
+  // style KEY is VALUE — inside atmosphere block
+  _tokenizeStyleProp(words, lineNum) {
+    const isIdx = this._indexOf(words, 'is');
+    const key   = isIdx > 0 ? words.slice(1, isIdx).join('') : words[1] || '';
+    const value = isIdx > 0 ? words.slice(isIdx + 1).join(' ') : words.slice(2).join(' ');
+    return [new Token('STYLE_PROP', { key, value }, lineNum)];
+  }
+
+  // earth METHOD PATH [with BODY] into NAME — HTTP request
+  _tokenizeEarthStmt(words, lineNum) {
+    const method  = words[1] || 'get';
+    const withIdx = this._indexOf(words, 'with');
+    const intoIdx = this._indexOf(words, 'into');
+    if (intoIdx < 0) return [new Token('KEYWORD', 'earth', lineNum)];
+    const pathEnd  = withIdx > 0 && withIdx < intoIdx ? withIdx : intoIdx;
+    const path     = words.slice(2, pathEnd).join(' ');
+    const bodyName = withIdx > 0 && withIdx < intoIdx ? words.slice(withIdx + 1, intoIdx).join(' ') : '';
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('EARTH_STMT', { method, path, bodyName, intoName }, lineNum)];
+  }
+
+  // travel PATH — navigate to route
+  _tokenizeTravelStmt(words, lineNum) {
+    const path = words.slice(1).join(' ');
+    return [new Token('TRAVEL_STMT', { path }, lineNum)];
+  }
+
+  // route NAME PATH as CLOUD — inside map block
+  _tokenizeRouteLine(words, lineNum) {
+    const asIdx = this._indexOf(words, 'as');
+    if (asIdx < 0) return [new Token('KEYWORD', 'route', lineNum)];
+    const name      = words[1];
+    const cloudName = words.slice(asIdx + 1).join(' ');
+    const path      = words.slice(2, asIdx).join(' ');
+    return [new Token('ROUTE_LINE', { name, path, cloudName }, lineNum)];
   }
 
   /**

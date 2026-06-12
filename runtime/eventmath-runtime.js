@@ -2786,6 +2786,118 @@
     return lines.join('\n');
   };
 
+  // ── EventMathNode ─────────────────────────────────────────────────
+  function EventMathNode(type, content) {
+    if (!(this instanceof EventMathNode)) return new EventMathNode(type, content);
+    this.type = type || 'div';
+    this.content = content !== undefined ? content : '';
+    this.attrs = {};
+    this.children = [];
+  }
+  EventMathNode.prototype.attr = function(key, val) { this.attrs[key] = val; return this; };
+  EventMathNode.prototype.child = function(node) { this.children.push(node); return this; };
+  EventMathNode.prototype.render = function() {
+    var SELF_CLOSE = { img:1, input:1, br:1, hr:1, meta:1, link:1 };
+    var attrStr = Object.keys(this.attrs).map(function(k) {
+      return k + '="' + String(this.attrs[k]).replace(/"/g, '&quot;') + '"';
+    }).join(' ');
+    var open = '<' + this.type + (attrStr ? ' ' + attrStr : '') + '>';
+    if (SELF_CLOSE[this.type]) return '<' + this.type + (attrStr ? ' ' + attrStr : '') + ' />';
+    var inner = this.children.length
+      ? this.children.map(function(c) { return c instanceof EventMathNode ? c.render() : String(c); }).join('')
+      : (this.content instanceof EventMathNode ? this.content.render() : String(this.content));
+    return open + inner + '</' + this.type + '>';
+  };
+
+  // ── EventMathAtmosphere ───────────────────────────────────────────
+  function EventMathAtmosphere(name, styles) {
+    if (!(this instanceof EventMathAtmosphere)) return new EventMathAtmosphere(name, styles);
+    this.name = name;
+    this.styles = styles || {};
+  }
+  var _NO_PX = { opacity:1, zIndex:1, fontWeight:1, lineHeight:1, flex:1, order:1, flexGrow:1, flexShrink:1, columnCount:1, columns:1 };
+  EventMathAtmosphere.prototype.css = function() {
+    var self = this;
+    return '.' + this.name.replace(/\s+/g, '-') + ' {\n' +
+      Object.keys(this.styles).map(function(k) {
+        var cssKey = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+        var v = self.styles[k];
+        return '  ' + cssKey + ': ' + (typeof v === 'number' && !_NO_PX[k] ? v + 'px' : v) + ';';
+      }).join('\n') + '\n}';
+  };
+  EventMathAtmosphere.prototype.render = function() { return this.css(); };
+
+  // ── EventMathCloud ────────────────────────────────────────────────
+  function EventMathCloud(name, renderFn) {
+    if (!(this instanceof EventMathCloud)) return new EventMathCloud(name, renderFn);
+    this.name = name;
+    this._renderFn = renderFn || function() { return new EventMathNode('div', ''); };
+    this.isAsync = false;
+  }
+  EventMathCloud.prototype.call = function() {
+    return this._renderFn.apply(this, arguments);
+  };
+  EventMathCloud.prototype.render = function() {
+    var result = this._renderFn();
+    return result instanceof EventMathNode ? result.render() : String(result || '');
+  };
+
+  // ── EventMathEarth ────────────────────────────────────────────────
+  var EventMathEarth = (function() {
+    var _base = '';
+    var _defaultHeaders = {};
+    function _req(method, path, body, extraHeaders) {
+      var url = _base + path;
+      var headers = Object.assign({ 'Content-Type': 'application/json' }, _defaultHeaders, extraHeaders || {});
+      var opts = { method: method, headers: headers };
+      if (body !== null && body !== undefined) opts.body = JSON.stringify(body);
+      if (typeof fetch !== 'undefined') {
+        return fetch(url, opts).then(function(r) { return r.json(); });
+      }
+      return Promise.resolve({ _stub: true, method: method, url: url });
+    }
+    return {
+      config: function(opts) {
+        if (opts && opts.base) _base = opts.base;
+        if (opts && opts.headers) _defaultHeaders = opts.headers;
+      },
+      get:    function(path, h)        { return _req('GET',    path, null, h); },
+      post:   function(path, body, h)  { return _req('POST',   path, body, h); },
+      put:    function(path, body, h)  { return _req('PUT',    path, body, h); },
+      delete: function(path, h)        { return _req('DELETE', path, null, h); },
+    };
+  })();
+
+  // ── EventMathRouter ───────────────────────────────────────────────
+  function EventMathRouter(routeMap) {
+    if (!(this instanceof EventMathRouter)) return new EventMathRouter(routeMap);
+    this.routes = routeMap || {};
+    this.current = null;
+  }
+  EventMathRouter.prototype.travel = function(path) {
+    this.current = path;
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({}, '', path);
+    }
+    return this._match(path);
+  };
+  EventMathRouter.prototype._match = function(path) {
+    for (var name in this.routes) {
+      if (this.routes[name].path === path) {
+        return { name: name, cloud: this.routes[name].cloud };
+      }
+    }
+    return null;
+  };
+  EventMathRouter.prototype.render = function() {
+    var lines = ['── Routes ──'];
+    for (var name in this.routes) {
+      var r = this.routes[name];
+      lines.push('  ' + name + ': ' + r.path + ' → ' + (r.cloud || '?'));
+    }
+    return lines.join('\n');
+  };
+
   // ── Exports ──────────────────────────────────────────────
 
   return {
@@ -2819,6 +2931,11 @@
     isNStepFib:              isNStepFib,
     nStepFib:                nStepFib,
     getShapeName:            getShapeName,
+    EventMathNode:          EventMathNode,
+    EventMathAtmosphere:    EventMathAtmosphere,
+    EventMathCloud:         EventMathCloud,
+    EventMathEarth:         EventMathEarth,
+    EventMathRouter:        EventMathRouter,
   };
 
 });

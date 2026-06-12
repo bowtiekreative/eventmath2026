@@ -154,7 +154,27 @@ class EventMathValidator {
         case 'ExtendStmt':
         case 'TraceStmt':
         case 'ScrubStmt':
+        case 'ZoneStmt':
+        case 'SkyStmt':
+        case 'LensStmt':
+        case 'AtmosphereStmt':
+        case 'EarthStmt':
+        case 'MapStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
+        case 'RainStmt':
+        case 'StarStmt':
+        case 'UniverseStmt':
+        case 'CloudStmt':
+          if (stmt.name) this.marks.set(stmt.name, true);
+          break;
+        case 'OrbitStmt':
+          if (stmt.body) this._collectDeclarations(stmt.body);
+          break;
+        case 'AttemptStmt':
+          if (stmt.tryBody)   this._collectDeclarations(stmt.tryBody);
+          if (stmt.catchBody) this._collectDeclarations(stmt.catchBody);
+          if (stmt.alwaysBody) this._collectDeclarations(stmt.alwaysBody);
           break;
       }
     }
@@ -167,7 +187,7 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub', 'rain', 'star', 'zone', 'sky', 'lens', 'orbit', 'cloud', 'node', 'earth', 'travel', 'map', 'attempt', 'collapse', 'always', 'reflect', 'field', 'style', 'route', 'expand', 'atmosphere']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();
