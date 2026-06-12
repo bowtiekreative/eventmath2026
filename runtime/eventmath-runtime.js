@@ -1004,8 +1004,12 @@
     this.links = [];
   }
 
-  EventMathChain.prototype.addLink = function (from, to) {
-    this.links.push({ from: from, to: to });
+  EventMathChain.prototype.addLink = function (from, to, value) {
+    var link = { from: from, to: to };
+    if (value !== null && value !== undefined && !isNaN(Number(value))) {
+      link.value = Number(value);
+    }
+    this.links.push(link);
     return this;
   };
 
@@ -1027,7 +1031,9 @@
       lines.push('  (empty chain)');
     } else {
       for (var i = 0; i < this.links.length; i++) {
-        lines.push('  ' + this.links[i].from + '  →  ' + this.links[i].to);
+        var lk    = this.links[i];
+        var valTx = lk.value !== undefined ? '  [' + lk.value + ']' : '';
+        lines.push('  ' + lk.from + '  →  ' + lk.to + valTx);
       }
       lines.push('  [' + this.links.length + ' link' + (this.links.length === 1 ? '' : 's') + ']');
     }
@@ -1222,6 +1228,35 @@
     return lines.join('\n');
   };
 
+  // ── Assumption ────────────────────────────────────────────
+  //
+  // `assume NAME is VALUE`
+  // Named declarations that can be referenced in desire conditions.
+  // Numeric values are resolved at satisfaction-evaluation time so
+  // "satisfied when is payment more than market rate" uses the
+  // assumption value for "market rate" rather than treating it as
+  // a plain keyword.
+
+  function EventMathAssumption(name, value) {
+    if (!(this instanceof EventMathAssumption)) {
+      return new EventMathAssumption(name, value);
+    }
+    this.name         = name  || '';
+    this.rawValue     = value !== undefined && value !== null ? String(value) : '';
+    var n             = parseFloat(this.rawValue);
+    this.numericValue = isNaN(n) ? null : n;
+    this.textValue    = this.rawValue;
+    this.active       = true;
+  }
+
+  EventMathAssumption.prototype.render = function () {
+    var lines = ['── Assumption: ' + this.name + ' ──'];
+    lines.push('  Value:   ' + (this.rawValue || '(none)'));
+    if (this.numericValue !== null) lines.push('  Numeric: ' + this.numericValue);
+    lines.push('  Status:  ' + (this.active ? 'active' : 'challenged'));
+    return lines.join('\n');
+  };
+
   // ── Desire ────────────────────────────────────────────────
   //
   // Wraps a desire block: subjective want → typed condition that can be
@@ -1285,118 +1320,218 @@
   // Score = percentage of desires satisfied (0–100).
   // Gaps = array of unsatisfied desires with reasons.
 
-  function EventMathSatisfactionEngine(name, desires, chain) {
+  function EventMathSatisfactionEngine(name, desires, chain, assumptions) {
     if (!(this instanceof EventMathSatisfactionEngine)) {
-      return new EventMathSatisfactionEngine(name, desires, chain);
+      return new EventMathSatisfactionEngine(name, desires, chain, assumptions);
     }
-    this.name    = name   || 'satisfaction check';
-    this.desires = Array.isArray(desires) ? desires : (desires ? [desires] : []);
-    this.chain   = chain  || null;
-    this.results = [];
-    this.score   = 0;
-    this.gaps    = [];
+    this.name        = name   || 'satisfaction check';
+    this.desires     = Array.isArray(desires)     ? desires     : (desires     ? [desires]     : []);
+    this.assumptions = Array.isArray(assumptions) ? assumptions : (assumptions ? [assumptions] : []);
+    this.chain       = chain  || null;
+    this.results     = [];
+    this.score       = 0;
+    this.gaps        = [];
     this._evaluate();
   }
 
   EventMathSatisfactionEngine.prototype._extractChainStates = function () {
     if (!this.chain || !this.chain.links || this.chain.links.length === 0) {
-      return { all: [], terminals: [], sources: [] };
+      return { all: [], terminals: [], sources: [], stateValues: {} };
     }
-    var all       = [];
-    var sourceSet = {};
+    var all         = [];
+    var sourceSet   = {};
+    var stateValues = {};    // stateName → numeric value (if set)
+
     this.chain.links.forEach(function (lk) {
       var f = (lk.from || '').toLowerCase();
       var t = (lk.to   || '').toLowerCase();
       if (all.indexOf(f) === -1) all.push(f);
       if (all.indexOf(t) === -1) all.push(t);
       sourceSet[f] = true;
+      if (lk.value !== undefined) stateValues[t] = lk.value;
     });
     var terminals = all.filter(function (s) { return !sourceSet[s]; });
-    return { all: all, terminals: terminals, sources: Object.keys(sourceSet) };
+    return { all: all, terminals: terminals, sources: Object.keys(sourceSet), stateValues: stateValues };
+  };
+
+  EventMathSatisfactionEngine.prototype._resolveNumericTarget = function (target) {
+    // 1. Try to parse an inline number from the condition target text
+    var numMatch = String(target || '').match(/\d+(\.\d+)?/);
+    if (numMatch) return parseFloat(numMatch[0]);
+
+    // 2. Try to resolve from declared assumptions by name overlap
+    var targetLower = (target || '').toLowerCase();
+    for (var i = 0; i < this.assumptions.length; i++) {
+      var a = this.assumptions[i];
+      if (a && a.active && a.numericValue !== null &&
+          targetLower.includes(a.name.toLowerCase())) {
+        return a.numericValue;
+      }
+    }
+    return null;
+  };
+
+  EventMathSatisfactionEngine.prototype._resolveActualValue = function (subject, targetWords, stateValues) {
+    var lookup = Object.keys(stateValues);
+    for (var i = 0; i < lookup.length; i++) {
+      var stateName = lookup[i];
+      var stateWords = stateName.split(/\s+/);
+      // Match if any meaningful condition keyword appears in the state name
+      var condKeywords = (subject ? subject.split(/\s+/) : []).concat(targetWords);
+      var matched = condKeywords.some(function (w) {
+        return w.length > 2 && stateWords.some(function (sw) { return sw.includes(w); });
+      });
+      if (matched) return stateValues[stateName];
+    }
+    return null;
   };
 
   EventMathSatisfactionEngine.prototype._checkDesire = function (desire, chainStates) {
-    var cond      = desire._condition || { subject: '', operator: 'matches', target: '' };
-    var direction = (desire.direction || 'matches').toLowerCase();
-    var target    = (cond.target  || '').toLowerCase();
-    var subject   = (cond.subject || '').toLowerCase();
-    var allStates = chainStates.all      || [];
-    var terminals = chainStates.terminals || [];
+    var cond        = desire._condition || { subject: '', operator: 'matches', target: '' };
+    var direction   = (desire.direction || 'matches').toLowerCase();
+    var target      = (cond.target  || '').toLowerCase();
+    var subject     = (cond.subject || '').toLowerCase();
+    var allStates   = chainStates.all       || [];
+    var terminals   = chainStates.terminals || [];
+    var stateValues = chainStates.stateValues || {};
 
-    // Keywords for directional matching
     var POS = ['increase', 'growth', 'more', 'rise', 'gain', 'expand', 'improve', 'higher'];
     var NEG = ['decrease', 'reduce', 'less', 'drop', 'loss', 'shrink', 'decline', 'lower'];
 
-    // Break target into meaningful words (>2 chars) for flexible matching
-    var targetWords = target.split(/\s+/).filter(function (w) { return w.length > 2; });
+    var targetWords = target.split(/\s+/).filter(function (w) { return w.length > 2 && !/^\d/.test(w); });
 
     var terminalMatch = terminals.some(function (s) {
-      return targetWords.length > 0 && targetWords.some(function (w) { return s.includes(w); });
+      return targetWords.some(function (w) { return s.includes(w); }) ||
+             (subject.length > 2 && s.includes(subject));
     });
     var anyMatch = allStates.some(function (s) {
-      return (targetWords.length > 0 && targetWords.some(function (w) { return s.includes(w); })) ||
-             (subject && subject.length > 2 && s.includes(subject));
+      return targetWords.some(function (w) { return s.includes(w); }) ||
+             (subject.length > 2 && s.includes(subject));
     });
 
-    var satisfied, reason;
-    var noChain = !this.chain || !this.chain.links || this.chain.links.length === 0;
+    var satisfied, reason, partialScore, actualValue, targetValue, gap;
 
+    var noChain = !this.chain || !this.chain.links || this.chain.links.length === 0;
     if (noChain) {
-      satisfied = false;
-      reason    = 'No chain provided — cannot evaluate satisfaction';
-    } else if (direction === 'does not match') {
-      satisfied = !anyMatch;
-      reason    = satisfied
+      return {
+        desire: desire.name, satisfied: false, partialScore: 0,
+        actualValue: null, targetValue: null, gap: null,
+        direction: direction,
+        condition: desire.satisfiedWhen || desire.outcomeText || '',
+        scenario: desire.scenario || '',
+        reason: 'No chain provided — cannot evaluate satisfaction'
+      };
+    }
+
+    // ── Numeric path ────────────────────────────────────────────
+    targetValue  = this._resolveNumericTarget(target);
+    actualValue  = this._resolveActualValue(subject, targetWords, stateValues);
+
+    if (actualValue !== null && targetValue !== null) {
+      var label = (subject || targetWords[0] || 'value');
+      if (direction === 'more' || direction === 'more than' ||
+          direction === 'exceeds' || cond.operator === 'more than' || cond.operator === 'exceeds') {
+        satisfied    = actualValue > targetValue;
+        partialScore = Math.min(100, Math.round((actualValue / targetValue) * 100));
+        gap          = satisfied ? 0 : Math.round((targetValue - actualValue) * 100) / 100;
+        reason       = satisfied
+          ? label + ' is ' + actualValue + ' — target: ' + targetValue + ' — exceeded by ' + (actualValue - targetValue) + ' (100% satisfied)'
+          : label + ' is ' + actualValue + ' — target: ' + targetValue + ' — gap: ' + gap + ' (' + partialScore + '% of target)';
+
+      } else if (direction === 'less' || direction === 'less than' || cond.operator === 'less than') {
+        satisfied    = actualValue < targetValue;
+        partialScore = satisfied ? 100 : Math.min(100, Math.round((targetValue / actualValue) * 100));
+        gap          = satisfied ? 0 : Math.round((actualValue - targetValue) * 100) / 100;
+        reason       = satisfied
+          ? label + ' is ' + actualValue + ' — target below: ' + targetValue + ' — satisfied'
+          : label + ' is ' + actualValue + ' — target below: ' + targetValue + ' — above by ' + gap;
+
+      } else {
+        // matches / equals
+        var diff = Math.abs(actualValue - targetValue);
+        satisfied    = diff === 0;
+        partialScore = diff === 0 ? 100 : Math.max(0, Math.round((1 - diff / targetValue) * 100));
+        gap          = satisfied ? 0 : diff;
+        reason       = satisfied
+          ? label + ' is ' + actualValue + ' — matches target ' + targetValue + ' exactly'
+          : label + ' is ' + actualValue + ' — target: ' + targetValue + ' — gap: ' + gap + ' (' + partialScore + '% match)';
+      }
+
+      return {
+        desire: desire.name, satisfied: satisfied, partialScore: partialScore,
+        actualValue: actualValue, targetValue: targetValue, gap: gap,
+        direction: direction,
+        condition: desire.satisfiedWhen || desire.outcomeText || '',
+        scenario: desire.scenario || '',
+        reason: reason
+      };
+    }
+
+    // ── Keyword / structural path (no numeric values) ────────────
+    partialScore = 0;
+    actualValue  = null;
+    targetValue  = null;
+    gap          = null;
+
+    if (direction === 'does not match') {
+      satisfied    = !anyMatch;
+      partialScore = satisfied ? 100 : 0;
+      reason       = satisfied
         ? 'Chain does not contain "' + (target || subject) + '" — desired absence confirmed'
         : 'Chain contains "' + (target || subject) + '" — desired absence violated';
+
     } else if (direction === 'more' || direction === 'more than') {
       var posMatch = allStates.some(function (s) {
         return POS.some(function (sig) { return s.includes(sig); }) ||
                targetWords.some(function (w) { return s.includes(w); });
       });
-      satisfied = posMatch || anyMatch;
-      reason    = satisfied
+      satisfied    = posMatch || anyMatch;
+      partialScore = satisfied ? 100 : 0;
+      reason       = satisfied
         ? 'Chain contains states trending toward "' + (target || subject) + '"'
         : 'Chain does not show increase toward "' + (target || subject) + '" — gap';
+
     } else if (direction === 'less' || direction === 'less than') {
       var negMatch = allStates.some(function (s) {
         return NEG.some(function (sig) { return s.includes(sig); }) ||
                targetWords.some(function (w) { return s.includes(w); });
       });
-      satisfied = negMatch || anyMatch;
-      reason    = satisfied
+      satisfied    = negMatch || anyMatch;
+      partialScore = satisfied ? 100 : 0;
+      reason       = satisfied
         ? 'Chain contains states trending toward reduction of "' + (target || subject) + '"'
         : 'Chain does not show reduction of "' + (target || subject) + '" — gap';
+
     } else {
-      // 'matches' or any other direction — terminal or any state contains target
-      satisfied = terminalMatch || anyMatch;
-      reason    = satisfied
+      satisfied    = terminalMatch || anyMatch;
+      partialScore = satisfied ? 100 : 0;
+      reason       = satisfied
         ? 'Chain reaches a state containing "' + (target || subject) + '"'
         : 'Chain does not reach "' + (target || subject) + '" — gap in causal path';
     }
 
     return {
-      desire:    desire.name,
-      satisfied: satisfied,
+      desire: desire.name, satisfied: satisfied, partialScore: partialScore,
+      actualValue: null, targetValue: null, gap: null,
       direction: direction,
       condition: desire.satisfiedWhen || desire.outcomeText || '',
-      scenario:  desire.scenario || '',
-      reason:    reason
+      scenario: desire.scenario || '',
+      reason: reason
     };
   };
 
   EventMathSatisfactionEngine.prototype._evaluate = function () {
     var self        = this;
     var chainStates = this._extractChainStates();
-    var satisfiedN  = 0;
+    var totalPartial = 0;
     this.desires.forEach(function (d) {
       var r = self._checkDesire(d, chainStates);
       self.results.push(r);
-      if (r.satisfied) satisfiedN++;
-      else self.gaps.push(r);
+      totalPartial += (r.partialScore || 0);
+      if (!r.satisfied) self.gaps.push(r);
     });
     this.score = this.desires.length > 0
-      ? Math.round((satisfiedN / this.desires.length) * 100)
+      ? Math.round(totalPartial / this.desires.length)
       : 0;
   };
 
@@ -1419,10 +1554,17 @@
     lines.push('');
 
     this.results.forEach(function (r) {
-      lines.push('  ' + (r.satisfied ? '✓' : '✗') + '  ' + r.desire);
-      if (r.scenario)  lines.push('      Scenario:  ' + r.scenario);
-      if (r.condition) lines.push('      Condition: ' + r.condition);
+      lines.push('  ' + (r.satisfied ? '✓' : '✗') + '  ' + r.desire +
+                 (r.partialScore !== undefined && r.partialScore < 100 && r.partialScore > 0
+                   ? '  [' + r.partialScore + '%]' : ''));
+      if (r.scenario)   lines.push('      Scenario:  ' + r.scenario);
+      if (r.condition)  lines.push('      Condition: ' + r.condition);
       lines.push('      Direction: ' + r.direction);
+      if (r.actualValue !== null && r.targetValue !== null) {
+        lines.push('      Actual:    ' + r.actualValue +
+                   '  /  Target: ' + r.targetValue +
+                   (r.gap ? '  /  Gap: ' + r.gap : ''));
+      }
       lines.push('      Result:    ' + r.reason);
       lines.push('');
     });
@@ -1430,12 +1572,23 @@
     if (this.gaps.length > 0) {
       lines.push('  ── Unmet desires (gaps) ──');
       this.gaps.forEach(function (g) {
-        lines.push('    • ' + g.desire);
+        var quantNote = (g.actualValue !== null && g.targetValue !== null)
+          ? '  (' + g.actualValue + ' vs target ' + g.targetValue + ')'
+          : '';
+        lines.push('    • ' + g.desire + quantNote);
         lines.push('      → ' + g.reason);
       });
       lines.push('');
     } else if (total > 0) {
       lines.push('  All desires satisfied.');
+      lines.push('');
+    }
+
+    if (this.assumptions.length > 0) {
+      lines.push('  ── Assumptions used ──');
+      this.assumptions.forEach(function (a) {
+        lines.push('    • ' + a.name + ': ' + a.rawValue);
+      });
       lines.push('');
     }
 
@@ -1574,6 +1727,7 @@
     EventMathChain:          EventMathChain,
     EventMathRootTrace:      EventMathRootTrace,
     EventMathFallacyDetector:       EventMathFallacyDetector,
+    EventMathAssumption:            EventMathAssumption,
     EventMathDesire:                EventMathDesire,
     EventMathSatisfactionEngine:    EventMathSatisfactionEngine,
     EventMathFractalAxis:           EventMathFractalAxis,

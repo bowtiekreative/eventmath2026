@@ -1522,9 +1522,22 @@ class EventMathTokenizer {
 
   // <A> leads to <B>  (inside a chain block)
   _leadsToStmt(words, leadsIdx, lineNum) {
-    const from = words.slice(0, leadsIdx).join(' ');
-    const to   = words.slice(leadsIdx + 2).join(' ');
-    return [new Token('LEADS_TO_STMT', { from, to }, lineNum)];
+    const from     = words.slice(0, leadsIdx).join(' ');
+    const afterTo  = words.slice(leadsIdx + 2);
+
+    // Parse optional "at value N" suffix
+    const atIdx = this._findPhrase(afterTo, ['at', 'value']);
+    let to, value;
+    if (atIdx >= 0) {
+      to = afterTo.slice(0, atIdx).join(' ');
+      const rawVal = afterTo[atIdx + 2];
+      const parsed = rawVal !== undefined ? parseFloat(rawVal) : NaN;
+      value = isNaN(parsed) ? null : parsed;
+    } else {
+      to    = afterTo.join(' ');
+      value = null;
+    }
+    return [new Token('LEADS_TO_STMT', { from, to, value }, lineNum)];
   }
 
   // asymmetry from <X> and <Y> into <Z>
@@ -1566,10 +1579,16 @@ class EventMathTokenizer {
     return [new Token('INVERT_STMT', { sourceName, intoName }, lineNum)];
   }
 
-  // assume <text>
+  // assume <name> is <value>  — or  assume <text>
   _assumeStmt(words, lineNum) {
-    const text = words.slice(1).join(' ');
-    return [new Token('ASSUME_STMT', { text }, lineNum)];
+    const text  = words.slice(1).join(' ');
+    const isIdx = this._indexOf(words, 'is');
+    if (isIdx > 1) {
+      const name  = words.slice(1, isIdx).join(' ');
+      const value = words.slice(isIdx + 1).join(' ');
+      return [new Token('ASSUME_STMT', { name, value, text }, lineNum)];
+    }
+    return [new Token('ASSUME_STMT', { name: text, value: '', text }, lineNum)];
   }
 
   // detect fallacies in <chain> into <result>

@@ -81,6 +81,8 @@ class EventMathCodeGen {
     this._line('');
     // Probabilistic weight registry — populated by weight statements
     this._line('const __weights = {};');
+    // Assumption registry — populated by assume statements, passed to satisfaction engine
+    this._line('const __assumptions = [];');
     this._line('');
 
     // First pass: register all declaration names and door inputs
@@ -298,6 +300,12 @@ class EventMathCodeGen {
           if (stmt.intoName && !this._vars.has(stmt.intoName)) {
             this._vars.add(stmt.intoName);
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'AssumeStmt':
+          if (stmt.name && !this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
           }
           break;
         case 'ActorStmt':
@@ -1756,7 +1764,9 @@ class EventMathCodeGen {
     for (const link of (stmt.links || [])) {
       const fromEsc = this._escape(link.from);
       const toEsc   = this._escape(link.to);
-      this._line(`${varName}.addLink('${fromEsc}', '${toEsc}');`);
+      const valArg  = (link.value !== null && link.value !== undefined && !isNaN(link.value))
+        ? `, ${link.value}` : '';
+      this._line(`${varName}.addLink('${fromEsc}', '${toEsc}'${valArg});`);
     }
     this._line('');
   }
@@ -1826,7 +1836,7 @@ class EventMathCodeGen {
     const intoVar   = this._safeName(stmt.intoName);
     const intoEsc   = this._escape(stmt.intoName);
     this._line(`// satisfy: "${this._escape(stmt.desireName)}" against "${this._escape(stmt.chainName)}"`);
-    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVar}], ${chainVar});`);
+    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVar}], ${chainVar}, __assumptions);`);
     this._line('');
   }
 
@@ -1837,7 +1847,7 @@ class EventMathCodeGen {
     const intoEsc       = this._escape(stmt.intoName);
     const desireLabel   = (stmt.desireNames || []).map(n => `"${this._escape(n)}"`).join(', ');
     this._line(`// evaluate: [${desireLabel}] against "${this._escape(stmt.chainName)}"`);
-    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVarList}], ${chainVar});`);
+    this._line(`${intoVar} = new EM.EventMathSatisfactionEngine('${intoEsc}', [${desireVarList}], ${chainVar}, __assumptions);`);
     this._line('');
   }
 
@@ -1876,9 +1886,12 @@ class EventMathCodeGen {
   }
 
   _genAssumeStmt(stmt) {
-    const textEsc = this._escape(stmt.text || '');
-    this._line(`// assumption: "${textEsc}"`);
-    this._line(`console.log('ASSUMPTION: ${textEsc}');`);
+    const nameEsc  = this._escape(stmt.name  || stmt.text || '');
+    const valueEsc = this._escape(stmt.value || '');
+    const varName  = this._safeName(stmt.name || stmt.text || '');
+    this._line(`// assume: "${nameEsc}" is "${valueEsc}"`);
+    this._line(`${varName} = new EM.EventMathAssumption('${nameEsc}', '${valueEsc}');`);
+    this._line(`__assumptions.push(${varName});`);
     this._line('');
   }
 

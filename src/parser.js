@@ -1028,7 +1028,7 @@ class EventMathParser {
       const t = this.peek();
       if (t && t.type === 'LEADS_TO_STMT') {
         const lt = this.advance();
-        links.push({ from: lt.value.from, to: lt.value.to });
+        links.push({ from: lt.value.from, to: lt.value.to, value: lt.value.value });
       } else {
         this.advance();
       }
@@ -1085,7 +1085,7 @@ class EventMathParser {
   _parseAssumeStmt() {
     const t = this.advance();
     if (!t || !t.value) return null;
-    return ast('AssumeStmt', { text: t.value.text });
+    return ast('AssumeStmt', { name: t.value.name, value: t.value.value, text: t.value.text });
   }
 
   _parseDetectFallaciesStmt() {
