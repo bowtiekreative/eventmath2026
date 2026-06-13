@@ -2705,16 +2705,16 @@ class EventMathCodeGen {
     const stores = stmt.stores || [];
     const showAlls = stmt.showAlls || [];
     const summarizes = stmt.summarizes || [];
-    const hasSummarize = summarizes.length > 0;
+    const accepts = stmt.accepts || [];
 
     this._line(`// manifest: ${this._escape(stmt.name)}`);
 
-    // Build a map: table → live variable name
+    // Build a map: table → { dbVar, liveVar, fields }
     const liveVars = {};
     for (const store of stores) {
       const dbVar  = this._safeName(store.table);
       const liveVar = 'all_' + dbVar;
-      liveVars[store.table] = { dbVar, liveVar };
+      liveVars[store.table] = { dbVar, liveVar, fields: store.fields || [] };
 
       const fields = store.fields || [];
       const colDefs = fields.length > 0
@@ -2730,17 +2730,17 @@ class EventMathCodeGen {
     }
     this._line('');
 
-    const asyncKw = hasSummarize ? 'async ' : '';
+    // Always async: accept clauses need body parsing; summarize clauses need await
     if (this.target === 'bun') {
       this._line(`Bun.serve({`);
       this.indent++;
       this._line(`port: ${port},`);
-      this._line(`${asyncKw}fetch(req) {`);
+      this._line(`async fetch(req) {`);
       this.indent++;
       this._line(`const _method = req.method.toLowerCase();`);
       this._line(`const _path = new URL(req.url, 'http://localhost').pathname;`);
     } else {
-      this._line(`require('node:http').createServer(${asyncKw}function(req, res) {`);
+      this._line(`require('node:http').createServer(async function(req, res) {`);
       this.indent++;
       this._line(`var _method = req.method.toLowerCase();`);
       this._line(`var _path = require('node:url').parse(req.url).pathname;`);
@@ -2762,7 +2762,7 @@ class EventMathCodeGen {
 
     for (const summarize of summarizes) {
       const lv = liveVars[summarize.table] ? liveVars[summarize.table].liveVar : ('all_' + this._safeName(summarize.table));
-      const prompt = `Summarize these ${summarize.table}`;
+      const prompt = summarize.prompt || `Summarize these ${summarize.table}`;
       this._line(`if (_method === "get" && _path === ${JSON.stringify(summarize.path)}) {`);
       this.indent++;
       this._line(`const _summary = await EM.EventMathAsker.ask(${JSON.stringify(prompt)}, ${lv});`);
@@ -2771,6 +2771,41 @@ class EventMathCodeGen {
       } else {
         this._line(`res.writeHead(200, {'Content-Type': 'application/json'});`);
         this._line(`res.end(JSON.stringify({ summary: _summary })); return;`);
+      }
+      this.indent--;
+      this._line(`}`);
+    }
+
+    for (const accept of accepts) {
+      const matchingStore = stores.find(s => s.table === accept.noun || s.table === accept.noun + 's');
+      const info = matchingStore ? liveVars[matchingStore.table] : null;
+      const dbVar = info ? info.dbVar : this._safeName(accept.noun);
+      const lv = info ? info.liveVar : ('all_' + this._safeName(accept.noun));
+      const fields = info ? info.fields : [];
+      const table = matchingStore ? matchingStore.table : accept.noun;
+      const colList = fields.length > 0 ? fields.join(', ') : 'data';
+
+      this._line(`if (_method === "post" && _path === ${JSON.stringify(accept.path)}) {`);
+      this.indent++;
+      if (this.target === 'bun') {
+        this._line(`const _body = await req.json();`);
+      } else {
+        this._line(`const _body = await new Promise(function(_rs, _rj) {`);
+        this.indent++;
+        this._line(`var _chunks = [];`);
+        this._line(`req.on('data', function(c) { _chunks.push(c); });`);
+        this._line(`req.on('end', function() { try { _rs(JSON.parse(Buffer.concat(_chunks))); } catch(e) { _rj(e); } });`);
+        this.indent--;
+        this._line(`});`);
+      }
+      const fieldList = fields.length > 0 ? fields : ['data'];
+      const valExpr = `[${fieldList.map(f => JSON.stringify(f)).join(', ')}].map(function(f) { return "'" + String(_body[f] || '').replace(/'/g, "''") + "'"; }).join(', ')`;
+      this._line(`${dbVar}.draw("insert into ${table} (${colList}) values (" + ${valExpr} + ")");`);
+      if (this.target === 'bun') {
+        this._line(`return Response.json(${lv}, { status: 201 });`);
+      } else {
+        this._line(`res.writeHead(201, {'Content-Type': 'application/json'});`);
+        this._line(`res.end(JSON.stringify(${lv})); return;`);
       }
       this.indent--;
       this._line(`}`);

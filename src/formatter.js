@@ -1031,7 +1031,11 @@ class EventMathFormatter {
       this._line(`show all ${showAll.table} at "${showAll.path}"`);
     }
     for (const summarize of (stmt.summarizes || [])) {
-      this._line(`summarize ${summarize.table} with ai at "${summarize.path}"`);
+      const promptPart = summarize.prompt ? ` as "${summarize.prompt}"` : '';
+      this._line(`summarize ${summarize.table}${promptPart} with ai at "${summarize.path}"`);
+    }
+    for (const accept of (stmt.accepts || [])) {
+      this._line(`accept ${accept.noun} at "${accept.path}"`);
     }
     this.indent--;
     this._line('end');

@@ -1725,6 +1725,7 @@ class EventMathParser {
     let port = 3000;
     const showAlls = [];
     const summarizes = [];
+    const accepts = [];
     let guard = 0;
     while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
       const cur = this.peek();
@@ -1740,13 +1741,16 @@ class EventMathParser {
         showAlls.push({ table: s.value.table, path: s.value.path });
       } else if (cur.type === 'MANIFEST_SUMMARIZE') {
         const s = this.advance();
-        summarizes.push({ table: s.value.table, path: s.value.path });
+        summarizes.push({ table: s.value.table, prompt: s.value.prompt || null, path: s.value.path });
+      } else if (cur.type === 'MANIFEST_ACCEPT') {
+        const s = this.advance();
+        accepts.push({ noun: s.value.noun, path: s.value.path });
       } else {
         this.advance();
       }
     }
     this.expect('KEYWORD', 'end');
-    return ast('ManifestStmt', { name, stores, port, showAlls, summarizes });
+    return ast('ManifestStmt', { name, stores, port, showAlls, summarizes, accepts });
   }
 
   _parseNewStmt() {

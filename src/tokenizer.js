@@ -62,7 +62,7 @@ const KEYWORDS = new Set([
   'pipe', 'cast', 'log',
   // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server + AI ask + manifest
   'draw', 'serve', 'reply', 'ask',
-  'manifest', 'store', 'summarize',
+  'manifest', 'store', 'summarize', 'accept',
 ]);
 
 class Token {
@@ -263,6 +263,7 @@ class EventMathTokenizer {
     if (lead === 'manifest')   return this._tokenizeManifestStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
+    if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
     if (lead === 'serve')      return this._tokenizeServeStmt(words, lineNum);
     if (lead === 'reply')      return this._tokenizeReplyStmt(words, lineNum);
     if (lead === 'route') {
@@ -2383,14 +2384,29 @@ class EventMathTokenizer {
     return [new Token('MANIFEST_SHOW_ALL', { table, path }, lineNum)];
   }
 
-  // summarize TABLE [with ai] at "/path"
+  // summarize TABLE [as "Custom prompt"] [with ai] at "/path"
   _tokenizeManifestSummarize(words, lineNum) {
+    const line = words.join(' ');
+    const withPrompt = line.match(/^summarize\s+(.+?)\s+as\s+"([^"]*)"\s+(?:with\s+ai\s+)?at\s+"([^"]*)"\s*$/);
+    if (withPrompt) {
+      return [new Token('MANIFEST_SUMMARIZE',
+        { table: withPrompt[1].trim(), prompt: withPrompt[2], path: withPrompt[3] }, lineNum)];
+    }
     const atIdx = this._indexOf(words, 'at');
     const middle = words.slice(1, atIdx >= 0 ? atIdx : words.length);
     const table  = middle.filter(w => w !== 'with' && w !== 'ai').join(' ');
     const rawPath = atIdx >= 0 ? words.slice(atIdx + 1).join(' ') : '';
     const path = rawPath.replace(/^["']|["']$/g, '');
-    return [new Token('MANIFEST_SUMMARIZE', { table, path }, lineNum)];
+    return [new Token('MANIFEST_SUMMARIZE', { table, prompt: null, path }, lineNum)];
+  }
+
+  // accept NOUN at "/path" — POST write route
+  _tokenizeManifestAccept(words, lineNum) {
+    const atIdx = this._indexOf(words, 'at');
+    const noun = atIdx > 0 ? words.slice(1, atIdx).join(' ') : words.slice(1).join(' ');
+    const rawPath = atIdx >= 0 ? words.slice(atIdx + 1).join(' ') : '';
+    const path = rawPath.replace(/^["']|["']$/g, '');
+    return [new Token('MANIFEST_ACCEPT', { noun, path }, lineNum)];
   }
 
   // serve port N  — or —  serve on N (manifest variant)

@@ -218,6 +218,132 @@ test('manifest round-trips through formatter', () => {
   assert.ok(out.includes('end'), out);
 });
 
+// ── accept NOUN at "/path" — POST write route ────────────────────────
+console.log('\n─ accept clause ─');
+
+const MANIFEST_FULL_SRC = `manifest contacts app
+  store contacts in "app.db" with name and city
+  serve on 3000
+  show all contacts at "/api/contacts"
+  summarize contacts as "List these contacts briefly" with ai at "/api/summary"
+  accept contacts at "/api/contacts"
+end`;
+
+test('accept NOUN at "/path" → MANIFEST_ACCEPT token', () => {
+  const t = tok('accept contacts at "/api/contacts"').find(x => x.type === 'MANIFEST_ACCEPT');
+  assert.ok(t, 'MANIFEST_ACCEPT expected');
+  assert.strictEqual(t.value.noun, 'contacts');
+  assert.strictEqual(t.value.path, '/api/contacts');
+});
+
+test('accept without quotes on path still parses', () => {
+  const t = tok('accept things at /api/things').find(x => x.type === 'MANIFEST_ACCEPT');
+  assert.ok(t, 'MANIFEST_ACCEPT expected');
+  assert.strictEqual(t.value.noun, 'things');
+  assert.strictEqual(t.value.path, '/api/things');
+});
+
+test('summarize with custom as-prompt → prompt field set', () => {
+  const t = tok('summarize contacts as "List these contacts briefly" with ai at "/api/summary"')
+    .find(x => x.type === 'MANIFEST_SUMMARIZE');
+  assert.ok(t, 'MANIFEST_SUMMARIZE expected');
+  assert.strictEqual(t.value.prompt, 'List these contacts briefly');
+  assert.strictEqual(t.value.path, '/api/summary');
+});
+
+test('summarize without as-prompt → prompt is null', () => {
+  const t = tok('summarize contacts with ai at "/api/summary"').find(x => x.type === 'MANIFEST_SUMMARIZE');
+  assert.ok(t, 'MANIFEST_SUMMARIZE expected');
+  assert.strictEqual(t.value.prompt, null);
+});
+
+test('parser: ManifestStmt.accepts has one entry', () => {
+  const s = parse(MANIFEST_FULL_SRC).statements.find(x => x.type === 'ManifestStmt');
+  assert.ok(s, 'ManifestStmt expected');
+  assert.strictEqual(s.accepts.length, 1);
+  assert.strictEqual(s.accepts[0].noun, 'contacts');
+  assert.strictEqual(s.accepts[0].path, '/api/contacts');
+});
+
+test('parser: summarize carries custom prompt through to AST', () => {
+  const s = parse(MANIFEST_FULL_SRC).statements.find(x => x.type === 'ManifestStmt');
+  assert.strictEqual(s.summarizes[0].prompt, 'List these contacts briefly');
+});
+
+test('node: accept clause emits POST handler', () => {
+  const js = gen(MANIFEST_FULL_SRC);
+  assert.ok(js.includes(`_method === "post" && _path === "/api/contacts"`), js);
+});
+
+test('node: accept clause emits body parsing', () => {
+  const js = gen(MANIFEST_FULL_SRC);
+  assert.ok(js.includes(`await new Promise`), js);
+  assert.ok(js.includes(`Buffer.concat`), js);
+});
+
+test('node: accept clause emits INSERT into contacts', () => {
+  const js = gen(MANIFEST_FULL_SRC);
+  assert.ok(js.includes(`insert into contacts`), js);
+});
+
+test('node: accept clause returns 201 with live variable', () => {
+  const js = gen(MANIFEST_FULL_SRC);
+  assert.ok(js.includes(`res.writeHead(201`), js);
+  assert.ok(js.includes(`JSON.stringify(all_contacts)`), js);
+});
+
+test('node: custom prompt used in summarize (not hardcoded)', () => {
+  const js = gen(MANIFEST_FULL_SRC);
+  assert.ok(js.includes(`"List these contacts briefly"`), js);
+  assert.ok(!js.includes(`"Summarize these contacts"`), `should use custom prompt, not default: ${js}`);
+});
+
+test('node: default prompt used when no as-clause', () => {
+  const js = gen(MANIFEST_SRC);
+  assert.ok(js.includes(`"Summarize these contacts"`), js);
+});
+
+test('node: manifest handler is always async (even without summarize)', () => {
+  const src = `manifest simple app
+  store things in "t.db"
+  serve on 4000
+  show all things at "/things"
+end`;
+  const js = gen(src);
+  assert.ok(js.includes('async function(req, res)'), `expected async even without summarize: ${js}`);
+});
+
+test('bun: accept clause emits POST handler with req.json()', () => {
+  const js = gen(MANIFEST_FULL_SRC, { target: 'bun' });
+  assert.ok(js.includes(`_method === "post" && _path === "/api/contacts"`), js);
+  assert.ok(js.includes(`await req.json()`), js);
+});
+
+test('bun: accept clause returns Response.json with status 201', () => {
+  const js = gen(MANIFEST_FULL_SRC, { target: 'bun' });
+  assert.ok(js.includes(`Response.json(all_contacts, { status: 201 })`), js);
+});
+
+test('bun: manifest fetch handler is always async', () => {
+  const src = `manifest simple app
+  store things in "t.db"
+  serve on 4000
+  show all things at "/things"
+end`;
+  const js = gen(src, { target: 'bun' });
+  assert.ok(js.includes('async fetch(req)'), `expected async fetch: ${js}`);
+});
+
+test('formatter: accept clause round-trips', () => {
+  const out = new EventMathFormatter().format(parse(MANIFEST_FULL_SRC));
+  assert.ok(out.includes('accept contacts at "/api/contacts"'), out);
+});
+
+test('formatter: custom summarize prompt round-trips', () => {
+  const out = new EventMathFormatter().format(parse(MANIFEST_FULL_SRC));
+  assert.ok(out.includes('summarize contacts as "List these contacts briefly" with ai at "/api/summary"'), out);
+});
+
 // ── Summary ──────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 console.log(`  Passed: ${passed}   Failed: ${failed}   Total: ${passed + failed}`);
