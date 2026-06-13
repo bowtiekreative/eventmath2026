@@ -60,8 +60,9 @@ const KEYWORDS = new Set([
   'live',
   // v2.14 — collection intelligence + pipeline
   'pipe', 'cast', 'log',
-  // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server + AI ask
+  // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server + AI ask + manifest
   'draw', 'serve', 'reply', 'ask',
+  'manifest', 'store', 'summarize',
 ]);
 
 class Token {
@@ -259,6 +260,9 @@ class EventMathTokenizer {
     if (lead === 'travel')     return this._tokenizeTravelStmt(words, lineNum);
     if (lead === 'map')        return [new Token('KEYWORD', 'map', lineNum)];
     if (lead === 'ask')        return this._tokenizeAskStmt(words, lineNum);
+    if (lead === 'manifest')   return this._tokenizeManifestStmt(words, lineNum);
+    if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
+    if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'serve')      return this._tokenizeServeStmt(words, lineNum);
     if (lead === 'reply')      return this._tokenizeReplyStmt(words, lineNum);
     if (lead === 'route') {
@@ -337,6 +341,7 @@ class EventMathTokenizer {
 
     // show → show <markname>
     if (lead === 'show') {
+      if (words[1] === 'all') return this._tokenizeManifestShowAll(words, lineNum);
       return this._show(words, lineNum);
     }
 
@@ -2345,10 +2350,55 @@ class EventMathTokenizer {
       { message: 'ask needs: ask "<prompt>" [with <data>] into <result>' }, lineNum)];
   }
 
-  // serve port N — open an HTTP server block
+  // ── Manifest clause tokenizers ───────────────────────────────────────
+
+  // manifest NAME — open a self-generating app manifest block
+  _tokenizeManifestStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('MANIFEST_STMT', { name }, lineNum)];
+  }
+
+  // store TABLE in "FILE" [with FIELD1 and FIELD2 ...]
+  _tokenizeManifestStore(words, lineNum) {
+    const inIdx   = this._indexOf(words, 'in');
+    const withIdx = this._indexOf(words, 'with');
+    const table   = inIdx > 0 ? words.slice(1, inIdx).join(' ') : (words[1] || '');
+    let path = '';
+    if (inIdx >= 0 && words[inIdx + 1]) {
+      path = words[inIdx + 1].replace(/^["']|["']$/g, '');
+    }
+    let fields = [];
+    if (withIdx >= 0) {
+      fields = words.slice(withIdx + 1).filter(w => w !== 'and');
+    }
+    return [new Token('MANIFEST_STORE', { table, path, fields }, lineNum)];
+  }
+
+  // show all TABLE at "/path"
+  _tokenizeManifestShowAll(words, lineNum) {
+    const atIdx = this._indexOf(words, 'at');
+    const table = atIdx > 0 ? words.slice(2, atIdx).join(' ') : words.slice(2).join(' ');
+    const rawPath = atIdx >= 0 ? words.slice(atIdx + 1).join(' ') : '';
+    const path = rawPath.replace(/^["']|["']$/g, '');
+    return [new Token('MANIFEST_SHOW_ALL', { table, path }, lineNum)];
+  }
+
+  // summarize TABLE [with ai] at "/path"
+  _tokenizeManifestSummarize(words, lineNum) {
+    const atIdx = this._indexOf(words, 'at');
+    const middle = words.slice(1, atIdx >= 0 ? atIdx : words.length);
+    const table  = middle.filter(w => w !== 'with' && w !== 'ai').join(' ');
+    const rawPath = atIdx >= 0 ? words.slice(atIdx + 1).join(' ') : '';
+    const path = rawPath.replace(/^["']|["']$/g, '');
+    return [new Token('MANIFEST_SUMMARIZE', { table, path }, lineNum)];
+  }
+
+  // serve port N  — or —  serve on N (manifest variant)
   _tokenizeServeStmt(words, lineNum) {
-    const portIdx = this._indexOf(words, 'port');
-    const port = portIdx >= 0 ? (parseInt(words[portIdx + 1], 10) || 3000) : 3000;
+    let port = 3000;
+    if (words[1] === 'port' || words[1] === 'on') {
+      port = parseInt(words[2], 10) || 3000;
+    }
     return [new Token('SERVE_STMT', { port }, lineNum)];
   }
 

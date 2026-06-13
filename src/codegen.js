@@ -523,6 +523,7 @@ class EventMathCodeGen {
       case 'ReplyStmt':         return this._genReplyStmt(stmt);
       case 'AskStmt':           return this._genAskStmt(stmt);
       case 'LiveDrawStmt':      return this._genLiveDrawStmt(stmt);
+      case 'ManifestStmt':      return this._genManifestStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -2696,6 +2697,99 @@ class EventMathCodeGen {
       this._line(`res.writeHead(200, {'Content-Type': 'application/json'});`);
       this._line(`res.end(JSON.stringify(${name}));`);
       this._line(`return;`);
+    }
+  }
+
+  _genManifestStmt(stmt) {
+    const port = stmt.port || 3000;
+    const stores = stmt.stores || [];
+    const showAlls = stmt.showAlls || [];
+    const summarizes = stmt.summarizes || [];
+    const hasSummarize = summarizes.length > 0;
+
+    this._line(`// manifest: ${this._escape(stmt.name)}`);
+
+    // Build a map: table → live variable name
+    const liveVars = {};
+    for (const store of stores) {
+      const dbVar  = this._safeName(store.table);
+      const liveVar = 'all_' + dbVar;
+      liveVars[store.table] = { dbVar, liveVar };
+
+      const fields = store.fields || [];
+      const colDefs = fields.length > 0
+        ? fields.map(f => `${this._safeName(f)} text`).join(', ')
+        : 'data text';
+      const createSql = `create table if not exists ${store.table} (id integer primary key autoincrement, ${colDefs})`;
+      const selectSql = `select * from ${store.table}`;
+
+      this._line(`const ${dbVar} = new EM.EventMathGroundDB(${JSON.stringify(store.path)});`);
+      this._line(`${dbVar}.draw(${JSON.stringify(createSql)});`);
+      this._line(`let ${liveVar} = ${dbVar}.draw(${JSON.stringify(selectSql)});`);
+      this._line(`${dbVar}.onWrite(function() { ${liveVar} = ${dbVar}.draw(${JSON.stringify(selectSql)}); });`);
+    }
+    this._line('');
+
+    const asyncKw = hasSummarize ? 'async ' : '';
+    if (this.target === 'bun') {
+      this._line(`Bun.serve({`);
+      this.indent++;
+      this._line(`port: ${port},`);
+      this._line(`${asyncKw}fetch(req) {`);
+      this.indent++;
+      this._line(`const _method = req.method.toLowerCase();`);
+      this._line(`const _path = new URL(req.url, 'http://localhost').pathname;`);
+    } else {
+      this._line(`require('node:http').createServer(${asyncKw}function(req, res) {`);
+      this.indent++;
+      this._line(`var _method = req.method.toLowerCase();`);
+      this._line(`var _path = require('node:url').parse(req.url).pathname;`);
+    }
+
+    for (const showAll of showAlls) {
+      const lv = liveVars[showAll.table] ? liveVars[showAll.table].liveVar : ('all_' + this._safeName(showAll.table));
+      this._line(`if (_method === "get" && _path === ${JSON.stringify(showAll.path)}) {`);
+      this.indent++;
+      if (this.target === 'bun') {
+        this._line(`return Response.json(${lv});`);
+      } else {
+        this._line(`res.writeHead(200, {'Content-Type': 'application/json'});`);
+        this._line(`res.end(JSON.stringify(${lv})); return;`);
+      }
+      this.indent--;
+      this._line(`}`);
+    }
+
+    for (const summarize of summarizes) {
+      const lv = liveVars[summarize.table] ? liveVars[summarize.table].liveVar : ('all_' + this._safeName(summarize.table));
+      const prompt = `Summarize these ${summarize.table}`;
+      this._line(`if (_method === "get" && _path === ${JSON.stringify(summarize.path)}) {`);
+      this.indent++;
+      this._line(`const _summary = await EM.EventMathAsker.ask(${JSON.stringify(prompt)}, ${lv});`);
+      if (this.target === 'bun') {
+        this._line(`return Response.json({ summary: _summary });`);
+      } else {
+        this._line(`res.writeHead(200, {'Content-Type': 'application/json'});`);
+        this._line(`res.end(JSON.stringify({ summary: _summary })); return;`);
+      }
+      this.indent--;
+      this._line(`}`);
+    }
+
+    if (this.target === 'bun') {
+      this._line(`return new Response('Not found', { status: 404 });`);
+      this.indent--;
+      this._line(`},`);
+      this.indent--;
+      this._line(`});`);
+    } else {
+      this._line(`res.writeHead(404); res.end('Not found');`);
+      this.indent--;
+      this._line(`}).listen(${port}, function() {`);
+      this.indent++;
+      this._line(`console.log('EventMath: ${this._escape(stmt.name)} on port ${port}');`);
+      this.indent--;
+      this._line(`});`);
     }
   }
 

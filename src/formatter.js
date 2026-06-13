@@ -154,6 +154,7 @@ class EventMathFormatter {
       case 'ReplyStmt':         return this._formatReplyStmt(stmt);
       case 'AskStmt':           return this._formatAskStmt(stmt);
       case 'LiveDrawStmt':      return this._formatLiveDrawStmt(stmt);
+      case 'ManifestStmt':      return this._formatManifestStmt(stmt);
       case 'NewStmt':           return this._formatNewStmt(stmt);
       case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
       case 'SlotStmt':          return this._formatSlotStmt(stmt);
@@ -1012,6 +1013,28 @@ class EventMathFormatter {
 
   _formatLiveDrawStmt(stmt) {
     this._line(`live draw "${stmt.sql}" from ${stmt.from} into ${stmt.into}`);
+  }
+
+  _formatManifestStmt(stmt) {
+    this._line(`manifest ${stmt.name}`);
+    this.indent++;
+    for (const store of (stmt.stores || [])) {
+      const withPart = store.fields && store.fields.length > 0
+        ? ` with ${store.fields.join(' and ')}`
+        : '';
+      this._line(`store ${store.table} in "${store.path}"${withPart}`);
+    }
+    if (stmt.port) {
+      this._line(`serve on ${stmt.port}`);
+    }
+    for (const showAll of (stmt.showAlls || [])) {
+      this._line(`show all ${showAll.table} at "${showAll.path}"`);
+    }
+    for (const summarize of (stmt.summarizes || [])) {
+      this._line(`summarize ${summarize.table} with ai at "${summarize.path}"`);
+    }
+    this.indent--;
+    this._line('end');
   }
 
   _formatAskStmt(stmt) {

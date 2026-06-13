@@ -249,6 +249,13 @@ class EventMathValidator {
             if (route.body) this._collectDeclarations(route.body);
           }
           break;
+        // v2.16 — manifest (self-generating app)
+        case 'ManifestStmt':
+          for (const store of (stmt.stores || [])) {
+            if (store.table) this.marks.set(store.table, true);
+            if (store.table) this.marks.set('all_' + store.table, true);
+          }
+          break;
       }
     }
   }

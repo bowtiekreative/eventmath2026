@@ -164,6 +164,7 @@ class EventMathParser {
     if (t.type === 'REPLY_STMT')         return this._parseReplyStmt();
     if (t.type === 'ASK_STMT')           return this._parseAskStmt();
     if (t.type === 'LIVE_DRAW_STMT')     return this._parseLiveDrawStmt();
+    if (t.type === 'MANIFEST_STMT')      return this._parseManifestStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1715,6 +1716,37 @@ class EventMathParser {
   _parseLiveDrawStmt() {
     const t = this.advance();
     return ast('LiveDrawStmt', { sql: t.value.sql, from: t.value.from, into: t.value.into });
+  }
+
+  _parseManifestStmt() {
+    const t = this.advance(); // MANIFEST_STMT
+    const name = t.value.name;
+    const stores = [];
+    let port = 3000;
+    const showAlls = [];
+    const summarizes = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const cur = this.peek();
+      if (!cur) break;
+      if (cur.type === 'MANIFEST_STORE') {
+        const s = this.advance();
+        stores.push({ table: s.value.table, path: s.value.path, fields: s.value.fields });
+      } else if (cur.type === 'SERVE_STMT') {
+        const s = this.advance();
+        port = s.value.port;
+      } else if (cur.type === 'MANIFEST_SHOW_ALL') {
+        const s = this.advance();
+        showAlls.push({ table: s.value.table, path: s.value.path });
+      } else if (cur.type === 'MANIFEST_SUMMARIZE') {
+        const s = this.advance();
+        summarizes.push({ table: s.value.table, path: s.value.path });
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ManifestStmt', { name, stores, port, showAlls, summarizes });
   }
 
   _parseNewStmt() {
