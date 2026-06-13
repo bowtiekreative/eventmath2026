@@ -226,7 +226,7 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub', 'rain', 'star', 'zone', 'sky', 'lens', 'orbit', 'cloud', 'node', 'earth', 'travel', 'map', 'attempt', 'collapse', 'always', 'reflect', 'field', 'style', 'route', 'expand', 'atmosphere', 'void', 'guard', 'match', 'arm', 'escape', 'skip', 'observe', 'every', 'clear', 'on', 'off', 'trigger', 'emit', 'pull', 'raindrop', 'ground', 'new', 'await', 'slot', 'burst']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub', 'rain', 'star', 'zone', 'sky', 'lens', 'orbit', 'cloud', 'node', 'earth', 'travel', 'map', 'attempt', 'collapse', 'always', 'reflect', 'field', 'style', 'route', 'expand', 'atmosphere', 'void', 'guard', 'match', 'arm', 'escape', 'skip', 'observe', 'every', 'clear', 'on', 'off', 'trigger', 'emit', 'pull', 'raindrop', 'ground', 'new', 'await', 'slot', 'burst', 'live']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

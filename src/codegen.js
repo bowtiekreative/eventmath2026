@@ -1,3 +1,5 @@
+const { compileExpr, smartValue } = require('./expression.js');
+
 /**
  * EventMath Code Generator v0.4
  *
@@ -2177,31 +2179,46 @@ class EventMathCodeGen {
   // ── v2.11 web layer codegen ───────────────────────────────────────
 
   _genRainStmt(stmt) {
-    const v = this._safeName(stmt.name);
+    const v   = this._safeName(stmt.name);
+    const raw = (stmt.value || '').trim();
+    const val = smartValue(raw ? raw.split(/\s+/) : []);
     this._line(`// rain: ${this._escape(stmt.name)}`);
-    this._line(`${v} = ${stmt.value === 'void' ? 'null' : stmt.value};`);
+    if (stmt.live) {
+      this._line(`${v} = new EM.EventMathSignal(${val});`);
+    } else {
+      this._line(`${v} = ${val};`);
+    }
     this._line('');
   }
 
   _genStarStmt(stmt) {
     const v   = this._safeName(stmt.name);
-    const val = stmt.value === 'void' ? 'null' : stmt.value;
+    const raw = (stmt.value || '').trim();
+    const val = smartValue(raw ? raw.split(/\s+/) : []);
     this._line(`// star (constant): ${this._escape(stmt.name)}`);
     this._line(`${v} = ${val};`);
     this._line('');
   }
 
   _genZoneStmt(stmt) {
-    const v = this._safeName(stmt.name);
+    const v   = this._safeName(stmt.name);
+    const raw = (stmt.expression || '').trim();
+    const val = raw && (raw.startsWith('{') || raw.startsWith('"') || raw.startsWith("'"))
+      ? raw
+      : (raw ? compileExpr(raw.split(/\s+/)) : '{}');
     this._line(`// zone: ${this._escape(stmt.name)}`);
-    this._line(`${v} = ${stmt.expression || '{}'};`);
+    this._line(`${v} = ${val};`);
     this._line('');
   }
 
   _genSkyStmt(stmt) {
-    const v = this._safeName(stmt.name);
+    const v   = this._safeName(stmt.name);
+    const raw = (stmt.expression || '').trim();
+    const val = raw && (raw.startsWith('[') || raw.startsWith('"') || raw.startsWith("'"))
+      ? raw
+      : (raw ? compileExpr(raw.split(/\s+/)) : '[]');
     this._line(`// sky: ${this._escape(stmt.name)}`);
-    this._line(`${v} = ${stmt.expression || '[]'};`);
+    this._line(`${v} = ${val};`);
     this._line('');
   }
 
@@ -2236,9 +2253,11 @@ class EventMathCodeGen {
   }
 
   _genLensStmt(stmt) {
-    const v = this._safeName(stmt.name);
+    const v   = this._safeName(stmt.name);
+    const raw = (stmt.expression || '').trim();
+    const val = raw ? compileExpr(raw.split(/\s+/)) : 'null';
     this._line(`// lens: ${this._escape(stmt.name)}`);
-    this._line(`${v} = (function() { try { return ${stmt.expression}; } catch(_) { return null; } })();`);
+    this._line(`${v} = (function() { try { return ${val}; } catch(_) { return null; } })();`);
     this._line('');
   }
 
@@ -2332,9 +2351,10 @@ class EventMathCodeGen {
   }
 
   _genGuardStmt(stmt) {
-    const cond = this._safeName(stmt.condition || 'false');
+    const raw  = (stmt.condition || '').trim();
+    const cond = raw ? compileExpr(raw.split(/\s+/)) : 'false';
     const fallback = this._toJsValue(stmt.fallback);
-    this._line(`if (!${cond}) { return ${fallback}; }`);
+    this._line(`if (!(${cond})) { return ${fallback}; }`);
   }
 
   _genMatchStmt(stmt) {

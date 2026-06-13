@@ -56,6 +56,8 @@ const KEYWORDS = new Set([
   'void', 'guard', 'match', 'arm', 'escape', 'skip', 'observe',
   'every', 'clear', 'on', 'off', 'trigger', 'emit', 'pull',
   'raindrop', 'ground', 'new', 'await', 'slot', 'burst',
+  // v2.13 — expression engine + reactive signals
+  'live',
 ]);
 
 class Token {
@@ -273,6 +275,7 @@ class EventMathTokenizer {
     if (lead === 'await')     return this._tokenizeAwaitStmt(words, lineNum);
     if (lead === 'slot')      return this._tokenizeSlotStmt(words, lineNum);
     if (lead === 'burst')     return this._tokenizeBurstStmt(words, lineNum);
+    if (lead === 'live')      return this._tokenizeLiveStmt(words, lineNum);
 
     // category, cat → consume category name
     // But if the next word is "is" or "from", this is a matter field key, not a declaration
@@ -2297,6 +2300,20 @@ class EventMathTokenizer {
     const sourcesPart = words.slice(1, intoIdx >= 0 ? intoIdx : words.length);
     const sources = sourcesPart.join(' ').split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
     return [new Token('BURST_STMT', { sources, intoName }, lineNum)];
+  }
+
+  // v2.13: live rain <name> is <expr>  →  reactive signal
+  _tokenizeLiveStmt(words, lineNum) {
+    const inner = words[1] ? words[1].toLowerCase() : null;
+    if (inner === 'rain') {
+      const rest = words.slice(2); // <name> is <value>
+      const isIdx = this._indexOf(rest, 'is');
+      const name  = isIdx > 0 ? rest.slice(0, isIdx).join(' ') : rest.join(' ');
+      const value = isIdx >= 0 ? rest.slice(isIdx + 1).join(' ') : '';
+      return [new Token('RAIN_STMT', { name, value, live: true }, lineNum)];
+    }
+    // Unsupported live sub-statement — treat as no-op comment token
+    return [new Token('KEYWORD', 'live', lineNum)];
   }
 
   /**

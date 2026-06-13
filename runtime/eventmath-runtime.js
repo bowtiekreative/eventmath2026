@@ -2939,6 +2939,34 @@
     return '<input ' + attrs + '>';
   };
 
+  // ── v2.13 — EventMathSignal (reactive state) ─────────────────────
+
+  function EventMathSignal(initialValue) {
+    this._value = initialValue;
+    this._subs  = [];
+  }
+  EventMathSignal.prototype.get = function() {
+    return this._value;
+  };
+  EventMathSignal.prototype.set = function(newValue) {
+    var old = this._value;
+    this._value = newValue;
+    if (old !== newValue) {
+      for (var i = 0; i < this._subs.length; i++) {
+        try { this._subs[i](newValue, old); } catch(_) {}
+      }
+    }
+  };
+  EventMathSignal.prototype.watch = function(fn) {
+    this._subs.push(fn);
+    return function() {
+      var idx = this._subs.indexOf(fn);
+      if (idx >= 0) this._subs.splice(idx, 1);
+    }.bind(this);
+  };
+  EventMathSignal.prototype.valueOf = function() { return this._value; };
+  EventMathSignal.prototype.toString = function() { return String(this._value); };
+
   // ── Exports ──────────────────────────────────────────────
 
   return {
@@ -2979,6 +3007,7 @@
     EventMathRouter:        EventMathRouter,
     EventMathGround:        EventMathGround,
     EventMathRaindrop:      EventMathRaindrop,
+    EventMathSignal:        EventMathSignal,
   };
 
 });

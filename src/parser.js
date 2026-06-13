@@ -1332,7 +1332,7 @@ class EventMathParser {
   _parseRainStmt() {
     const t = this.advance();
     if (!t || !t.value) return null;
-    return ast('RainStmt', { name: t.value.name, value: t.value.value });
+    return ast('RainStmt', { name: t.value.name, value: t.value.value, live: !!t.value.live });
   }
 
   _parseStarStmt() {
