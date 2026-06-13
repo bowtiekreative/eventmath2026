@@ -524,6 +524,10 @@ class EventMathCodeGen {
       case 'AskStmt':           return this._genAskStmt(stmt);
       case 'LiveDrawStmt':      return this._genLiveDrawStmt(stmt);
       case 'ManifestStmt':      return this._genManifestStmt(stmt);
+      // v2.17 — named patterns
+      case 'PatternStmt':       return this._genPatternStmt(stmt);
+      case 'ScanStmt':          return this._genScanStmt(stmt);
+      case 'SeekStmt':          return this._genSeekStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -2826,6 +2830,184 @@ class EventMathCodeGen {
       this.indent--;
       this._line(`});`);
     }
+  }
+
+  // ── v2.17 — named patterns (human-readable regex) ─────────────────
+
+  _genPatternStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const knownParts = {};  // partName → compiled regex fragment (for inline expansion)
+    const groupFragments = [];
+
+    for (const part of (stmt.parts || [])) {
+      const compiled = this._compilePatternExpr(part.expr, knownParts);
+      knownParts[part.name] = compiled;
+      const groupName = part.name.replace(/\s+/g, '_');
+      groupFragments.push(`(?<${groupName}>${compiled})`);
+    }
+
+    const fullRegex = groupFragments.join('');
+    this._line(`// pattern: ${this._escape(stmt.name)}`);
+    this._line(`const ${varName} = new RegExp(${JSON.stringify(fullRegex)}, 'gm');`);
+  }
+
+  _genScanStmt(stmt) {
+    const text    = this._safeName(stmt.text);
+    const pattern = this._safeName(stmt.pattern);
+    const into    = this._safeName(stmt.into);
+    this._line(`const ${into} = [...${text}.matchAll(${pattern})].map(function(m) { return m.groups; });`);
+  }
+
+  _genSeekStmt(stmt) {
+    const text    = this._safeName(stmt.text);
+    const pattern = this._safeName(stmt.pattern);
+    const into    = this._safeName(stmt.into);
+    this._line(`const ${into} = (function() { var _r = new RegExp(${pattern}.source, 'm'); var _m = _r.exec(${text}); return _m ? _m.groups : null; }());`);
+  }
+
+  // ── Pattern expression compiler ──────────────────────────────────
+
+  _compilePatternExpr(expr, knownParts) {
+    const e = expr.trim();
+
+    // Top-level 'or' (lowest precedence)
+    const orParts = this._splitPatternExpr(e, ' or ');
+    if (orParts.length > 1) {
+      return '(?:' + orParts.map(s => this._compilePatternExpr(s.trim(), knownParts)).join('|') + ')';
+    }
+
+    // Top-level 'then' (sequence)
+    const thenParts = this._splitPatternExpr(e, ' then ');
+    if (thenParts.length > 1) {
+      return thenParts.map(s => this._compilePatternAtom(s.trim(), knownParts)).join('');
+    }
+
+    return this._compilePatternAtom(e, knownParts);
+  }
+
+  _splitPatternExpr(str, delim) {
+    // Split on delim but not inside double-quoted strings
+    const parts = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < str.length; i++) {
+      if (str[i] === '"' && str[i - 1] !== '\\') { inQ = !inQ; cur += str[i]; }
+      else if (!inQ && str.slice(i, i + delim.length) === delim) {
+        parts.push(cur); cur = ''; i += delim.length - 1;
+      } else { cur += str[i]; }
+    }
+    parts.push(cur);
+    return parts.length === 1 ? [str] : parts;
+  }
+
+  _compilePatternAtom(expr, knownParts) {
+    let core = expr.trim();
+    let modifier = '';
+
+    // Special case: "digit N through M" is a character range [N-M], not a quantifier
+    if (/^digit \d through \d$/.test(core)) {
+      return this._compilePatternCore(core, knownParts);
+    }
+
+    // Trailing quantifier modifiers (check longest first)
+    if (/\brepeated lazily$/.test(core)) {
+      modifier = '+?'; core = core.slice(0, -16).trim();
+    } else if (/\brepeated$/.test(core)) {
+      modifier = '+'; core = core.slice(0, -9).trim();
+    } else if (/\blazily$/.test(core)) {
+      modifier = '*?'; core = core.slice(0, -7).trim();
+    } else if (/\boptional$/.test(core) && core !== 'optional whitespace' && core !== 'optional attributes') {
+      modifier = '?'; core = core.slice(0, -9).trim();
+    } else {
+      const mAtLeast = core.match(/\bat least (\d+)$/);
+      if (mAtLeast) { modifier = `{${mAtLeast[1]},}`; core = core.slice(0, -mAtLeast[0].length).trim(); }
+      else {
+        const mRange = core.match(/ (\d+) through (\d+)$/);
+        if (mRange) { modifier = `{${mRange[1]},${mRange[2]}}`; core = core.slice(0, -mRange[0].length).trim(); }
+      }
+    }
+
+    const compiled = this._compilePatternCore(core, knownParts);
+    if (!modifier) return compiled;
+
+    // Wrap in non-capturing group if multi-char and not already grouped/char-class
+    const needsGroup = compiled.length > 1
+      && !/^\[[\s\S]*\]$/.test(compiled)
+      && !/^\(/.test(compiled);
+    return needsGroup ? `(?:${compiled})${modifier}` : `${compiled}${modifier}`;
+  }
+
+  _compilePatternCore(expr, knownParts) {
+    const e = expr.trim();
+
+    // Quoted literal: "text"
+    if (/^"[^"]*"$/.test(e)) {
+      return e.slice(1, -1).replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&');
+    }
+
+    // Built-in atoms
+    switch (e) {
+      case 'letters':             return '[a-zA-Z]';
+      case 'digits':
+      case 'digit':               return '[0-9]';
+      case 'word':                return '\\w';
+      case 'whitespace':          return '\\s';
+      case 'any text':            return '[\\s\\S]';
+      case 'any character':
+      case 'anything':            return '[\\s\\S]';
+      case 'boundary':            return '\\b';
+      case 'optional whitespace': return '\\s*';
+      case 'optional attributes': return '[^>]*';
+    }
+
+    // digit N through M → character range [N-M]
+    const digitRange = e.match(/^digit (\d) through (\d)$/);
+    if (digitRange) return `[${digitRange[1]}-${digitRange[2]}]`;
+
+    // Character class: letters and digits and "._" etc.
+    if (e.includes(' and ')) {
+      return this._compilePatternCharClass(e);
+    }
+
+    // Negated: not "chars" / not letters / not digits
+    if (e.startsWith('not ')) {
+      const inner = e.slice(4).trim();
+      if (/^"[^"]*"$/.test(inner)) {
+        const chars = inner.slice(1, -1).replace(/[\]\\^-]/g, '\\$&');
+        return `[^${chars}]`;
+      }
+      const negMap = { letters: '[^a-zA-Z]', digits: '[^0-9]', digit: '[^0-9]', word: '[^\\w]', whitespace: '[^\\s]' };
+      if (negMap[inner]) return negMap[inner];
+    }
+
+    // Backreference: matches PARTNAME
+    if (e.startsWith('matches ')) {
+      const partName = e.slice(8).trim().replace(/\s+/g, '_');
+      return `\\k<${partName}>`;
+    }
+
+    // Inline expansion: reference to a previously defined part
+    if (knownParts && knownParts[e] !== undefined) {
+      return knownParts[e];
+    }
+
+    // Fallback: treat as escaped literal
+    return e.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&');
+  }
+
+  _compilePatternCharClass(expr) {
+    // "letters and digits and "._%-+"" → [a-zA-Z0-9._%-+]
+    const parts = expr.split(' and ');
+    let inner = '';
+    for (const p of parts) {
+      const t = p.trim();
+      if (t === 'letters')                  inner += 'a-zA-Z';
+      else if (t === 'digits' || t === 'digit') inner += '0-9';
+      else if (t === 'word')                inner += '\\w';
+      else if (t === 'whitespace')          inner += '\\s';
+      else if (/^"[^"]*"$/.test(t))        inner += t.slice(1, -1).replace(/[\]\\^]/g, '\\$&');
+    }
+    return `[${inner}]`;
   }
 
   _genLiveDrawStmt(stmt) {

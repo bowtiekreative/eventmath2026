@@ -165,6 +165,9 @@ class EventMathParser {
     if (t.type === 'ASK_STMT')           return this._parseAskStmt();
     if (t.type === 'LIVE_DRAW_STMT')     return this._parseLiveDrawStmt();
     if (t.type === 'MANIFEST_STMT')      return this._parseManifestStmt();
+    if (t.type === 'PATTERN_STMT')       return this._parsePatternStmt();
+    if (t.type === 'SCAN_STMT')          return this._parseScanStmt();
+    if (t.type === 'SEEK_STMT')          return this._parseSeekStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1841,6 +1844,44 @@ class EventMathParser {
       value:     t.value.value,
       line:      t.value.line,
     });
+  }
+
+  // ── v2.17 — named patterns ───────────────────────────────────────
+
+  _parsePatternStmt() {
+    const t = this.advance(); // PATTERN_STMT
+    const name = t.value.name;
+    const parts = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const nameTok = this.peek();
+      if (nameTok && nameTok.type === 'NAME') {
+        const partName = this.advance().value;
+        if (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'is') {
+          this.advance(); // consume 'is'
+          const exprTok = this.peek();
+          if (exprTok && exprTok.type === 'LITERAL') {
+            parts.push({ name: partName, expr: this.advance().value });
+          } else {
+            this.advance();
+          }
+        }
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('PatternStmt', { name, parts });
+  }
+
+  _parseScanStmt() {
+    const t = this.advance();
+    return ast('ScanStmt', { text: t.value.text, pattern: t.value.pattern, into: t.value.into });
+  }
+
+  _parseSeekStmt() {
+    const t = this.advance();
+    return ast('SeekStmt', { text: t.value.text, pattern: t.value.pattern, into: t.value.into });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

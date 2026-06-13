@@ -256,6 +256,16 @@ class EventMathValidator {
             if (store.table) this.marks.set('all_' + store.table, true);
           }
           break;
+        // v2.17 — named patterns
+        case 'PatternStmt':
+          if (stmt.name) this.marks.set(stmt.name.replace(/\s+/g, '_'), true);
+          break;
+        case 'ScanStmt':
+          if (stmt.into) this.marks.set(stmt.into, true);
+          break;
+        case 'SeekStmt':
+          if (stmt.into) this.marks.set(stmt.into, true);
+          break;
       }
     }
   }

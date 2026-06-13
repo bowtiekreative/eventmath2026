@@ -169,6 +169,10 @@ class EventMathFormatter {
       case 'LogStmt':           return this._formatLogStmt(stmt);
       case 'EscapeStmt':        return this._line('escape');
       case 'SkipStmt':          return this._line('skip');
+      // v2.17 — named patterns
+      case 'PatternStmt':       return this._formatPatternStmt(stmt);
+      case 'ScanStmt':          return this._formatScanStmt(stmt);
+      case 'SeekStmt':          return this._formatSeekStmt(stmt);
     }
   }
 
@@ -1039,6 +1043,25 @@ class EventMathFormatter {
     }
     this.indent--;
     this._line('end');
+  }
+
+  // v2.17 — named patterns
+  _formatPatternStmt(stmt) {
+    this._line(`pattern ${stmt.name}`);
+    this.indent++;
+    for (const part of (stmt.parts || [])) {
+      this._line(`${part.name} is ${part.expr}`);
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatScanStmt(stmt) {
+    this._line(`scan ${stmt.text} with ${stmt.pattern} into ${stmt.into}`);
+  }
+
+  _formatSeekStmt(stmt) {
+    this._line(`seek ${stmt.text} with ${stmt.pattern} into ${stmt.into}`);
   }
 
   _formatAskStmt(stmt) {

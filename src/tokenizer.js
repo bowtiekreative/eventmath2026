@@ -63,6 +63,8 @@ const KEYWORDS = new Set([
   // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server + AI ask + manifest
   'draw', 'serve', 'reply', 'ask',
   'manifest', 'store', 'summarize', 'accept',
+  // v2.17 — named patterns (human-readable regex)
+  'pattern', 'scan', 'seek',
 ]);
 
 class Token {
@@ -261,6 +263,9 @@ class EventMathTokenizer {
     if (lead === 'map')        return [new Token('KEYWORD', 'map', lineNum)];
     if (lead === 'ask')        return this._tokenizeAskStmt(words, lineNum);
     if (lead === 'manifest')   return this._tokenizeManifestStmt(words, lineNum);
+    if (lead === 'pattern')    return this._tokenizePatternStmt(words, lineNum);
+    if (lead === 'scan')       return this._tokenizeScanStmt(words, lineNum);
+    if (lead === 'seek')       return this._tokenizeSeekStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -2357,6 +2362,40 @@ class EventMathTokenizer {
   _tokenizeManifestStmt(words, lineNum) {
     const name = words.slice(1).join(' ');
     return [new Token('MANIFEST_STMT', { name }, lineNum)];
+  }
+
+  // ── v2.17 — named patterns (human-readable regex) ────────────────
+
+  // pattern NAME — open a named pattern block
+  _tokenizePatternStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('PATTERN_STMT', { name }, lineNum)];
+  }
+
+  // scan TEXT with PATTERN into RESULTS
+  _tokenizeScanStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    if (withIdx < 0 || intoIdx < 0 || intoIdx <= withIdx) {
+      return [new Token('ERROR', { message: 'scan needs: scan <text> with <pattern> into <result>' }, lineNum)];
+    }
+    const text    = words.slice(1, withIdx).join(' ');
+    const pattern = words.slice(withIdx + 1, intoIdx).join(' ');
+    const into    = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SCAN_STMT', { text, pattern, into }, lineNum)];
+  }
+
+  // seek TEXT with PATTERN into RESULT
+  _tokenizeSeekStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    if (withIdx < 0 || intoIdx < 0 || intoIdx <= withIdx) {
+      return [new Token('ERROR', { message: 'seek needs: seek <text> with <pattern> into <result>' }, lineNum)];
+    }
+    const text    = words.slice(1, withIdx).join(' ');
+    const pattern = words.slice(withIdx + 1, intoIdx).join(' ');
+    const into    = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SEEK_STMT', { text, pattern, into }, lineNum)];
   }
 
   // store TABLE in "FILE" [with FIELD1 and FIELD2 ...]
