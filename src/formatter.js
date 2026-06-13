@@ -152,6 +152,14 @@ class EventMathFormatter {
       case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
       case 'SlotStmt':          return this._formatSlotStmt(stmt);
       case 'BurstStmt':         return this._formatBurstStmt(stmt);
+      // v2.14 — collection intelligence
+      case 'FilterStmt':        return this._formatFilterStmt(stmt);
+      case 'FindStmt':          return this._formatFindStmt(stmt);
+      case 'SortStmt':          return this._formatSortStmt(stmt);
+      case 'CountStmt':         return this._formatCountStmt(stmt);
+      case 'PipeStmt':          return this._formatPipeStmt(stmt);
+      case 'CastStmt':          return this._formatCastStmt(stmt);
+      case 'LogStmt':           return this._formatLogStmt(stmt);
       case 'EscapeStmt':        return this._line('escape');
       case 'SkipStmt':          return this._line('skip');
     }
@@ -983,6 +991,46 @@ class EventMathFormatter {
     const sources = (stmt.sources || []).join(' and ');
     const into    = stmt.intoName ? ` into ${stmt.intoName}` : '';
     this._line(`burst ${sources}${into}`);
+  }
+
+  // ── v2.14 collection intelligence ────────────────────────────────
+
+  _formatFilterStmt(stmt) {
+    this._line(`filter ${stmt.itemName} from ${stmt.collName} where ${stmt.condition} into ${stmt.resultName}`);
+  }
+
+  _formatFindStmt(stmt) {
+    this._line(`find ${stmt.itemName} in ${stmt.collName} where ${stmt.condition} into ${stmt.resultName}`);
+  }
+
+  _formatSortStmt(stmt) {
+    const dir = stmt.descending ? ' descending' : '';
+    this._line(`sort ${stmt.collName} by ${stmt.field}${dir} into ${stmt.resultName}`);
+  }
+
+  _formatCountStmt(stmt) {
+    if (stmt.condition && stmt.itemName) {
+      this._line(`count ${stmt.itemName} in ${stmt.collName} where ${stmt.condition} into ${stmt.resultName}`);
+    } else {
+      this._line(`count ${stmt.collName} into ${stmt.resultName}`);
+    }
+  }
+
+  _formatPipeStmt(stmt) {
+    const through = (stmt.transforms || []).join(' and ');
+    this._line(`pipe ${stmt.sourceName} through ${through} into ${stmt.resultName}`);
+  }
+
+  _formatCastStmt(stmt) {
+    this._line(`cast ${stmt.sourceName} as ${stmt.targetType} into ${stmt.resultName}`);
+  }
+
+  _formatLogStmt(stmt) {
+    if (stmt.withValue) {
+      this._line(`log ${stmt.message} with ${stmt.withValue}`);
+    } else {
+      this._line(`log ${stmt.value}`);
+    }
   }
 }
 

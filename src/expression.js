@@ -40,7 +40,7 @@ function safeName(str) {
 function isNumber(s) { return /^-?\d+(\.\d+)?$/.test(s); }
 function isQuoted(s) { return (s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")); }
 
-function toAtom(str) {
+function toAtom(str, signals) {
   if (!str) return 'null';
   const s = str.trim();
   if (s === 'void')  return 'null';
@@ -48,7 +48,9 @@ function toAtom(str) {
   if (s === 'false') return 'false';
   if (isNumber(s))   return s;
   if (isQuoted(s))   return s;
-  return safeName(s);
+  const name = safeName(s);
+  if (signals && signals.has(name)) return `${name}.get()`;
+  return name;
 }
 
 // Return the index of the lowest-precedence operator found in words.
@@ -100,18 +102,18 @@ function hasOperator(words) {
  * Compile a word array as an expression.
  * Always interprets names as variable references.
  */
-function compileExpr(words) {
+function compileExpr(words, signals) {
   if (!words || !words.length) return 'null';
 
   // Leading 'not' → prefix negation
   if (words[0].toLowerCase() === 'not') {
-    return `!(${compileExpr(words.slice(1))})`;
+    return `!(${compileExpr(words.slice(1), signals)})`;
   }
 
   const split = findSplit(words);
   if (!split) {
     // Leaf — convert to atom
-    return toAtom(words.join(' '));
+    return toAtom(words.join(' '), signals);
   }
 
   const leftWords  = words.slice(0, split.pos);
@@ -120,16 +122,16 @@ function compileExpr(words) {
 
   // Special-case: `is void` and `is not void` → null checks
   if (jsOp === '===' && rightWords.join(' ').toLowerCase() === 'void') {
-    const l = leftWords.length ? compileExpr(leftWords) : 'null';
+    const l = leftWords.length ? compileExpr(leftWords, signals) : 'null';
     return `(${l} === null || ${l} === undefined)`;
   }
   if (jsOp === '!==' && rightWords.join(' ').toLowerCase() === 'void') {
-    const l = leftWords.length ? compileExpr(leftWords) : 'null';
+    const l = leftWords.length ? compileExpr(leftWords, signals) : 'null';
     return `(${l} !== null && ${l} !== undefined)`;
   }
 
-  const left  = leftWords.length  ? compileExpr(leftWords)  : 'null';
-  const right = rightWords.length ? compileExpr(rightWords) : 'null';
+  const left  = leftWords.length  ? compileExpr(leftWords, signals)  : 'null';
+  const right = rightWords.length ? compileExpr(rightWords, signals) : 'null';
 
   return `(${left} ${jsOp} ${right})`;
 }

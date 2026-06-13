@@ -58,6 +58,8 @@ const KEYWORDS = new Set([
   'raindrop', 'ground', 'new', 'await', 'slot', 'burst',
   // v2.13 — expression engine + reactive signals
   'live',
+  // v2.14 — collection intelligence + pipeline
+  'pipe', 'cast', 'log',
 ]);
 
 class Token {
@@ -276,6 +278,9 @@ class EventMathTokenizer {
     if (lead === 'slot')      return this._tokenizeSlotStmt(words, lineNum);
     if (lead === 'burst')     return this._tokenizeBurstStmt(words, lineNum);
     if (lead === 'live')      return this._tokenizeLiveStmt(words, lineNum);
+    if (lead === 'pipe')      return this._tokenizePipeStmt(words, lineNum);
+    if (lead === 'cast')      return this._tokenizeCastStmt(words, lineNum);
+    if (lead === 'log')       return this._tokenizeLogStmt(words, lineNum);
 
     // category, cat → consume category name
     // But if the next word is "is" or "from", this is a matter field key, not a declaration
@@ -413,23 +418,27 @@ class EventMathTokenizer {
       return this._merge(words, lineNum);
     }
 
-    // sort → sort layer <name> by matter <field> [descending]
+    // sort: v2.14 if no 'layer' at words[1]; else old layer sort
     if (lead === 'sort') {
+      if (words[1] !== 'layer') return this._tokenizeSortStmt(words, lineNum);
       return this._sortLayer(words, lineNum);
     }
 
-    // filter → filter layer <name> where <condition> into <newname>
+    // filter: v2.14 if no 'layer' at words[1]; else old layer filter
     if (lead === 'filter') {
+      if (words[1] !== 'layer') return this._tokenizeFilterStmt(words, lineNum);
       return this._filterLayer(words, lineNum);
     }
 
-    // find → find in <name> where <condition> into <markname>
+    // find: v2.14 if words[1] !== 'in'; else old layer find
     if (lead === 'find') {
+      if (words[1] !== 'in') return this._tokenizeFindStmt(words, lineNum);
       return this._findInLayer(words, lineNum);
     }
 
-    // count → count in <name> where <condition> into <markname>
+    // count: v2.14 if words[1] !== 'in'; else old layer count
     if (lead === 'count') {
+      if (words[1] !== 'in') return this._tokenizeCountStmt(words, lineNum);
       return this._countInLayer(words, lineNum);
     }
 
@@ -2300,6 +2309,108 @@ class EventMathTokenizer {
     const sourcesPart = words.slice(1, intoIdx >= 0 ? intoIdx : words.length);
     const sources = sourcesPart.join(' ').split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
     return [new Token('BURST_STMT', { sources, intoName }, lineNum)];
+  }
+
+  // ── v2.14 collection intelligence ────────────────────────────────────
+
+  // filter <itemName> from <collName> where <condition> into <resultName>
+  _tokenizeFilterStmt(words, lineNum) {
+    const fromIdx  = this._indexOf(words, 'from');
+    const whereIdx = this._indexOf(words, 'where');
+    const intoIdx  = this._indexOf(words, 'into');
+    if (fromIdx < 0 || whereIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'filter', lineNum)];
+    }
+    const itemName   = words.slice(1, fromIdx).join(' ');
+    const collName   = words.slice(fromIdx + 1, whereIdx).join(' ');
+    const condition  = words.slice(whereIdx + 1, intoIdx).join(' ');
+    const resultName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('FILTER_STMT', { itemName, collName, condition, resultName }, lineNum)];
+  }
+
+  // find <itemName> in <collName> where <condition> into <resultName>
+  _tokenizeFindStmt(words, lineNum) {
+    const inIdx    = this._indexOf(words, 'in');
+    const whereIdx = this._indexOf(words, 'where');
+    const intoIdx  = this._indexOf(words, 'into');
+    if (inIdx < 0 || whereIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'find', lineNum)];
+    }
+    const itemName   = words.slice(1, inIdx).join(' ');
+    const collName   = words.slice(inIdx + 1, whereIdx).join(' ');
+    const condition  = words.slice(whereIdx + 1, intoIdx).join(' ');
+    const resultName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('FIND_STMT', { itemName, collName, condition, resultName }, lineNum)];
+  }
+
+  // sort <collName> by <field> [descending] into <resultName>
+  _tokenizeSortStmt(words, lineNum) {
+    const byIdx   = this._indexOf(words, 'by');
+    const intoIdx = this._indexOf(words, 'into');
+    if (byIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'sort', lineNum)];
+    const collName   = words.slice(1, byIdx).join(' ');
+    const midWords   = words.slice(byIdx + 1, intoIdx);
+    const descIdx    = midWords.map(w => w.toLowerCase()).indexOf('descending');
+    const descending = descIdx >= 0;
+    const fieldWords = descending ? midWords.slice(0, descIdx) : midWords;
+    const field      = fieldWords.join(' ');
+    const resultName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SORT_STMT', { collName, field, descending, resultName }, lineNum)];
+  }
+
+  // count <collName> into <resultName>
+  // count <itemName> in <collName> where <condition> into <resultName>
+  _tokenizeCountStmt(words, lineNum) {
+    const intoIdx  = this._indexOf(words, 'into');
+    if (intoIdx < 0) return [new Token('KEYWORD', 'count', lineNum)];
+    const inIdx    = this._indexOf(words, 'in');
+    const whereIdx = this._indexOf(words, 'where');
+    if (inIdx >= 0 && whereIdx >= 0 && inIdx < whereIdx) {
+      const itemName   = words.slice(1, inIdx).join(' ');
+      const collName   = words.slice(inIdx + 1, whereIdx).join(' ');
+      const condition  = words.slice(whereIdx + 1, intoIdx).join(' ');
+      const resultName = words.slice(intoIdx + 1).join(' ');
+      return [new Token('COUNT_STMT', { itemName, collName, condition, resultName }, lineNum)];
+    }
+    const collName   = words.slice(1, intoIdx).join(' ');
+    const resultName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('COUNT_STMT', { collName, resultName }, lineNum)];
+  }
+
+  // pipe <sourceName> through <fn1> and <fn2> ... into <resultName>
+  _tokenizePipeStmt(words, lineNum) {
+    const throughIdx = this._indexOf(words, 'through');
+    const intoIdx    = this._indexOf(words, 'into');
+    if (throughIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'pipe', lineNum)];
+    const sourceName = words.slice(1, throughIdx).join(' ');
+    const midPart    = words.slice(throughIdx + 1, intoIdx).join(' ');
+    const transforms = midPart.split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
+    const resultName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('PIPE_STMT', { sourceName, transforms, resultName }, lineNum)];
+  }
+
+  // cast <sourceName> as <type> into <resultName>
+  _tokenizeCastStmt(words, lineNum) {
+    const asIdx   = this._indexOf(words, 'as');
+    const intoIdx = this._indexOf(words, 'into');
+    if (asIdx < 0 || intoIdx < 0) return [new Token('KEYWORD', 'cast', lineNum)];
+    const sourceName = words.slice(1, asIdx).join(' ');
+    const targetType = words.slice(asIdx + 1, intoIdx).join(' ');
+    const resultName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('CAST_STMT', { sourceName, targetType, resultName }, lineNum)];
+  }
+
+  // log <value>
+  // log "message" with <value>
+  _tokenizeLogStmt(words, lineNum) {
+    const withIdx = this._indexOf(words, 'with');
+    if (withIdx >= 0) {
+      const message   = words.slice(1, withIdx).join(' ');
+      const withValue = words.slice(withIdx + 1).join(' ');
+      return [new Token('LOG_STMT', { message, withValue, line: lineNum }, lineNum)];
+    }
+    const value = words.slice(1).join(' ');
+    return [new Token('LOG_STMT', { value, line: lineNum }, lineNum)];
   }
 
   // v2.13: live rain <name> is <expr>  →  reactive signal

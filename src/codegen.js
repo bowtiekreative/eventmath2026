@@ -40,6 +40,7 @@ class EventMathCodeGen {
     this._actionDoorInputs = {}; // Map action name -> ordered input names
     this._useStmts = [];          // Use/import statements
     this._importedNames = new Set(); // Names imported via use
+    this._signalNames = new Set();   // live rain (EventMathSignal) variable names
   }
 
   _line(code) {
@@ -355,6 +356,18 @@ class EventMathCodeGen {
         case 'EventLikeStmt':
           this._eventNames.add(stmt.name);
           break;
+        // v2.14 — collection result variables
+        case 'FilterStmt':
+        case 'FindStmt':
+        case 'SortStmt':
+        case 'CountStmt':
+        case 'PipeStmt':
+        case 'CastStmt':
+          if (stmt.resultName && !this._vars.has(stmt.resultName)) {
+            this._vars.add(stmt.resultName);
+            this._varDecls.push({ name: this._safeName(stmt.resultName), value: 'null' });
+          }
+          break;
         // Recurse into blocks so nested marks/sets are hoisted
         case 'When':
           this._firstPass(stmt.body || []);
@@ -485,6 +498,14 @@ class EventMathCodeGen {
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
       case 'BurstStmt':         return this._genBurstStmt(stmt);
+      // v2.14 — collection intelligence
+      case 'FilterStmt':        return this._genFilterStmt(stmt);
+      case 'FindStmt':          return this._genFindStmt(stmt);
+      case 'SortStmt':          return this._genSortStmt(stmt);
+      case 'CountStmt':         return this._genCountStmt(stmt);
+      case 'PipeStmt':          return this._genPipeStmt(stmt);
+      case 'CastStmt':          return this._genCastStmt(stmt);
+      case 'LogStmt':           return this._genLogStmt(stmt);
       case 'EscapeStmt':        this._line('break;'); return;
       case 'SkipStmt':          this._line('continue;'); return;
       default:
@@ -2184,6 +2205,7 @@ class EventMathCodeGen {
     const val = smartValue(raw ? raw.split(/\s+/) : []);
     this._line(`// rain: ${this._escape(stmt.name)}`);
     if (stmt.live) {
+      this._signalNames.add(v);
       this._line(`${v} = new EM.EventMathSignal(${val});`);
     } else {
       this._line(`${v} = ${val};`);
@@ -2253,11 +2275,34 @@ class EventMathCodeGen {
   }
 
   _genLensStmt(stmt) {
-    const v   = this._safeName(stmt.name);
-    const raw = (stmt.expression || '').trim();
-    const val = raw ? compileExpr(raw.split(/\s+/)) : 'null';
+    const v     = this._safeName(stmt.name);
+    const raw   = (stmt.expression || '').trim();
+    const words = raw ? raw.split(/\s+/) : [];
+
+    // Find which names in the expression are live signals
+    const sigDeps = [...new Set(
+      words.map(w => this._safeName(w)).filter(s => this._signalNames.has(s))
+    )];
+
     this._line(`// lens: ${this._escape(stmt.name)}`);
-    this._line(`${v} = (function() { try { return ${val}; } catch(_) { return null; } })();`);
+
+    if (sigDeps.length > 0) {
+      // Reactive lens — recomputes when any signal dependency changes
+      const jsExpr = compileExpr(words, new Set(sigDeps));
+      const fnName = `__lens_${v}`;
+      this._line(`function ${fnName}() {`);
+      this.indent++;
+      this._line(`try { ${v} = ${jsExpr}; } catch(_) { ${v} = null; }`);
+      this.indent--;
+      this._line(`}`);
+      for (const dep of sigDeps) {
+        this._line(`if (${dep} && typeof ${dep}.watch === 'function') ${dep}.watch(function() { ${fnName}(); });`);
+      }
+      this._line(`${fnName}();`);
+    } else {
+      const jsExpr = raw ? compileExpr(words) : 'null';
+      this._line(`${v} = (function() { try { return ${jsExpr}; } catch(_) { return null; } })();`);
+    }
     this._line('');
   }
 
@@ -2527,6 +2572,104 @@ class EventMathCodeGen {
     const v       = this._safeName(stmt.intoName);
     const spreads = stmt.sources.map(s => `...${this._safeName(s)}`).join(', ');
     this._line(`var ${v} = { ${spreads} };`);
+  }
+
+  // ── v2.14 — collection intelligence codegen ───────────────────────
+
+  _genFilterStmt(stmt) {
+    const item   = this._safeName(stmt.itemName);
+    const coll   = this._safeName(stmt.collName);
+    const result = this._safeName(stmt.resultName);
+    const cond   = compileExpr((stmt.condition || 'true').trim().split(/\s+/));
+    this._line(`// filter: ${this._escape(stmt.collName)}`);
+    this._line(`${result} = (${coll} || []).filter(function(${item}) { return ${cond}; });`);
+    this._line('');
+  }
+
+  _genFindStmt(stmt) {
+    const item   = this._safeName(stmt.itemName);
+    const coll   = this._safeName(stmt.collName);
+    const result = this._safeName(stmt.resultName);
+    const cond   = compileExpr((stmt.condition || 'true').trim().split(/\s+/));
+    this._line(`// find: ${this._escape(stmt.itemName)} in ${this._escape(stmt.collName)}`);
+    this._line(`${result} = (${coll} || []).find(function(${item}) { return ${cond}; }) || null;`);
+    this._line('');
+  }
+
+  _genSortStmt(stmt) {
+    const coll   = this._safeName(stmt.collName);
+    const field  = this._safeName(stmt.field);
+    const result = this._safeName(stmt.resultName);
+    const dir    = stmt.descending ? -1 : 1;
+    this._line(`// sort: ${this._escape(stmt.collName)} by ${this._escape(stmt.field)}`);
+    this._line(`${result} = (${coll} || []).slice().sort(function(a, b) {`);
+    this.indent++;
+    this._line(`var av = a.${field}, bv = b.${field};`);
+    this._line(`if (av < bv) return ${-dir};`);
+    this._line(`if (av > bv) return ${dir};`);
+    this._line(`return 0;`);
+    this.indent--;
+    this._line(`});`);
+    this._line('');
+  }
+
+  _genCountStmt(stmt) {
+    const result = this._safeName(stmt.resultName);
+    if (stmt.condition && stmt.itemName) {
+      const item = this._safeName(stmt.itemName);
+      const coll = this._safeName(stmt.collName);
+      const cond = compileExpr(stmt.condition.trim().split(/\s+/));
+      this._line(`// count: ${this._escape(stmt.collName)} where ${this._escape(stmt.condition)}`);
+      this._line(`${result} = (${coll} || []).filter(function(${item}) { return ${cond}; }).length;`);
+    } else {
+      const coll = this._safeName(stmt.collName);
+      this._line(`// count: ${this._escape(stmt.collName)}`);
+      this._line(`${result} = (${coll} || []).length;`);
+    }
+    this._line('');
+  }
+
+  _genPipeStmt(stmt) {
+    const src    = this._safeName(stmt.sourceName);
+    const result = this._safeName(stmt.resultName);
+    const fns    = (stmt.transforms || []).map(t => this._safeName(t));
+    this._line(`// pipe: ${this._escape(stmt.sourceName)}`);
+    if (fns.length === 0) {
+      this._line(`${result} = ${src};`);
+    } else {
+      const chain = fns.join(', ');
+      this._line(`${result} = [${chain}].reduce(function(v, fn) { return typeof fn === 'function' ? fn(v) : v; }, ${src});`);
+    }
+    this._line('');
+  }
+
+  _genCastStmt(stmt) {
+    const src    = this._safeName(stmt.sourceName);
+    const result = this._safeName(stmt.resultName);
+    const type   = (stmt.targetType || '').toLowerCase().trim();
+    this._line(`// cast: ${this._escape(stmt.sourceName)} as ${this._escape(stmt.targetType)}`);
+    if (type === 'number') {
+      this._line(`${result} = Number(${src});`);
+    } else if (type === 'text') {
+      this._line(`${result} = String(${src});`);
+    } else if (type === 'boolean') {
+      this._line(`${result} = Boolean(${src});`);
+    } else {
+      this._line(`${result} = ${src};`);
+    }
+    this._line('');
+  }
+
+  _genLogStmt(stmt) {
+    const lineRef = stmt.line ? `'[EM:${stmt.line}]'` : "'[EM]'";
+    if (stmt.withValue) {
+      const msg = compileExpr((stmt.message || '').trim().split(/\s+/).filter(Boolean));
+      const val = compileExpr((stmt.withValue || '').trim().split(/\s+/).filter(Boolean));
+      this._line(`console.log(${lineRef}, ${msg}, ${val});`);
+    } else {
+      const val = compileExpr((stmt.value || '').trim().split(/\s+/).filter(Boolean));
+      this._line(`console.log(${lineRef}, ${val});`);
+    }
   }
 }
 

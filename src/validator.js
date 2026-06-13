@@ -215,6 +215,15 @@ class EventMathValidator {
         case 'AwaitStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
           break;
+        // v2.14 — collection results
+        case 'FilterStmt':
+        case 'FindStmt':
+        case 'SortStmt':
+        case 'CountStmt':
+        case 'PipeStmt':
+        case 'CastStmt':
+          if (stmt.resultName) this.marks.set(stmt.resultName, true);
+          break;
       }
     }
   }
@@ -226,7 +235,8 @@ class EventMathValidator {
     // Only flag a word if the entire name is that single keyword,
     // OR if the word is a "structural" keyword that would break parsing
     // (not natural-language prepositions like to, from, as, by, and, not).
-    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub', 'rain', 'star', 'zone', 'sky', 'lens', 'orbit', 'cloud', 'node', 'earth', 'travel', 'map', 'attempt', 'collapse', 'always', 'reflect', 'field', 'style', 'route', 'expand', 'atmosphere', 'void', 'guard', 'match', 'arm', 'escape', 'skip', 'observe', 'every', 'clear', 'on', 'off', 'trigger', 'emit', 'pull', 'raindrop', 'ground', 'new', 'await', 'slot', 'burst', 'live']);
+    const naturalWords = new Set(['to', 'from', 'as', 'by', 'and', 'not', 'is', 'with', 'into', 'at', 'zoom', 'for', 'through', 'conflict', 'weigh', 'deepen', 'trace', 'anchor', 'spine', 'grade', 'extend', 'scrub', 'rain', 'star', 'zone', 'sky', 'lens', 'orbit', 'cloud', 'node', 'earth', 'travel', 'map', 'attempt', 'collapse', 'always', 'reflect', 'field', 'style', 'route', 'expand', 'atmosphere', 'void', 'guard', 'match', 'arm', 'escape', 'skip', 'observe', 'every', 'clear', 'on', 'off', 'trigger', 'emit', 'pull', 'raindrop', 'ground', 'new', 'await', 'slot', 'burst', 'live',
+      'pipe', 'cast', 'log', 'filter', 'find', 'sort', 'count', 'where']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

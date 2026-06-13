@@ -163,6 +163,14 @@ class EventMathParser {
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
     if (t.type === 'BURST_STMT')         return this._parseBurstStmt();
+    // v2.14 — collection intelligence
+    if (t.type === 'FILTER_STMT')        return this._parseFilterStmt();
+    if (t.type === 'FIND_STMT')          return this._parseFindStmt();
+    if (t.type === 'SORT_STMT')          return this._parseSortStmt();
+    if (t.type === 'COUNT_STMT')         return this._parseCountStmt();
+    if (t.type === 'PIPE_STMT')          return this._parsePipeStmt();
+    if (t.type === 'CAST_STMT')          return this._parseCastStmt();
+    if (t.type === 'LOG_STMT')           return this._parseLogStmt();
     if (t.value === 'escape')            { this.advance(); return ast('EscapeStmt', {}); }
     if (t.value === 'skip')              { this.advance(); return ast('SkipStmt', {}); }
 
@@ -1633,6 +1641,76 @@ class EventMathParser {
   _parseBurstStmt() {
     const t = this.advance();
     return ast('BurstStmt', { sources: t.value.sources, intoName: t.value.intoName });
+  }
+
+  // ── v2.14 collection intelligence ────────────────────────────────
+
+  _parseFilterStmt() {
+    const t = this.advance();
+    return ast('FilterStmt', {
+      itemName:   t.value.itemName,
+      collName:   t.value.collName,
+      condition:  t.value.condition,
+      resultName: t.value.resultName,
+    });
+  }
+
+  _parseFindStmt() {
+    const t = this.advance();
+    return ast('FindStmt', {
+      itemName:   t.value.itemName,
+      collName:   t.value.collName,
+      condition:  t.value.condition,
+      resultName: t.value.resultName,
+    });
+  }
+
+  _parseSortStmt() {
+    const t = this.advance();
+    return ast('SortStmt', {
+      collName:   t.value.collName,
+      field:      t.value.field,
+      descending: t.value.descending,
+      resultName: t.value.resultName,
+    });
+  }
+
+  _parseCountStmt() {
+    const t = this.advance();
+    return ast('CountStmt', {
+      itemName:   t.value.itemName,
+      collName:   t.value.collName,
+      condition:  t.value.condition,
+      resultName: t.value.resultName,
+    });
+  }
+
+  _parsePipeStmt() {
+    const t = this.advance();
+    return ast('PipeStmt', {
+      sourceName:  t.value.sourceName,
+      transforms:  t.value.transforms,
+      resultName:  t.value.resultName,
+    });
+  }
+
+  _parseCastStmt() {
+    const t = this.advance();
+    return ast('CastStmt', {
+      sourceName:  t.value.sourceName,
+      targetType:  t.value.targetType,
+      resultName:  t.value.resultName,
+    });
+  }
+
+  _parseLogStmt() {
+    const t = this.advance();
+    return ast('LogStmt', {
+      message:   t.value.message,
+      withValue: t.value.withValue,
+      value:     t.value.value,
+      line:      t.value.line,
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
