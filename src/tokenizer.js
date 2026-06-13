@@ -600,11 +600,19 @@ class EventMathTokenizer {
     const joinedIdx = this._findPhrase(words, ['joined', 'with']);
     if (joinedIdx >= 0) {
       const left  = words.slice(0, joinedIdx).join(' ');
-      const right = words.slice(joinedIdx + 2).join(' ');
+      const rightRaw = words.slice(joinedIdx + 2).join(' ');
+      let rightToken;
+      if (/^"[^"]*"$/.test(rightRaw)) {
+        rightToken = new Token('LITERAL', rightRaw.slice(1, -1), lineNum);
+      } else if (/^'-?[^']*'$/.test(rightRaw)) {
+        rightToken = new Token('LITERAL', rightRaw.slice(1, -1), lineNum);
+      } else {
+        rightToken = new Token('NAME', rightRaw, lineNum);
+      }
       return [
         new Token('NAME', left, lineNum),
         new Token('KEYWORD', 'joined with', lineNum),
-        new Token('NAME', right, lineNum),
+        rightToken,
       ];
     }
 

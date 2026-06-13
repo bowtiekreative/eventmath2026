@@ -745,8 +745,9 @@ class EventMathCodeGen {
     if (stringOp === 'joined with') {
       const l = this._safeRef(stmt.left.value);
       const rv = stmt.right.value;
+      const isKnownVar = this._vars.has(rv) || this._paramVars.has(rv) || this._layerNames.has(rv) || this._eventNames.has(rv) || this._timelineNames.has(rv) || (this._walkVar && (rv === this._walkVar || rv.startsWith(this._walkVar + ' ')));
       const r = /^-?\d+(\.\d+)?$/.test(rv) ? rv :
-                (this._vars.has(rv) || this._paramVars.has(rv) || this._layerNames.has(rv) || this._eventNames.has(rv) ? this._safeRef(rv) : `"${this._escape(rv)}"`);
+                (isKnownVar ? this._safeRef(rv) : `"${this._escape(rv)}"`);
       return `String(${l}) + ${r}`;
     }
     if (stringOp === 'in uppercase') return `String(${this._safeRef(stmt.subject.value)}).toUpperCase()`;
