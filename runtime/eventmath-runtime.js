@@ -2920,6 +2920,46 @@
     return { get: _get, set: _set, remove: _remove, clear: _clear };
   })();
 
+  // ── EventMathGroundDB — a SQLite-backed ground (`ground X at "file.db"`) ──
+  // One adapter over two drivers: Bun's bun:sqlite and Node's node:sqlite.
+  // Both are synchronous, so `draw` needs no await. The driver is chosen at
+  // runtime by detecting Bun, so the same UMD runtime serves both targets.
+  function EventMathGroundDB(path) {
+    this.path = path || ':memory:';
+    this._kind = null;
+    this._db = null;
+    this._open();
+  }
+  EventMathGroundDB.prototype._open = function() {
+    if (typeof Bun !== 'undefined') {
+      var Database = require('bun:sqlite').Database;
+      this._db = new Database(this.path);
+      this._kind = 'bun';
+    } else if (typeof require !== 'undefined') {
+      // node:sqlite (Node >= 22.5, experimental — no flag needed on 22.x LTS)
+      var DatabaseSync = require('node:sqlite').DatabaseSync;
+      this._db = new DatabaseSync(this.path);
+      this._kind = 'node';
+    } else {
+      throw new Error('ground "' + this.path + '": no SQLite driver (need Bun or Node).');
+    }
+  };
+  // draw(sql) — run SQL against the ground. SELECT/WITH/PRAGMA/EXPLAIN return
+  // their rows as an array; anything else (CREATE, INSERT, …) executes and
+  // returns []. Reading is the common case, which is why the verb is "draw".
+  EventMathGroundDB.prototype.draw = function(sql) {
+    var returnsRows = /^\s*(select|with|pragma|explain)\b/i.test(String(sql));
+    if (this._kind === 'bun') {
+      var q = this._db.query(sql);
+      if (returnsRows) return q.all();
+      q.run();
+      return [];
+    }
+    if (returnsRows) return this._db.prepare(sql).all();
+    this._db.exec(sql);
+    return [];
+  };
+
   // ── v2.12 — EventMathRaindrop (form input descriptor) ───────────
 
   function EventMathRaindrop(type, name, props) {
@@ -3006,6 +3046,7 @@
     EventMathEarth:         EventMathEarth,
     EventMathRouter:        EventMathRouter,
     EventMathGround:        EventMathGround,
+    EventMathGroundDB:      EventMathGroundDB,
     EventMathRaindrop:      EventMathRaindrop,
     EventMathSignal:        EventMathSignal,
   };

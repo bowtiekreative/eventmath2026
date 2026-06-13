@@ -60,6 +60,8 @@ const KEYWORDS = new Set([
   'live',
   // v2.14 — collection intelligence + pipeline
   'pipe', 'cast', 'log',
+  // v2.16 — Bun target: SQLite-backed ground + query verb
+  'draw',
 ]);
 
 class Token {
@@ -273,6 +275,7 @@ class EventMathTokenizer {
     if (lead === 'pull')      return this._tokenizePullStmt(words, lineNum);
     if (lead === 'raindrop')  return this._tokenizeRaindropStmt(words, lineNum);
     if (lead === 'ground')    return this._tokenizeGroundStmt(words, lineNum);
+    if (lead === 'draw')      return this._tokenizeDrawStmt(words, lineNum);
     if (lead === 'input')     return this._tokenizeInputStmt(words, lineNum);
     if (lead === 'new')       return this._tokenizeNewStmt(words, lineNum);
     if (lead === 'await')     return this._tokenizeAwaitStmt(words, lineNum);
@@ -2276,6 +2279,16 @@ class EventMathTokenizer {
 
   _tokenizeGroundStmt(words, lineNum) {
     const op = words[1] || 'get';
+    // `ground NAME at "file.db"` — open a SQLite-backed ground. Distinguished
+    // from set/get/remove by the second word not being one of those ops.
+    if (op !== 'set' && op !== 'get' && op !== 'remove') {
+      const m = words.join(' ').match(/^ground\s+(.+?)\s+at\s+"([^"]*)"\s*$/);
+      if (m) {
+        return [new Token('GROUND_STMT',
+          { op: 'open', name: m[1].trim(), path: m[2], key: null, value: null, intoName: null },
+          lineNum)];
+      }
+    }
     if (op === 'set') {
       const isIdx = this._indexOf(words, 'is');
       const key   = words.slice(2, isIdx >= 0 ? isIdx : words.length).join(' ');
@@ -2291,6 +2304,21 @@ class EventMathTokenizer {
     // remove
     const key = words.slice(2).join(' ');
     return [new Token('GROUND_STMT', { op, key, value: null, intoName: null }, lineNum)];
+  }
+
+  // `draw "<sql>" from <ground> into <result>` — query a SQLite-backed ground.
+  // The SQL is double-quoted EventMath data (its own commas/`from` live inside
+  // the quotes); SQL string literals use single quotes, so a quote-aware match
+  // on the rejoined line finds the real `from`/`into` keywords.
+  _tokenizeDrawStmt(words, lineNum) {
+    const line = words.join(' ');
+    const m = line.match(/^draw\s+"([^"]*)"\s+from\s+(.+?)\s+into\s+(.+?)\s*$/);
+    if (!m) {
+      return [new Token('ERROR',
+        { message: 'draw needs: draw "<sql>" from <ground> into <result>' }, lineNum)];
+    }
+    return [new Token('DRAW_STMT',
+      { sql: m[1], from: m[2].trim(), into: m[3].trim() }, lineNum)];
   }
 
   _tokenizeNewStmt(words, lineNum) {

@@ -148,6 +148,7 @@ class EventMathFormatter {
       case 'PullStmt':          return this._formatPullStmt(stmt);
       case 'RaindropStmt':      return this._formatRaindropStmt(stmt);
       case 'GroundStmt':        return this._formatGroundStmt(stmt);
+      case 'DrawStmt':          return this._formatDrawStmt(stmt);
       case 'NewStmt':           return this._formatNewStmt(stmt);
       case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
       case 'SlotStmt':          return this._formatSlotStmt(stmt);
@@ -970,9 +971,14 @@ class EventMathFormatter {
 
   _formatGroundStmt(stmt) {
     const op = stmt.op;
+    if (op === 'open')   { this._line(`ground ${stmt.name} at "${stmt.path}"`); return; }
     if (op === 'set')    { this._line(`ground set ${stmt.key} is ${stmt.value}`); return; }
     if (op === 'get')    { this._line(`ground get ${stmt.key}${stmt.intoName ? ' into ' + stmt.intoName : ''}`); return; }
     if (op === 'remove') { this._line(`ground remove ${stmt.key}`); return; }
+  }
+
+  _formatDrawStmt(stmt) {
+    this._line(`draw "${stmt.sql}" from ${stmt.from} into ${stmt.into}`);
   }
 
   _formatNewStmt(stmt) {

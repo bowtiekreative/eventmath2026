@@ -60,6 +60,14 @@ class EventMathValidator {
         case 'Mark':
           this._registerSymbol('mark', stmt.name, this.marks);
           break;
+        case 'GroundStmt':
+          // `ground NAME at "file.db"` declares a queryable ground value.
+          if (stmt.op === 'open' && stmt.name) this.marks.set(stmt.name, true);
+          break;
+        case 'DrawStmt':
+          // `draw "..." from g into RESULT` declares RESULT (the rows).
+          if (stmt.into) this.marks.set(stmt.into, true);
+          break;
         case 'Use':
           // Imported names are external — treat as valid symbols to avoid false E017 errors
           // Add to all symbol sets since we don't know the type at validate time

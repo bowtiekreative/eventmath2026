@@ -515,6 +515,7 @@ class EventMathCodeGen {
       case 'PullStmt':          return this._genPullStmt(stmt);
       case 'RaindropStmt':      return this._genRaindropStmt(stmt);
       case 'GroundStmt':        return this._genGroundStmt(stmt);
+      case 'DrawStmt':          return this._genDrawStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -2574,8 +2575,13 @@ class EventMathCodeGen {
   }
 
   _genGroundStmt(stmt) {
+    const op = stmt.op;
+    if (op === 'open') {
+      const name = this._safeName(stmt.name);
+      this._line(`const ${name} = new EM.EventMathGroundDB(${JSON.stringify(stmt.path)});`);
+      return;
+    }
     const keyEsc = this._escape(stmt.key || '');
-    const op     = stmt.op;
     if (op === 'set') {
       const val = smartValue((stmt.value || '').trim().split(/\s+/).filter(Boolean));
       this._line(`EM.EventMathGround.set('${keyEsc}', ${val});`);
@@ -2589,6 +2595,12 @@ class EventMathCodeGen {
     } else if (op === 'remove') {
       this._line(`EM.EventMathGround.remove('${keyEsc}');`);
     }
+  }
+
+  _genDrawStmt(stmt) {
+    const dbName = this._safeName(stmt.from);
+    const result = this._safeName(stmt.into);
+    this._line(`const ${result} = ${dbName}.draw(${JSON.stringify(stmt.sql)});`);
   }
 
   _genNewStmt(stmt) {

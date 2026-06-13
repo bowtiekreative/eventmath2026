@@ -159,6 +159,7 @@ class EventMathParser {
     if (t.type === 'PULL_STMT')          return this._parsePullStmt();
     if (t.type === 'RAINDROP_STMT')      return this._parseRaindropStmt();
     if (t.type === 'GROUND_STMT')        return this._parseGroundStmt();
+    if (t.type === 'DRAW_STMT')          return this._parseDrawStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1655,7 +1656,15 @@ class EventMathParser {
 
   _parseGroundStmt() {
     const t = this.advance();
-    return ast('GroundStmt', { op: t.value.op, key: t.value.key, value: t.value.value, intoName: t.value.intoName });
+    return ast('GroundStmt', {
+      op: t.value.op, key: t.value.key, value: t.value.value, intoName: t.value.intoName,
+      name: t.value.name, path: t.value.path,
+    });
+  }
+
+  _parseDrawStmt() {
+    const t = this.advance();
+    return ast('DrawStmt', { sql: t.value.sql, from: t.value.from, into: t.value.into });
   }
 
   _parseNewStmt() {
