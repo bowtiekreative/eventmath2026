@@ -149,6 +149,9 @@ class EventMathFormatter {
       case 'RaindropStmt':      return this._formatRaindropStmt(stmt);
       case 'GroundStmt':        return this._formatGroundStmt(stmt);
       case 'DrawStmt':          return this._formatDrawStmt(stmt);
+      case 'ServeStmt':         return this._formatServeStmt(stmt);
+      case 'ServeRouteStmt':    return this._formatServeRouteStmt(stmt);
+      case 'ReplyStmt':         return this._formatReplyStmt(stmt);
       case 'NewStmt':           return this._formatNewStmt(stmt);
       case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
       case 'SlotStmt':          return this._formatSlotStmt(stmt);
@@ -979,6 +982,30 @@ class EventMathFormatter {
 
   _formatDrawStmt(stmt) {
     this._line(`draw "${stmt.sql}" from ${stmt.from} into ${stmt.into}`);
+  }
+
+  _formatServeStmt(stmt) {
+    this._line(`serve port ${stmt.port}`);
+    this.indent++;
+    for (const route of (stmt.routes || [])) {
+      this._formatServeRouteStmt(route);
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatServeRouteStmt(stmt) {
+    this._line(`route ${stmt.method} "${stmt.path}"`);
+    this.indent++;
+    for (const s of (stmt.body || [])) {
+      this._formatStatement(s);
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatReplyStmt(stmt) {
+    this._line(`reply ${stmt.name}`);
   }
 
   _formatNewStmt(stmt) {

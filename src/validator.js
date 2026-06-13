@@ -68,6 +68,11 @@ class EventMathValidator {
           // `draw "..." from g into RESULT` declares RESULT (the rows).
           if (stmt.into) this.marks.set(stmt.into, true);
           break;
+        case 'ServeStmt':
+          for (const route of (stmt.routes || [])) {
+            if (route.body) this._collectDeclarations(route.body);
+          }
+          break;
         case 'Use':
           // Imported names are external — treat as valid symbols to avoid false E017 errors
           // Add to all symbol sets since we don't know the type at validate time
@@ -231,6 +236,12 @@ class EventMathValidator {
         case 'PipeStmt':
         case 'CastStmt':
           if (stmt.resultName) this.marks.set(stmt.resultName, true);
+          break;
+        // v2.16 — HTTP server
+        case 'ServeStmt':
+          for (const route of (stmt.routes || [])) {
+            if (route.body) this._collectDeclarations(route.body);
+          }
           break;
       }
     }

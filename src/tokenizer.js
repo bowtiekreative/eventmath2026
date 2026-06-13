@@ -60,8 +60,8 @@ const KEYWORDS = new Set([
   'live',
   // v2.14 — collection intelligence + pipeline
   'pipe', 'cast', 'log',
-  // v2.16 — Bun target: SQLite-backed ground + query verb
-  'draw',
+  // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server
+  'draw', 'serve', 'reply',
 ]);
 
 class Token {
@@ -258,7 +258,15 @@ class EventMathTokenizer {
     if (lead === 'earth')      return this._tokenizeEarthStmt(words, lineNum);
     if (lead === 'travel')     return this._tokenizeTravelStmt(words, lineNum);
     if (lead === 'map')        return [new Token('KEYWORD', 'map', lineNum)];
-    if (lead === 'route')      return this._tokenizeRouteLine(words, lineNum);
+    if (lead === 'serve')      return this._tokenizeServeStmt(words, lineNum);
+    if (lead === 'reply')      return this._tokenizeReplyStmt(words, lineNum);
+    if (lead === 'route') {
+      const HTTP_METHODS = ['get', 'post', 'put', 'delete', 'patch'];
+      if (words[1] && HTTP_METHODS.includes(words[1].toLowerCase())) {
+        return this._tokenizeServeRouteLine(words, lineNum);
+      }
+      return this._tokenizeRouteLine(words, lineNum);
+    }
     if (lead === 'void')      return [new Token('KEYWORD', 'void', lineNum)];
     if (lead === 'escape')    return [new Token('KEYWORD', 'escape', lineNum)];
     if (lead === 'skip')      return [new Token('KEYWORD', 'skip', lineNum)];
@@ -2319,6 +2327,27 @@ class EventMathTokenizer {
     }
     return [new Token('DRAW_STMT',
       { sql: m[1], from: m[2].trim(), into: m[3].trim() }, lineNum)];
+  }
+
+  // serve port N — open an HTTP server block
+  _tokenizeServeStmt(words, lineNum) {
+    const portIdx = this._indexOf(words, 'port');
+    const port = portIdx >= 0 ? (parseInt(words[portIdx + 1], 10) || 3000) : 3000;
+    return [new Token('SERVE_STMT', { port }, lineNum)];
+  }
+
+  // route METHOD "path" — HTTP route inside a serve block
+  _tokenizeServeRouteLine(words, lineNum) {
+    const method = (words[1] || 'get').toLowerCase();
+    const rawPath = words.slice(2).join(' ').trim();
+    const path = rawPath.replace(/^["']|["']$/g, '');
+    return [new Token('SERVE_ROUTE_STMT', { method, path }, lineNum)];
+  }
+
+  // reply NAME — send NAME as the HTTP response body
+  _tokenizeReplyStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('REPLY_STMT', { name }, lineNum)];
   }
 
   _tokenizeNewStmt(words, lineNum) {

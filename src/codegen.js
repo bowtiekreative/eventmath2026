@@ -516,6 +516,9 @@ class EventMathCodeGen {
       case 'RaindropStmt':      return this._genRaindropStmt(stmt);
       case 'GroundStmt':        return this._genGroundStmt(stmt);
       case 'DrawStmt':          return this._genDrawStmt(stmt);
+      case 'ServeStmt':         return this._genServeStmt(stmt);
+      case 'ServeRouteStmt':    return this._genServeRouteStmt(stmt);
+      case 'ReplyStmt':         return this._genReplyStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -2600,7 +2603,80 @@ class EventMathCodeGen {
   _genDrawStmt(stmt) {
     const dbName = this._safeName(stmt.from);
     const result = this._safeName(stmt.into);
-    this._line(`const ${result} = ${dbName}.draw(${JSON.stringify(stmt.sql)});`);
+    if (result === '_') {
+      // `_` is the EventMath discard sentinel — run the query, drop the result
+      this._line(`${dbName}.draw(${JSON.stringify(stmt.sql)});`);
+    } else {
+      this._line(`const ${result} = ${dbName}.draw(${JSON.stringify(stmt.sql)});`);
+    }
+  }
+
+  _genServeStmt(stmt) {
+    const port = stmt.port || 3000;
+    const routes = stmt.routes || [];
+    if (this.target === 'bun') {
+      this._line(`Bun.serve({`);
+      this.indent++;
+      this._line(`port: ${port},`);
+      this._line(`fetch(req) {`);
+      this.indent++;
+      this._line(`const _method = req.method.toLowerCase();`);
+      this._line(`const _path = new URL(req.url, 'http://localhost').pathname;`);
+      for (const route of routes) {
+        this._genServeRouteStmt(route);
+      }
+      this._line(`return new Response('Not found', { status: 404 });`);
+      this.indent--;
+      this._line(`},`);
+      this.indent--;
+      this._line(`});`);
+    } else {
+      this._line(`require('node:http').createServer(function(req, res) {`);
+      this.indent++;
+      this._line(`var _method = req.method.toLowerCase();`);
+      this._line(`var _path = require('node:url').parse(req.url).pathname;`);
+      for (const route of routes) {
+        this._genServeRouteStmt(route);
+      }
+      this._line(`res.writeHead(404); res.end('Not found');`);
+      this.indent--;
+      this._line(`}).listen(${port}, function() {`);
+      this.indent++;
+      this._line(`console.log('EventMath: serving on port ${port}');`);
+      this.indent--;
+      this._line(`});`);
+    }
+  }
+
+  _genServeRouteStmt(stmt) {
+    const method = (stmt.method || 'get').toLowerCase();
+    const path = stmt.path || '/';
+    this._line(`if (_method === ${JSON.stringify(method)} && _path === ${JSON.stringify(path)}) {`);
+    this.indent++;
+    const hasReply = (stmt.body || []).some(s => s.type === 'ReplyStmt');
+    for (const s of (stmt.body || [])) {
+      this._genStatement(s);
+    }
+    if (!hasReply) {
+      if (this.target === 'bun') {
+        this._line(`return new Response('OK', { status: 200 });`);
+      } else {
+        this._line(`res.writeHead(200); res.end('OK'); return;`);
+      }
+    }
+    this.indent--;
+    this._line(`}`);
+  }
+
+  _genReplyStmt(stmt) {
+    const name = this._safeName(stmt.name);
+    if (this.target === 'bun') {
+      this._line(`return Response.json(${name});`);
+    } else {
+      this._line(`res.writeHead(200, {'Content-Type': 'application/json'});`);
+      this._line(`res.end(JSON.stringify(${name}));`);
+      this._line(`return;`);
+    }
   }
 
   _genNewStmt(stmt) {

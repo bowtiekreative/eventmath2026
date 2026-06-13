@@ -160,6 +160,8 @@ class EventMathParser {
     if (t.type === 'RAINDROP_STMT')      return this._parseRaindropStmt();
     if (t.type === 'GROUND_STMT')        return this._parseGroundStmt();
     if (t.type === 'DRAW_STMT')          return this._parseDrawStmt();
+    if (t.type === 'SERVE_STMT')         return this._parseServeStmt();
+    if (t.type === 'REPLY_STMT')         return this._parseReplyStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1665,6 +1667,42 @@ class EventMathParser {
   _parseDrawStmt() {
     const t = this.advance();
     return ast('DrawStmt', { sql: t.value.sql, from: t.value.from, into: t.value.into });
+  }
+
+  _parseServeStmt() {
+    const t = this.advance();
+    const port = t.value.port;
+    const routes = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const cur = this.peek();
+      if (cur && cur.type === 'SERVE_ROUTE_STMT') {
+        routes.push(this._parseServeRouteBlock());
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ServeStmt', { port, routes });
+  }
+
+  _parseServeRouteBlock() {
+    const t = this.advance();
+    const method = t.value.method;
+    const path = t.value.path;
+    const body = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const stmt = this._parseStatement();
+      if (stmt) body.push(stmt);
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ServeRouteStmt', { method, path, body });
+  }
+
+  _parseReplyStmt() {
+    const t = this.advance();
+    return ast('ReplyStmt', { name: t.value.name });
   }
 
   _parseNewStmt() {
