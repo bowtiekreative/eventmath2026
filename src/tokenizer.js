@@ -273,6 +273,7 @@ class EventMathTokenizer {
     if (lead === 'pull')      return this._tokenizePullStmt(words, lineNum);
     if (lead === 'raindrop')  return this._tokenizeRaindropStmt(words, lineNum);
     if (lead === 'ground')    return this._tokenizeGroundStmt(words, lineNum);
+    if (lead === 'input')     return this._tokenizeInputStmt(words, lineNum);
     if (lead === 'new')       return this._tokenizeNewStmt(words, lineNum);
     if (lead === 'await')     return this._tokenizeAwaitStmt(words, lineNum);
     if (lead === 'slot')      return this._tokenizeSlotStmt(words, lineNum);
@@ -2289,6 +2290,12 @@ class EventMathTokenizer {
     const intoIdx = this._indexOf(words, 'into');
     const intoName = intoIdx >= 0 ? words.slice(intoIdx + 1).join(' ') : null;
     return [new Token('NEW_STMT', { schema, intoName }, lineNum)];
+  }
+
+  // input NAME — parameter declaration (used in door open blocks)
+  _tokenizeInputStmt(words, lineNum) {
+    const name = words.slice(1).join(' ');
+    return [new Token('INPUT_STMT', { name }, lineNum)];
   }
 
   _tokenizeAwaitStmt(words, lineNum) {

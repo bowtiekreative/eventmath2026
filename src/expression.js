@@ -44,6 +44,7 @@ function toAtom(str, signals) {
   if (!str) return 'null';
   const s = str.trim();
   if (s === 'void')  return 'null';
+  if (s === 'now')   return 'Date.now()';
   if (s === 'true')  return 'true';
   if (s === 'false') return 'false';
   if (isNumber(s))   return s;
@@ -137,13 +138,15 @@ function compileExpr(words, signals) {
 }
 
 /**
- * Smart value: for use in rain/star assignments.
+ * Smart value: for use in rain/star/ground assignments.
  * - void            → null
+ * - now             → Date.now()
  * - true/false      → boolean
  * - number          → number
- * - quoted string   → as-is
- * - words with ops  → compile as expression
- * - bare words      → string literal (Five Laws: bare words are literal)
+ * - quoted string   → as-is (use quotes for string literals: "loading")
+ * - everything else → compile as expression / variable reference
+ *
+ * Bare words are variable references. To assign a string literal, quote it.
  */
 function smartValue(words) {
   if (!words || !words.length) return 'null';
@@ -153,9 +156,8 @@ function smartValue(words) {
   if (s === 'false')  return 'false';
   if (isNumber(s))    return s;
   if (isQuoted(s))    return s;
-  if (hasOperator(words)) return compileExpr(words);
-  // Bare words → string literal
-  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  // Bare words and expressions both compile as references/expressions
+  return compileExpr(words);
 }
 
 module.exports = { compileExpr, smartValue, hasOperator, safeName };

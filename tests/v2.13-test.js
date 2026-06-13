@@ -192,13 +192,14 @@ test('expression with operator → compileExpr', () => {
   const result = smartValue(['price', 'times', 'quantity']);
   assert.ok(result.includes('*'), `got: ${result}`);
 });
-test('bare words → string literal', () => {
+test('bare words → variable reference', () => {
   const result = smartValue(['EventMath', 'Studio']);
-  assert.strictEqual(result, '"EventMath Studio"');
+  assert.ok(result.includes('EventMath') && result.includes('Studio'), `got: ${result}`);
+  assert.ok(!result.startsWith('"'), `should not be a string literal, got: ${result}`);
 });
-test('bare single word → string literal', () => {
+test('bare single word → variable reference', () => {
   const result = smartValue(['loading']);
-  assert.strictEqual(result, '"loading"');
+  assert.strictEqual(result, 'loading');
 });
 test('empty → null', () => {
   assert.strictEqual(smartValue([]), 'null');
@@ -353,9 +354,10 @@ test('lens: is void null check', () => {
 
 console.log('\n── Codegen: rain expressions ──');
 
-test('rain: bare words become string literal', () => {
+test('rain: bare words become variable reference', () => {
   const js = compile('rain title is EventMath Studio');
-  assert.ok(js.includes('"EventMath Studio"'), `got: ${js}`);
+  assert.ok(js.includes('EventMath') && js.includes('Studio'), `got: ${js}`);
+  assert.ok(!js.includes('"EventMath Studio"'), `should not be string literal, got: ${js}`);
 });
 
 test('rain: void → null', () => {
@@ -426,9 +428,10 @@ test('star: quoted string', () => {
   assert.ok(js.includes('"https://api.example.com"'), `got: ${js}`);
 });
 
-test('star: bare words → string literal', () => {
+test('star: bare words → variable reference', () => {
   const js = compile('star title is My App');
-  assert.ok(js.includes('"My App"'), `got: ${js}`);
+  assert.ok(js.includes('My') && js.includes('App'), `got: ${js}`);
+  assert.ok(!js.includes('"My App"'), `should not be string literal, got: ${js}`);
 });
 
 // ──────────────────────────────────────────────────────────────────────────

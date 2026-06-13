@@ -31,6 +31,7 @@ class EventMathCodeGen {
     this.output = [];
     this.indent = 0;
     this._vars = new Set(); // Track declared variables
+    this._paramVars = new Set(); // Track door input parameters
     this._varDecls = [];    // Hoisted let declarations (name, value) for top-level
     this._inAction = false; // Are we inside an action body?
     this._eventNames = new Set(); // Top-level event declarations
@@ -62,6 +63,7 @@ class EventMathCodeGen {
     this.output = [];
     this.indent = 0;
     this._vars = new Set();
+    this._paramVars = new Set();
     this._varDecls = [];
     this._inAction = false;
     this._eventNames = new Set();
@@ -177,6 +179,9 @@ class EventMathCodeGen {
           this._actionNames.add(stmt.name);
           if (stmt.doorOpen && stmt.doorOpen.inputs.length > 0) {
             this._actionDoorInputs[stmt.name] = stmt.doorOpen.inputs;
+            for (const p of stmt.doorOpen.inputs) {
+              this._paramVars.add(p);
+            }
           }
           break;
         case 'Mark':
@@ -420,6 +425,9 @@ class EventMathCodeGen {
       case 'Check':          return this._genCheck(stmt);
       case 'Use':            return; // handled in first pass emit
       case 'NameRef':        return null; // standalone names are no-ops
+      case 'EscapeStmt':     return this._genEscapeStmt(stmt);
+      case 'SkipStmt':       return this._genSkipStmt(stmt);
+      case 'DoorClosed':     return this._genDoorClosedStmt(stmt);
       case 'SortLayer':      return this._genSortLayer(stmt);
       case 'FilterLayer':    return this._genFilterLayer(stmt);
       case 'FindInLayer':    return this._genFindInLayer(stmt);
@@ -580,18 +588,28 @@ class EventMathCodeGen {
 
   _genLayer(stmt) {
     const varName = this._safeName(stmt.name);
-    this._line(`// Layer: "${this._escape(stmt.name)}"`);
-    this._line(`const ${varName} = new EM.EventMathLayer("${this._escape(stmt.name)}", [`);
+    this._line('// Layer: "' + this._escape(stmt.name) + '"');
+
+    // Emit inline event definitions first
+    if (stmt.events && stmt.events.length > 0) {
+      for (const evt of stmt.events) {
+        if (evt.event) {
+          this._genEvent(evt.event);
+        }
+      }
+    }
+
+    this._line('const ' + varName + ' = new EM.EventMathLayer("' + this._escape(stmt.name) + '", [');
 
     if (stmt.events && stmt.events.length > 0) {
       this.indent++;
       for (const evt of stmt.events) {
-        this._line(`${this._safeName(evt.name)},`);
+        this._line(this._safeName(evt.name) + ',');
       }
       this.indent--;
     }
 
-    this._line(`]);`);
+    this._line(']);');
     this._line('');
   }
 
@@ -717,8 +735,9 @@ class EventMathCodeGen {
     const { stringOp } = stmt;
     if (stringOp === 'joined with') {
       const l = this._safeRef(stmt.left.value);
-      const r = /^\d+$/.test(stmt.right.value) ? stmt.right.value :
-                (this._vars.has(stmt.right.value) ? this._safeRef(stmt.right.value) : `"${this._escape(stmt.right.value)}"`);
+      const rv = stmt.right.value;
+      const r = /^-?\d+(\.\d+)?$/.test(rv) ? rv :
+                (this._vars.has(rv) || this._paramVars.has(rv) || this._layerNames.has(rv) || this._eventNames.has(rv) ? this._safeRef(rv) : `"${this._escape(rv)}"`);
       return `String(${l}) + ${r}`;
     }
     if (stringOp === 'in uppercase') return `String(${this._safeRef(stmt.subject.value)}).toUpperCase()`;
@@ -2526,7 +2545,7 @@ class EventMathCodeGen {
     const keyEsc = this._escape(stmt.key || '');
     const op     = stmt.op;
     if (op === 'set') {
-      const val = this._toJsValue(stmt.value);
+      const val = smartValue((stmt.value || '').trim().split(/\s+/).filter(Boolean));
       this._line(`EM.EventMathGround.set('${keyEsc}', ${val});`);
     } else if (op === 'get') {
       if (stmt.intoName) {
@@ -2671,6 +2690,30 @@ class EventMathCodeGen {
       this._line(`console.log(${lineRef}, ${val});`);
     }
   }
-}
 
+  _genEscapeStmt(stmt) {
+    this._line('break;');
+  }
+
+  _genSkipStmt(stmt) {
+    this._line('continue;');
+  }
+
+  _genDoorClosedStmt(stmt) {
+    if (stmt.returns) {
+      const ret = stmt.returns;
+      if ((ret.startsWith('"') && ret.endsWith('"')) || (ret.startsWith("'") && ret.endsWith("'"))) {
+        this._line(`return ${ret};`);
+      } else if (/^-?\d+(\.\d+)?$/.test(ret)) {
+        this._line(`return ${ret};`);
+      } else if (ret === 'true' || ret === 'false' || ret === 'void' || ret === 'null') {
+        this._line(`return ${ret === 'void' ? 'null' : ret};`);
+      } else {
+        this._line(`return ${this._safeName(ret)};`);
+      }
+    } else {
+      this._line('return;');
+    }
+  }
+}
 module.exports = { EventMathCodeGen };

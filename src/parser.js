@@ -173,6 +173,7 @@ class EventMathParser {
     if (t.type === 'LOG_STMT')           return this._parseLogStmt();
     if (t.value === 'escape')            { this.advance(); return ast('EscapeStmt', {}); }
     if (t.value === 'skip')              { this.advance(); return ast('SkipStmt', {}); }
+    if (t.value === 'door')              { return this._parseDoorClosed(); }
 
     switch (t.value) {
       case 'event':    return this._parseEvent();
@@ -284,6 +285,10 @@ class EventMathParser {
       const t = this.peek();
       if (t.type === 'NAME') {
         events.push({ name: this.advance().value });
+      } else if (t.type === 'KEYWORD' && t.value === 'event') {
+        // Inline event definition inside layer
+        const evt = this._parseEvent();
+        if (evt) events.push({ name: evt.name, event: evt });
       } else {
         this.advance();
       }
@@ -341,14 +346,26 @@ class EventMathParser {
 
     const result = ast('Action', { name: nameToken.value, doorOpen: null, body: [], doorClosed: null });
 
-    // Door open
+    // Door open — parameters
     if (this.isKeyword('door')) {
       this.advance();
       if (this.isKeyword('open')) {
         this.advance();
         const inputs = [];
+        // Parameters are lines of "input NAME" — consume INPUT_STMT tokens
+        while (this.peek() && this.peek().type === 'INPUT_STMT') {
+          const inputStmt = this.advance().value;
+          if (inputStmt && inputStmt.name) inputs.push(inputStmt.name);
+        }
+        // Also support bare NAME tokens for backward compat
         while (this.peek() && this.peek().type === 'NAME') {
-          inputs.push(this.advance().value);
+          const first = this.advance().value;
+          if (first === 'input') {
+            const nameTok = this.match('NAME');
+            if (nameTok) inputs.push(nameTok.value);
+          } else {
+            inputs.push(first);
+          }
         }
         result.doorOpen = ast('DoorOpen', { inputs });
       }
@@ -357,21 +374,39 @@ class EventMathParser {
     // Body: statements until "door closed" or "end"
     let guard = 0;
     while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
-      if (this.isKeyword('door')) {
-        this.advance();
-        if (this.isKeyword('closed')) {
-          this.advance();
-          const returnName = this.match('NAME');
-          result.doorClosed = ast('DoorClosed', { returns: returnName ? returnName.value : null });
-          break;
-        }
-      }
       const stmt = this._parseStatement();
-      if (stmt) result.body.push(stmt);
+      if (!stmt) break;
+      if (stmt.type === 'DoorClosed') {
+        result.doorClosed = stmt;
+        break;
+      }
+      result.body.push(stmt);
     }
 
     this.expect('KEYWORD', 'end');
     return result;
+  }
+
+  // ── Door Closed (early return) ───────────────────────────────────
+
+  _parseDoorClosed() {
+    this.expect('KEYWORD', 'door');
+    if (this.isKeyword('open')) {
+      // door open in body context is not allowed
+      this.advance();
+      const t = this.peek();
+      const name = t && t.type === 'NAME' ? this.advance().value : '';
+      this.errors.push(`Line ${t ? t.line : '?'}: 'door open' is only allowed as the first statement of an action. Use 'door closed' for return.`);
+      return ast('DoorClosed', { returns: name });
+    }
+    if (this.isKeyword('closed')) {
+      this.advance();
+      const returnName = this.match('NAME');
+      return ast('DoorClosed', { returns: returnName ? returnName.value : null });
+    }
+    // bare 'door' keyword — skip it
+    const t = this.peek();
+    return null;
   }
 
   // ── Mark & Set ───────────────────────────────────────────────────
