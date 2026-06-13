@@ -153,6 +153,7 @@ class EventMathFormatter {
       case 'ServeRouteStmt':    return this._formatServeRouteStmt(stmt);
       case 'ReplyStmt':         return this._formatReplyStmt(stmt);
       case 'AskStmt':           return this._formatAskStmt(stmt);
+      case 'LiveDrawStmt':      return this._formatLiveDrawStmt(stmt);
       case 'NewStmt':           return this._formatNewStmt(stmt);
       case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
       case 'SlotStmt':          return this._formatSlotStmt(stmt);
@@ -1007,6 +1008,10 @@ class EventMathFormatter {
 
   _formatReplyStmt(stmt) {
     this._line(`reply ${stmt.name}`);
+  }
+
+  _formatLiveDrawStmt(stmt) {
+    this._line(`live draw "${stmt.sql}" from ${stmt.from} into ${stmt.into}`);
   }
 
   _formatAskStmt(stmt) {

@@ -2953,11 +2953,25 @@
       var q = this._db.query(sql);
       if (returnsRows) return q.all();
       q.run();
+      this._notifyWrite();
       return [];
     }
     if (returnsRows) return this._db.prepare(sql).all();
     this._db.exec(sql);
+    this._notifyWrite();
     return [];
+  };
+  // onWrite(fn) — register a callback fired after every write query.
+  // Used by `live draw` to keep reactive result variables up to date.
+  EventMathGroundDB.prototype.onWrite = function(fn) {
+    if (!this._writeCbs) this._writeCbs = [];
+    this._writeCbs.push(fn);
+  };
+  EventMathGroundDB.prototype._notifyWrite = function() {
+    if (!this._writeCbs) return;
+    for (var i = 0; i < this._writeCbs.length; i++) {
+      try { this._writeCbs[i](); } catch(_) {}
+    }
   };
 
   // ── v2.16 — EventMathAsker (AI ask primitive) ────────────────────

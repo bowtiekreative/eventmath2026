@@ -2511,6 +2511,17 @@ class EventMathTokenizer {
       const value = isIdx >= 0 ? rest.slice(isIdx + 1).join(' ') : '';
       return [new Token('RAIN_STMT', { name, value, live: true }, lineNum)];
     }
+    // live draw "<sql>" from <ground> into <result>
+    if (inner === 'draw') {
+      const line = words.join(' ');
+      const m = line.match(/^live\s+draw\s+"([^"]*)"\s+from\s+(.+?)\s+into\s+(.+?)\s*$/);
+      if (m) {
+        return [new Token('LIVE_DRAW_STMT',
+          { sql: m[1], from: m[2].trim(), into: m[3].trim() }, lineNum)];
+      }
+      return [new Token('ERROR',
+        { message: 'live draw needs: live draw "<sql>" from <ground> into <result>' }, lineNum)];
+    }
     // Unsupported live sub-statement — treat as no-op comment token
     return [new Token('KEYWORD', 'live', lineNum)];
   }

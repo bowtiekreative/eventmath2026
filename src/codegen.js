@@ -522,6 +522,7 @@ class EventMathCodeGen {
       case 'ServeRouteStmt':    return this._genServeRouteStmt(stmt);
       case 'ReplyStmt':         return this._genReplyStmt(stmt);
       case 'AskStmt':           return this._genAskStmt(stmt);
+      case 'LiveDrawStmt':      return this._genLiveDrawStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -2696,6 +2697,15 @@ class EventMathCodeGen {
       this._line(`res.end(JSON.stringify(${name}));`);
       this._line(`return;`);
     }
+  }
+
+  _genLiveDrawStmt(stmt) {
+    const dbName = this._safeName(stmt.from);
+    const result = this._safeName(stmt.into);
+    const sqlStr = JSON.stringify(stmt.sql);
+    // `let` so the onWrite callback can reassign it
+    this._line(`let ${result} = ${dbName}.draw(${sqlStr});`);
+    this._line(`${dbName}.onWrite(function() { ${result} = ${dbName}.draw(${sqlStr}); });`);
   }
 
   _genAskStmt(stmt) {
