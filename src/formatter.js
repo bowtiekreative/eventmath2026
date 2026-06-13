@@ -152,6 +152,7 @@ class EventMathFormatter {
       case 'ServeStmt':         return this._formatServeStmt(stmt);
       case 'ServeRouteStmt':    return this._formatServeRouteStmt(stmt);
       case 'ReplyStmt':         return this._formatReplyStmt(stmt);
+      case 'AskStmt':           return this._formatAskStmt(stmt);
       case 'NewStmt':           return this._formatNewStmt(stmt);
       case 'AwaitStmt':         return this._formatAwaitStmt(stmt);
       case 'SlotStmt':          return this._formatSlotStmt(stmt);
@@ -1006,6 +1007,11 @@ class EventMathFormatter {
 
   _formatReplyStmt(stmt) {
     this._line(`reply ${stmt.name}`);
+  }
+
+  _formatAskStmt(stmt) {
+    const withPart = stmt.data ? ` with ${stmt.data}` : '';
+    this._line(`ask "${stmt.prompt}"${withPart} into ${stmt.into}`);
   }
 
   _formatNewStmt(stmt) {

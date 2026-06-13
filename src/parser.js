@@ -162,6 +162,7 @@ class EventMathParser {
     if (t.type === 'DRAW_STMT')          return this._parseDrawStmt();
     if (t.type === 'SERVE_STMT')         return this._parseServeStmt();
     if (t.type === 'REPLY_STMT')         return this._parseReplyStmt();
+    if (t.type === 'ASK_STMT')           return this._parseAskStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1703,6 +1704,11 @@ class EventMathParser {
   _parseReplyStmt() {
     const t = this.advance();
     return ast('ReplyStmt', { name: t.value.name });
+  }
+
+  _parseAskStmt() {
+    const t = this.advance();
+    return ast('AskStmt', { prompt: t.value.prompt, data: t.value.data, into: t.value.into });
   }
 
   _parseNewStmt() {

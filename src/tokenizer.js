@@ -60,8 +60,8 @@ const KEYWORDS = new Set([
   'live',
   // v2.14 — collection intelligence + pipeline
   'pipe', 'cast', 'log',
-  // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server
-  'draw', 'serve', 'reply',
+  // v2.16 — Bun target: SQLite-backed ground + query verb + HTTP server + AI ask
+  'draw', 'serve', 'reply', 'ask',
 ]);
 
 class Token {
@@ -258,6 +258,7 @@ class EventMathTokenizer {
     if (lead === 'earth')      return this._tokenizeEarthStmt(words, lineNum);
     if (lead === 'travel')     return this._tokenizeTravelStmt(words, lineNum);
     if (lead === 'map')        return [new Token('KEYWORD', 'map', lineNum)];
+    if (lead === 'ask')        return this._tokenizeAskStmt(words, lineNum);
     if (lead === 'serve')      return this._tokenizeServeStmt(words, lineNum);
     if (lead === 'reply')      return this._tokenizeReplyStmt(words, lineNum);
     if (lead === 'route') {
@@ -2327,6 +2328,21 @@ class EventMathTokenizer {
     }
     return [new Token('DRAW_STMT',
       { sql: m[1], from: m[2].trim(), into: m[3].trim() }, lineNum)];
+  }
+
+  // ask "prompt" [with DATA] into RESULT — send a prompt to an AI model
+  _tokenizeAskStmt(words, lineNum) {
+    const line = words.join(' ');
+    let m = line.match(/^ask\s+"([^"]*)"\s+with\s+(.+?)\s+into\s+(.+?)\s*$/);
+    if (m) {
+      return [new Token('ASK_STMT', { prompt: m[1], data: m[2].trim(), into: m[3].trim() }, lineNum)];
+    }
+    m = line.match(/^ask\s+"([^"]*)"\s+into\s+(.+?)\s*$/);
+    if (m) {
+      return [new Token('ASK_STMT', { prompt: m[1], data: null, into: m[2].trim() }, lineNum)];
+    }
+    return [new Token('ERROR',
+      { message: 'ask needs: ask "<prompt>" [with <data>] into <result>' }, lineNum)];
   }
 
   // serve port N — open an HTTP server block

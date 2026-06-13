@@ -132,7 +132,9 @@ class EventMathCodeGen {
 
     // Second pass: generate code
     this._hasOverlap = this._detectOverlap(ast.statements);
-    if (this._hasOverlap) {
+    this._hasAsk = this._detectAsk(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk;
+    if (_needsAsync) {
       this._line('(async () => {');
       this.indent++;
     }
@@ -141,10 +143,10 @@ class EventMathCodeGen {
       this._genStatement(stmt);
     }
 
-    if (this._hasOverlap) {
+    if (_needsAsync) {
       this.indent--;
       this._line('})().catch(err => {');
-      this._line('  console.error(\'Broken event:\', err.message);');
+      this._line('  console.error(\'EventMath error:\', err.message);');
       this._line('});');
     }
 
@@ -519,6 +521,7 @@ class EventMathCodeGen {
       case 'ServeStmt':         return this._genServeStmt(stmt);
       case 'ServeRouteStmt':    return this._genServeRouteStmt(stmt);
       case 'ReplyStmt':         return this._genReplyStmt(stmt);
+      case 'AskStmt':           return this._genAskStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -1846,6 +1849,22 @@ class EventMathCodeGen {
     return false;
   }
 
+  _detectAsk(statements) {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (!stmt) continue;
+      if (stmt.type === 'AskStmt') return true;
+      if (stmt.body && this._detectAsk(stmt.body)) return true;
+      if (stmt.otherwise && this._detectAsk(stmt.otherwise)) return true;
+      if (stmt.routes) {
+        for (const r of stmt.routes) {
+          if (r.body && this._detectAsk(r.body)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   _genOverlap(stmt) {
     this._line('// overlap: run these tracks at the same time');
     this._line('await Promise.all([');
@@ -2618,7 +2637,7 @@ class EventMathCodeGen {
       this._line(`Bun.serve({`);
       this.indent++;
       this._line(`port: ${port},`);
-      this._line(`fetch(req) {`);
+      this._line(`async fetch(req) {`);
       this.indent++;
       this._line(`const _method = req.method.toLowerCase();`);
       this._line(`const _path = new URL(req.url, 'http://localhost').pathname;`);
@@ -2631,7 +2650,7 @@ class EventMathCodeGen {
       this.indent--;
       this._line(`});`);
     } else {
-      this._line(`require('node:http').createServer(function(req, res) {`);
+      this._line(`require('node:http').createServer(async function(req, res) {`);
       this.indent++;
       this._line(`var _method = req.method.toLowerCase();`);
       this._line(`var _path = require('node:url').parse(req.url).pathname;`);
@@ -2676,6 +2695,18 @@ class EventMathCodeGen {
       this._line(`res.writeHead(200, {'Content-Type': 'application/json'});`);
       this._line(`res.end(JSON.stringify(${name}));`);
       this._line(`return;`);
+    }
+  }
+
+  _genAskStmt(stmt) {
+    const promptStr = JSON.stringify(stmt.prompt);
+    const dataArg   = stmt.data ? `, ${this._safeName(stmt.data)}` : '';
+    const call      = `await EM.EventMathAsker.ask(${promptStr}${dataArg})`;
+    const result    = this._safeName(stmt.into);
+    if (result === '_') {
+      this._line(`${call};`);
+    } else {
+      this._line(`const ${result} = ${call};`);
     }
   }
 

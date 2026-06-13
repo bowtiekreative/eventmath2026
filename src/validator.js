@@ -68,6 +68,9 @@ class EventMathValidator {
           // `draw "..." from g into RESULT` declares RESULT (the rows).
           if (stmt.into) this.marks.set(stmt.into, true);
           break;
+        case 'AskStmt':
+          if (stmt.into && stmt.into !== '_') this.marks.set(stmt.into, true);
+          break;
         case 'ServeStmt':
           for (const route of (stmt.routes || [])) {
             if (route.body) this._collectDeclarations(route.body);

@@ -2960,6 +2960,38 @@
     return [];
   };
 
+  // ── v2.16 — EventMathAsker (AI ask primitive) ────────────────────
+  // Sends a prompt to any OpenAI-compatible endpoint (default: Ollama on
+  // localhost:11434). Returns a Promise<string> — the model's reply text.
+  // `data` (optional) is serialized to JSON and appended as context.
+  var EventMathAsker = {
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    model: 'llama3',
+    ask: function(prompt, data) {
+      var content = (data !== undefined && data !== null)
+        ? prompt + '\n\nContext:\n' + JSON.stringify(data, null, 2)
+        : prompt;
+      var body = JSON.stringify({
+        model: EventMathAsker.model,
+        messages: [{ role: 'user', content: content }],
+        stream: false,
+      });
+      return fetch(EventMathAsker.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+      })
+      .then(function(r) {
+        if (!r.ok) throw new Error('EventMath ask: HTTP ' + r.status + ' from ' + EventMathAsker.endpoint);
+        return r.json();
+      })
+      .then(function(j) {
+        var c = j && j.choices && j.choices[0];
+        return (c && c.message && c.message.content) ? c.message.content : '';
+      });
+    },
+  };
+
   // ── v2.12 — EventMathRaindrop (form input descriptor) ───────────
 
   function EventMathRaindrop(type, name, props) {
@@ -3047,6 +3079,7 @@
     EventMathRouter:        EventMathRouter,
     EventMathGround:        EventMathGround,
     EventMathGroundDB:      EventMathGroundDB,
+    EventMathAsker:         EventMathAsker,
     EventMathRaindrop:      EventMathRaindrop,
     EventMathSignal:        EventMathSignal,
   };
