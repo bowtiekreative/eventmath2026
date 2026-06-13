@@ -100,6 +100,7 @@ EventMath v0.2 — CLI
 
   em compile [options] <file>    Compile .em → .em.js
     -o, --output <path>           Output path (default: <file>.js)
+    --target <node|bun>           Codegen target (default: node)
     -w, --watch                   Watch for changes (NYI)
     --map                         Emit system map JSON alongside compiled JS
     --map-only                    Emit system map JSON only (skip JS compilation)
@@ -172,12 +173,30 @@ function cmdCompile(file, opts) {
 
   if (opts.mapOnly) return;
 
+  const target = opts.target || 'node';
+  if (target !== 'node' && target !== 'bun') {
+    die(`Unknown target: ${target} (expected 'node' or 'bun')`);
+  }
+
+  // Compute the runtime path relative to the actual output location so the
+  // compiled file runs from anywhere — no hardcoded sibling-directory path.
+  let runtimePath = '../runtime/eventmath-runtime.js';
+  if (output) {
+    const runtimeAbs = path.join(ROOT, 'runtime/eventmath-runtime.js');
+    runtimePath = path.relative(path.dirname(path.resolve(output)), runtimeAbs);
+    if (!runtimePath.startsWith('.')) runtimePath = './' + runtimePath;
+  }
+
   const codegen = new EventMathCodeGen();
-  const js = codegen.generate(ast);
+  const js = codegen.generate(ast, { target, runtimePath });
 
   if (output) {
     fs.writeFileSync(path.resolve(output), js, 'utf-8');
-    console.log(`✅ Wrote ${output} (${js.split('\n').length} lines)`);
+    if (target === 'bun') {
+      try { fs.chmodSync(path.resolve(output), 0o755); } catch (e) { /* best effort */ }
+    }
+    const how = target === 'bun' ? `bun ${output}` : `node ${output}`;
+    console.log(`✅ Wrote ${output} (${js.split('\n').length} lines, target: ${target}) — run: ${how}`);
   } else {
     process.stdout.write(js);
   }
@@ -403,6 +422,8 @@ function main() {
       opts.verbose = true;
     } else if (a === '-w' || a === '--watch') {
       opts.watch = true;
+    } else if (a === '--target') {
+      opts.target = rest[++i];
     } else if (a === '--no-runtime') {
       opts.noRuntime = true;
     } else if (a === '--map') {
