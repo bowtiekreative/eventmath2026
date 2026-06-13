@@ -117,7 +117,7 @@ console.log('══════════════════════�
     },
     {
       label: 'E005 — matter line needs is or from',
-      msg: 'After "title" I was expecting "is" or "from"',
+      msg: 'After "title" I expected "is" (literal) or "from" (reference), not "nothing".',
       expectedClassify: 'E005',
     },
     {

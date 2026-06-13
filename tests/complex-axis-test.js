@@ -102,7 +102,7 @@ end
 spin source thing into neg torus at dimension -7
 `);
   assert(js.includes('-7'), `missing negative dimension -7:\n${js}`);
-  assert(js.includes('spinFrom'), 'missing spinFrom call');
+  assert(js.includes('setDepth'), 'missing spinFrom call');
 });
 
 test('BoundStmt compiles to EventMathAxis', () => {
@@ -130,11 +130,11 @@ bound neg torus and pos torus into the axis
 console.log('\nRuntime — negative dimensions + axis');
 
 test('negative dimension torus has inverted nucleus', () => {
-  const posT = new EM.EventMathTorus('pos');
-  posT.spinFrom(null, 2);
+  const posT = new EM.EventMathAnchor('pos');
+  posT.setDepth(2);
   posT.expand(1);  // ring 1: totalOuter=4, +nucleus=5 → Fibonacci ✓
-  const negT = new EM.EventMathTorus('neg');
-  negT.spinFrom(null, -2);
+  const negT = new EM.EventMathAnchor('neg');
+  negT.setDepth(-2);
   negT.expand(1);  // same count, but nucleus should be ABSENT (inverted)
   assert(posT.nucleusPresent() === true,  'positive D2 ring 1: nucleus should be present (5 is Fib)');
   assert(negT.nucleusPresent() === false, 'negative D2 ring 1: nucleus should be absent (inverted)');
@@ -143,11 +143,11 @@ test('negative dimension torus has inverted nucleus', () => {
 test('positive and negative toruses are complementary', () => {
   // Across rings, exactly one of them has nucleus present at each point
   for (let rings = 1; rings <= 8; rings++) {
-    const p = new EM.EventMathTorus('p');
-    p.spinFrom(null, 3);
+    const p = new EM.EventMathAnchor('p');
+    p.setDepth(3);
     p.expand(rings);
-    const n = new EM.EventMathTorus('n');
-    n.spinFrom(null, -3);
+    const n = new EM.EventMathAnchor('n');
+    n.setDepth(-3);
     n.expand(rings);
     assert(p.nucleusPresent() !== n.nucleusPresent(),
       `Ring ${rings}: pos=${p.nucleusPresent()} neg=${n.nucleusPresent()} — should be complementary`);
@@ -155,10 +155,10 @@ test('positive and negative toruses are complementary', () => {
 });
 
 test('EventMathAxis creates the 6-layer complex structure', () => {
-  const neg = new EM.EventMathTorus('negative thirteen');
-  neg.spinFrom(null, -13);
-  const pos = new EM.EventMathTorus('positive thirteen');
-  pos.spinFrom(null, 13);
+  const neg = new EM.EventMathAnchor('negative thirteen');
+  neg.setDepth(-13);
+  const pos = new EM.EventMathAnchor('positive thirteen');
+  pos.setDepth(13);
   const axis = new EM.EventMathAxis('dimensional axis', neg, pos);
   assert(axis.bridge,     'missing bridge (i)');
   assert(axis.antiBridge, 'missing anti-bridge (-i)');
@@ -169,20 +169,20 @@ test('EventMathAxis creates the 6-layer complex structure', () => {
 });
 
 test('axis bridge has higher zoom level than both toruses', () => {
-  const neg = new EM.EventMathTorus('neg');
-  neg.spinFrom(null, -5);
-  const pos = new EM.EventMathTorus('pos');
-  pos.spinFrom(null, 5);
+  const neg = new EM.EventMathAnchor('neg');
+  neg.setDepth(-5);
+  const pos = new EM.EventMathAnchor('pos');
+  pos.setDepth(5);
   const axis = new EM.EventMathAxis('ax', neg, pos);
-  assert(axis.bridge.zoomLevel > neg.zoomLevel, 'bridge zoom should exceed torus zoom');
+  assert(axis.bridge.zoomLevel > Math.abs(neg.dimension), 'bridge zoom should exceed anchor depth');
   assert(axis.grandAxis.zoomLevel > axis.metaAxis.zoomLevel, 'grand > meta zoom');
 });
 
 test('axis render contains present line and Riemann reference', () => {
-  const neg = new EM.EventMathTorus('neg');
-  neg.spinFrom(null, -13);
-  const pos = new EM.EventMathTorus('pos');
-  pos.spinFrom(null, 13);
+  const neg = new EM.EventMathAnchor('neg');
+  neg.setDepth(-13);
+  const pos = new EM.EventMathAnchor('pos');
+  pos.setDepth(13);
   const axis = new EM.EventMathAxis('main axis', neg, pos);
   const rendered = axis.render();
   assert(rendered.includes('Present line: 0'), `missing present line: ${rendered}`);
@@ -191,8 +191,8 @@ test('axis render contains present line and Riemann reference', () => {
 });
 
 test('negative torus render shows clockwise direction', () => {
-  const t = new EM.EventMathTorus('neg');
-  t.spinFrom(null, -7);
+  const t = new EM.EventMathAnchor('neg');
+  t.setDepth(-7);
   t.expand(3);
   const r = t.render();
   assert(r.includes('clockwise') || r.includes('↺'), `missing clockwise indicator: ${r}`);

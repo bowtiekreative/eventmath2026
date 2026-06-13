@@ -1,6 +1,6 @@
 /**
  * EventMath v2.4 — Dimensional Scoring Tests
- * Tests: EventMathDimensionalReport, tokenizer, parser, codegen, end-to-end
+ * Tests: EventMathGrade, tokenizer, parser, codegen, end-to-end
  */
 
 'use strict';
@@ -26,19 +26,19 @@ function makeChain(name, links) {
 }
 
 function makeFractal3Tier(name) {
-  const neg = new EM.EventMathTorus(name + '_neg');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus(name + '_pos');
-  pos.spinFrom(null, 39);
-  return new EM.EventMathFractalAxis(name, neg, pos);
+  const neg = new EM.EventMathAnchor(name + '_neg');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor(name + '_pos');
+  pos.setDepth(39);
+  return new EM.EventMathSpine(name, neg, pos);
 }
 
 function makeFractal2Tier(name) {
-  const neg = new EM.EventMathTorus(name + '_neg');
-  neg.spinFrom(null, -13);
-  const pos = new EM.EventMathTorus(name + '_pos');
-  pos.spinFrom(null, 13);
-  return new EM.EventMathFractalAxis(name, neg, pos);
+  const neg = new EM.EventMathAnchor(name + '_neg');
+  neg.setDepth(-13);
+  const pos = new EM.EventMathAnchor(name + '_pos');
+  pos.setDepth(13);
+  return new EM.EventMathSpine(name, neg, pos);
 }
 
 function makeDesire(name, sw, dir) {
@@ -72,16 +72,16 @@ function runCode(src) {
 console.log('\nEventMath v2.4 — Dimensional Scoring Tests\n');
 
 // ── Runtime: constructor ─────────────────────────────────────────────
-console.log('─ Runtime: EventMathDimensionalReport ─');
+console.log('─ Runtime: EventMathGrade ─');
 
 test('constructor creates object with name', () => {
-  const d = new EM.EventMathDimensionalReport('test report', [], null, null, []);
+  const d = new EM.EventMathGrade('test report', [], null, null, []);
   assert.strictEqual(d.name, 'test report');
 });
 
 test('desires array stored correctly', () => {
   const desire = makeDesire('fair payment', 'payment more than 500');
-  const d = new EM.EventMathDimensionalReport('r', [desire], null, null, []);
+  const d = new EM.EventMathGrade('r', [desire], null, null, []);
   assert.strictEqual(d.desires.length, 1);
   assert.strictEqual(d.desires[0].name, 'fair payment');
 });
@@ -95,13 +95,13 @@ test('tier1Score matches direct SatisfactionEngine score', () => {
   const assumption = new EM.EventMathAssumption('market rate', '500');
   const desire = makeDesire('fair payment', 'payment more than market rate', 'more than');
   const engine = new EM.EventMathSatisfactionEngine('direct', [desire], chain, [assumption]);
-  const report = new EM.EventMathDimensionalReport('r', [desire], chain, null, [assumption]);
+  const report = new EM.EventMathGrade('r', [desire], chain, null, [assumption]);
   assert.strictEqual(report.tier1Score, engine.score);
 });
 
 test('tier1Engine is an EventMathSatisfactionEngine', () => {
   const chain = makeChain('c', [['a', 'b', 100]]);
-  const report = new EM.EventMathDimensionalReport('r', [], chain, null, []);
+  const report = new EM.EventMathGrade('r', [], chain, null, []);
   assert.ok(report.tier1Engine instanceof EM.EventMathSatisfactionEngine);
 });
 
@@ -111,7 +111,7 @@ console.log('\n─ Runtime: Tier 2 system confidence ─');
 test('tier2Score equals tier1Score when no fallacies and no fractal', () => {
   const chain = makeChain('short', [['a', 'b', 1]]);
   const desire = makeDesire('d', 'b more than 0', 'more than');
-  const report = new EM.EventMathDimensionalReport('r', [desire], chain, null, []);
+  const report = new EM.EventMathGrade('r', [desire], chain, null, []);
   // slippery slope fires on chains > 4 links, short chain → no fallacy → confidence = 1
   assert.strictEqual(report.systemConfidence, 1.0);
   assert.strictEqual(report.tier2Score, report.tier1Score);
@@ -122,7 +122,7 @@ test('slippery slope on long chain reduces system confidence by 0.75', () => {
     ['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'e'], ['e', 'f']
   ]);
   const desire = makeDesire('d', 'payment more than 100');
-  const report = new EM.EventMathDimensionalReport('r', [desire], chain, null, []);
+  const report = new EM.EventMathGrade('r', [desire], chain, null, []);
   assert.ok(report.systemAdjustments.some(a => a.includes('slippery slope')));
   assert.ok(report.systemConfidence <= 0.75);
 });
@@ -131,7 +131,7 @@ test('systemAdjustments array populated when fallacies detected', () => {
   const chain = makeChain('long', [
     ['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'e'], ['e', 'f']
   ]);
-  const report = new EM.EventMathDimensionalReport('r', [], chain, null, []);
+  const report = new EM.EventMathGrade('r', [], chain, null, []);
   assert.ok(Array.isArray(report.systemAdjustments));
   assert.ok(report.systemAdjustments.length > 0);
 });
@@ -139,10 +139,10 @@ test('systemAdjustments array populated when fallacies detected', () => {
 test('present line offset reduces system confidence by 0.9', () => {
   const chain = makeChain('c', [['a', 'b']]);
   // Build a fractal with asymmetric toruses (non-zero present line)
-  const neg = new EM.EventMathTorus('n'); neg.spinFrom(null, -13);
-  const pos = new EM.EventMathTorus('p'); pos.spinFrom(null, 26);
-  const fractal = new EM.EventMathFractalAxis('f', neg, pos);
-  const report = new EM.EventMathDimensionalReport('r', [], chain, fractal, []);
+  const neg = new EM.EventMathAnchor('n'); neg.setDepth(-13);
+  const pos = new EM.EventMathAnchor('p'); pos.setDepth(26);
+  const fractal = new EM.EventMathSpine('f', neg, pos);
+  const report = new EM.EventMathGrade('r', [], chain, fractal, []);
   if (fractal.presentLine !== 0) {
     assert.ok(report.systemAdjustments.some(a => a.includes('present line offset')));
   } else {
@@ -156,27 +156,27 @@ console.log('\n─ Runtime: Tier 3 root confidence ─');
 test('3-tier fractal with D39 positive torus → rootConfidence × 1.2', () => {
   const fractal = makeFractal3Tier('vision axis');
   const chain = makeChain('c', [['a', 'b', 100]]);
-  const report = new EM.EventMathDimensionalReport('r', [], chain, fractal, []);
+  const report = new EM.EventMathGrade('r', [], chain, fractal, []);
   assert.ok(report.rootAdjustments.some(a => a.includes('×1.20')));
   assert.ok(report.rootConfidence > 1.0 || report.rootAdjustments.some(a => a.includes('×0.60')));
 });
 
 test('3-tier fractal with D39 negative torus → rootAdjustments includes ×0.60', () => {
   const fractal = makeFractal3Tier('noise axis');
-  const report = new EM.EventMathDimensionalReport('r', [], null, fractal, []);
+  const report = new EM.EventMathGrade('r', [], null, fractal, []);
   assert.ok(report.rootAdjustments.some(a => a.includes('×0.60') || a.includes('×1.20') || a.includes('balanced')));
 });
 
 test('2-tier fractal → rootConfidence × 0.9', () => {
   const fractal = makeFractal2Tier('foundation');
-  const report = new EM.EventMathDimensionalReport('r', [], null, fractal, []);
+  const report = new EM.EventMathGrade('r', [], null, fractal, []);
   assert.ok(report.rootAdjustments.some(a => a.includes('×0.90')));
   // Only applies if tier3 doesn't exist (2-tier fractal)
   assert.ok(!fractal.tier3);
 });
 
 test('no fractal provided → rootConfidence × 0.8', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(report.rootAdjustments.some(a => a.includes('×0.80')));
 });
 
@@ -184,12 +184,12 @@ test('tier3Score never exceeds 100', () => {
   const fractal = makeFractal3Tier('axis');
   const chain   = makeChain('c', [['a', 'b', 9999]]);
   const desire  = makeDesire('d', 'b more than 1', 'more than');
-  const report  = new EM.EventMathDimensionalReport('r', [desire], chain, fractal, []);
+  const report  = new EM.EventMathGrade('r', [desire], chain, fractal, []);
   assert.ok(report.tier3Score <= 100);
 });
 
 test('tier3Score never below 0', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(report.tier3Score >= 0);
 });
 
@@ -199,7 +199,7 @@ console.log('\n─ Runtime: Gradient analysis ─');
 test('gradient BLOCKED when tier1 = 0', () => {
   const chain = makeChain('c', [['a', 'b']]);
   const desire = makeDesire('d', 'payment more than 500'); // no payment in chain
-  const report = new EM.EventMathDimensionalReport('r', [desire], chain, null, []);
+  const report = new EM.EventMathGrade('r', [desire], chain, null, []);
   if (report.tier1Score === 0) {
     assert.strictEqual(report.gradient, 'BLOCKED');
   } else {
@@ -208,14 +208,14 @@ test('gradient BLOCKED when tier1 = 0', () => {
 });
 
 test('correctionPath is a non-empty string', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(typeof report.correctionPath === 'string' && report.correctionPath.length > 0);
 });
 
 test('gradient is one of the expected values', () => {
   const gradients = ['ALIGNED', 'BLOCKED', 'SHARP DECLINE', 'SURFACE VIABLE',
                      'ROOT STRONGER THAN SURFACE', 'ROOT MISALIGNED'];
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(gradients.includes(report.gradient));
 });
 
@@ -223,22 +223,22 @@ test('gradient is one of the expected values', () => {
 console.log('\n─ Runtime: render() ─');
 
 test('render includes "TIER 1"', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(report.render().includes('TIER 1'));
 });
 
 test('render includes "TIER 2"', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(report.render().includes('TIER 2'));
 });
 
 test('render includes "TIER 3"', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(report.render().includes('TIER 3'));
 });
 
 test('render includes gradient label', () => {
-  const report = new EM.EventMathDimensionalReport('r', [], null, null, []);
+  const report = new EM.EventMathGrade('r', [], null, null, []);
   assert.ok(report.render().includes('GRADIENT:'));
   assert.ok(report.render().includes(report.gradient));
 });
@@ -246,7 +246,7 @@ test('render includes gradient label', () => {
 test('render includes desire names', () => {
   const d1 = makeDesire('fair payment', 'payment more than 500');
   const d2 = makeDesire('audience reach', 'reach more than 10000');
-  const report = new EM.EventMathDimensionalReport('r', [d1, d2], null, null, []);
+  const report = new EM.EventMathGrade('r', [d1, d2], null, null, []);
   const out = report.render();
   assert.ok(out.includes('fair payment'));
   assert.ok(out.includes('audience reach'));
@@ -254,20 +254,20 @@ test('render includes desire names', () => {
 
 test('render includes chain name', () => {
   const chain  = makeChain('leverage chain', [['a', 'b']]);
-  const report = new EM.EventMathDimensionalReport('r', [], chain, null, []);
+  const report = new EM.EventMathGrade('r', [], chain, null, []);
   assert.ok(report.render().includes('leverage chain'));
 });
 
 test('render includes fractal name', () => {
   const fractal = makeFractal2Tier('vision axis');
-  const report  = new EM.EventMathDimensionalReport('r', [], null, fractal, []);
+  const report  = new EM.EventMathGrade('r', [], null, fractal, []);
   assert.ok(report.render().includes('vision axis'));
 });
 
 test('desires joined with " | " in render header', () => {
   const d1 = makeDesire('payment', 'payment more than 500');
   const d2 = makeDesire('reach', 'reach more than 1000');
-  const report = new EM.EventMathDimensionalReport('r', [d1, d2], null, null, []);
+  const report = new EM.EventMathGrade('r', [d1, d2], null, null, []);
   assert.ok(report.render().includes('payment | reach'));
 });
 
@@ -380,11 +380,11 @@ test('DimensionalStmt has correct intoName', () => {
 // ── Codegen ──────────────────────────────────────────────────────────
 console.log('\n─ Codegen ─');
 
-test('codegen emits EventMathDimensionalReport constructor', () => {
+test('codegen emits EventMathGrade constructor', () => {
   const js = compile(
     'evaluate payment against my chain across fractal my axis into report result'
   );
-  assert.ok(js.includes('EventMathDimensionalReport'), 'constructor expected in output');
+  assert.ok(js.includes('EventMathGrade'), 'constructor expected in output');
 });
 
 test('codegen passes __assumptions as 5th arg', () => {

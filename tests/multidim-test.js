@@ -96,16 +96,16 @@ test('getShapeName returns correct polygon names', () => {
 console.log('\nRuntime — multi-dimensional torus');
 
 test('D2 torus has 4 pts/ring and Fibonacci at ring 1 (total=5)', () => {
-  const t = new EM.EventMathTorus('t');
-  t.spinFrom(null, 2);
+  const t = new EM.EventMathAnchor('t');
+  t.setDepth(2);
   t.expand(1);
   assert(t.rings[0].count === 4, 'D2 should have 4 pts/ring');
   assert(t.rings[0].fibonacci === true, 'Ring 1 total 5 should be Fibonacci');
 });
 
 test('D3 torus has 3 pts/ring and tribonacci at ring 1 (total=4)', () => {
-  const t = new EM.EventMathTorus('t');
-  t.spinFrom(null, 3);
+  const t = new EM.EventMathAnchor('t');
+  t.setDepth(3);
   t.expand(1);
   assert(t.rings[0].count === 3, 'D3 should have 3 pts/ring');
   // D3 tribonacci: 1,1,1,3,5... — 4 is not in sequence, but 3 is
@@ -122,16 +122,16 @@ test('D3 torus has 3 pts/ring and tribonacci at ring 1 (total=4)', () => {
 });
 
 test('D5 torus has 5 pts/ring', () => {
-  const t = new EM.EventMathTorus('t');
-  t.spinFrom(null, 5);
+  const t = new EM.EventMathAnchor('t');
+  t.setDepth(5);
   t.expand(3);
   assert(t.rings[0].count === 5, 'D5 should have 5 pts/ring');
   assert(t.totalOuter === 15, 'after 3 rings: 3×5=15');
 });
 
 test('D13 torus has 13 pts/ring', () => {
-  const t = new EM.EventMathTorus('t');
-  t.spinFrom(null, 13);
+  const t = new EM.EventMathAnchor('t');
+  t.setDepth(13);
   t.expand(2);
   assert(t.rings[0].count === 13, 'D13 should have 13 pts/ring');
   assert(t.totalOuter === 26, 'after 2 rings: 2×13=26');
@@ -139,8 +139,8 @@ test('D13 torus has 13 pts/ring', () => {
 });
 
 test('D5 rotation step is 18 degrees per ring', () => {
-  const t = new EM.EventMathTorus('t');
-  t.spinFrom(null, 5);
+  const t = new EM.EventMathAnchor('t');
+  t.setDepth(5);
   t.expand(2);
   assert(t.rings[0].rotation === 0,  'ring 1 rotation should be 0°');
   assert(t.rings[1].rotation === 18, 'ring 2 rotation should be 18°');
@@ -151,8 +151,8 @@ test('D5 rotation step is 18 degrees per ring', () => {
 console.log('\nRuntime — EventMathLandscape');
 
 test('landscape auto-creates bridges between toruses', () => {
-  const t1 = new EM.EventMathTorus('alpha'); t1.spinFrom(null, 2); t1.expand(3);
-  const t2 = new EM.EventMathTorus('beta');  t2.spinFrom(null, 5); t2.expand(3);
+  const t1 = new EM.EventMathAnchor('alpha'); t1.setDepth(2); t1.expand(3);
+  const t2 = new EM.EventMathAnchor('beta');  t2.setDepth(5); t2.expand(3);
   const L = new EM.EventMathLandscape('test');
   L.addTorus(t1); L.addTorus(t2);
   assert(L.bridges.length === 1, 'should have 1 bridge');
@@ -160,16 +160,16 @@ test('landscape auto-creates bridges between toruses', () => {
 });
 
 test('landscape bridge dimension caps at 13', () => {
-  const t1 = new EM.EventMathTorus('a'); t1.spinFrom(null, 13);
-  const t2 = new EM.EventMathTorus('b'); t2.spinFrom(null, 13);
+  const t1 = new EM.EventMathAnchor('a'); t1.setDepth(13);
+  const t2 = new EM.EventMathAnchor('b'); t2.setDepth(13);
   const L = new EM.EventMathLandscape('test');
   L.addTorus(t1); L.addTorus(t2);
   assert(L.bridges[0].dimension === 13, 'bridge should cap at 13');
 });
 
 test('forecast returns the torus with soonest Fibonacci switch', () => {
-  const t1 = new EM.EventMathTorus('a'); t1.spinFrom(null, 2); t1.expand(8); // 32 outer → next switch +1
-  const t2 = new EM.EventMathTorus('b'); t2.spinFrom(null, 2); t2.expand(3); // 12 outer → next switch +2
+  const t1 = new EM.EventMathAnchor('a'); t1.setDepth(2); t1.expand(8); // 32 outer → next switch +1
+  const t2 = new EM.EventMathAnchor('b'); t2.setDepth(2); t2.expand(3); // 12 outer → next switch +2
   const L = new EM.EventMathLandscape('test');
   L.addTorus(t1); L.addTorus(t2);
   const fc = L.forecast();
@@ -178,11 +178,11 @@ test('forecast returns the torus with soonest Fibonacci switch', () => {
 });
 
 test('forecast detects cross-dimensional resonance', () => {
-  const t1 = new EM.EventMathTorus('a'); t1.spinFrom(null, 2); t1.expand(8); // next +1
-  const t2 = new EM.EventMathTorus('b'); t2.spinFrom(null, 3); // D3, needs more rings
+  const t1 = new EM.EventMathAnchor('a'); t1.setDepth(2); t1.expand(8); // next +1
+  const t2 = new EM.EventMathAnchor('b'); t2.setDepth(3); // D3, needs more rings
   t2.expand(4); // 12 outer, need next D3 fib after 13... 17 → need 1 more ring? 12+3=15, +nucleus=16. not 17. need 2 more
   // Let me use another torus that also hits in 1 ring
-  const t3 = new EM.EventMathTorus('c'); t3.spinFrom(null, 2); t3.expand(2); // 8 outer → next fib 13 → need 2 rings? no (8+4=12,13 ✓). so 1 ring away!
+  const t3 = new EM.EventMathAnchor('c'); t3.setDepth(2); t3.expand(2); // 8 outer → next fib 13 → need 2 rings? no (8+4=12,13 ✓). so 1 ring away!
   const L = new EM.EventMathLandscape('test');
   L.addTorus(t1); L.addTorus(t3);
   const fc = L.forecast();
@@ -190,9 +190,9 @@ test('forecast detects cross-dimensional resonance', () => {
 });
 
 test('dimensional signature sums all torus dimensions', () => {
-  const t1 = new EM.EventMathTorus('a'); t1.spinFrom(null, 3);
-  const t2 = new EM.EventMathTorus('b'); t2.spinFrom(null, 7);
-  const t3 = new EM.EventMathTorus('c'); t3.spinFrom(null, 3);
+  const t1 = new EM.EventMathAnchor('a'); t1.setDepth(3);
+  const t2 = new EM.EventMathAnchor('b'); t2.setDepth(7);
+  const t3 = new EM.EventMathAnchor('c'); t3.setDepth(3);
   const L = new EM.EventMathLandscape('test');
   L.addTorus(t1); L.addTorus(t2); L.addTorus(t3);
   const fc = L.forecast();
@@ -243,9 +243,9 @@ test('parser creates LandscapeStmt with sources array', () => {
   assert(n.intoName === 'view', `intoName: ${n.intoName}`);
 });
 
-test('codegen emits spinFrom with dimension', () => {
+test('codegen emits setDepth with dimension', () => {
   const js = compile('spin field into my torus at dimension 5');
-  assert(js.includes('spinFrom(field, 5)'), `missing spinFrom with dimension:\n${js}`);
+  assert(js.includes('setDepth(5)'), `missing spinFrom with dimension:\n${js}`);
 });
 
 test('codegen emits landscape addTorus calls', () => {

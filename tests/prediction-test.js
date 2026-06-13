@@ -72,7 +72,7 @@ layer test directions
   dir a
 end
 
-event lens a
+event view a
 category test
 matter
   name is who
@@ -80,7 +80,7 @@ end
 end
 
 layer test lenses
-  lens a
+  view a
 end
 
 event qty a
@@ -132,7 +132,7 @@ layer test directions
   dir b
 end
 
-event lens a
+event view a
 category test
 matter
   name is who
@@ -140,7 +140,7 @@ end
 end
 
 layer test lenses
-  lens a
+  view a
 end
 
 event qty a
@@ -229,7 +229,7 @@ layer test directions
   dir b
 end
 
-event lens a
+event view a
 category test
 matter
   name is who
@@ -237,7 +237,7 @@ end
 end
 
 layer test lenses
-  lens a
+  view a
 end
 
 event qty a

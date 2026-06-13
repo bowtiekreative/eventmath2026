@@ -38,8 +38,8 @@ function run(src) {
 console.log('\nRuntime — extended dimensions D14–D26');
 
 test('D14 torus spins and renders tetradecagon', () => {
-  const t = new EM.EventMathTorus('t14');
-  t.spinFrom(null, 14);
+  const t = new EM.EventMathAnchor('t14');
+  t.setDepth(14);
   t.expand(3);
   const r = t.render();
   assert(r.includes('D14'), `missing D14: ${r}`);
@@ -47,8 +47,8 @@ test('D14 torus spins and renders tetradecagon', () => {
 });
 
 test('D26 torus spins and renders icosihexagon', () => {
-  const t = new EM.EventMathTorus('t26');
-  t.spinFrom(null, 26);
+  const t = new EM.EventMathAnchor('t26');
+  t.setDepth(26);
   t.expand(2);
   const r = t.render();
   assert(r.includes('D26'), `missing D26: ${r}`);
@@ -56,21 +56,21 @@ test('D26 torus spins and renders icosihexagon', () => {
 });
 
 test('negative D26 torus has inverted nucleus', () => {
-  const pos = new EM.EventMathTorus('p26');
-  pos.spinFrom(null,  26);
+  const pos = new EM.EventMathAnchor('p26');
+  pos.setDepth( 26);
   pos.expand(3);
-  const neg = new EM.EventMathTorus('n26');
-  neg.spinFrom(null, -26);
+  const neg = new EM.EventMathAnchor('n26');
+  neg.setDepth(-26);
   neg.expand(3);
   assert(pos.nucleusPresent() !== neg.nucleusPresent(),
     'D±26 should be complementary at same ring count');
 });
 
 test('D26 axis bridge is at D27', () => {
-  const neg = new EM.EventMathTorus('neg26');
-  neg.spinFrom(null, -26);
-  const pos = new EM.EventMathTorus('pos26');
-  pos.spinFrom(null,  26);
+  const neg = new EM.EventMathAnchor('neg26');
+  neg.setDepth(-26);
+  const pos = new EM.EventMathAnchor('pos26');
+  pos.setDepth( 26);
   const axis = new EM.EventMathAxis('ax26', neg, pos);
   assert(axis.bridge.zoomLevel === 27,
     `expected bridge at D27, got D${axis.bridge.zoomLevel}`);
@@ -80,23 +80,23 @@ test('D26 axis bridge is at D27', () => {
 
 console.log('\nRuntime — fractal axis (D±26, 2-tier)');
 
-test('EventMathFractalAxis creates two tiers', () => {
-  const neg = new EM.EventMathTorus('n26');
-  neg.spinFrom(null, -26);
-  const pos = new EM.EventMathTorus('p26');
-  pos.spinFrom(null,  26);
-  const fa = new EM.EventMathFractalAxis('test fractal', neg, pos);
+test('EventMathSpine creates two tiers', () => {
+  const neg = new EM.EventMathAnchor('n26');
+  neg.setDepth(-26);
+  const pos = new EM.EventMathAnchor('p26');
+  pos.setDepth( 26);
+  const fa = new EM.EventMathSpine('test fractal', neg, pos);
   assert(fa.tier1, 'missing tier1');
   assert(fa.tier2, 'missing tier2');
   assert(fa.fractalDepth === 2, `expected depth 2, got ${fa.fractalDepth}`);
 });
 
 test('fractal tier1 is D±13, tier2 is D±26', () => {
-  const neg = new EM.EventMathTorus('n26');
-  neg.spinFrom(null, -26);
-  const pos = new EM.EventMathTorus('p26');
-  pos.spinFrom(null,  26);
-  const fa = new EM.EventMathFractalAxis('fa', neg, pos);
+  const neg = new EM.EventMathAnchor('n26');
+  neg.setDepth(-26);
+  const pos = new EM.EventMathAnchor('p26');
+  pos.setDepth( 26);
+  const fa = new EM.EventMathSpine('fa', neg, pos);
   assert(Math.abs(fa.tier1.dimension) === 13,
     `tier1 should be D13, got D${fa.tier1.dimension}`);
   assert(Math.abs(fa.tier2.dimension) === 26,
@@ -104,11 +104,11 @@ test('fractal tier1 is D±13, tier2 is D±26', () => {
 });
 
 test('fractal render includes signature and tier headings', () => {
-  const neg = new EM.EventMathTorus('n26');
-  neg.spinFrom(null, -26);
-  const pos = new EM.EventMathTorus('p26');
-  pos.spinFrom(null,  26);
-  const fa = new EM.EventMathFractalAxis('signal fractal', neg, pos);
+  const neg = new EM.EventMathAnchor('n26');
+  neg.setDepth(-26);
+  const pos = new EM.EventMathAnchor('p26');
+  pos.setDepth( 26);
+  const fa = new EM.EventMathSpine('signal fractal', neg, pos);
   const r = fa.render();
   assert(r.includes('TIER 1'), `missing TIER 1: ${r.slice(0,200)}`);
   assert(r.includes('TIER 2'), `missing TIER 2: ${r.slice(0,200)}`);
@@ -443,7 +443,7 @@ spin pos source into pos torus at dimension 26
 fractal neg torus and pos torus into grand fractal
 show grand fractal
 `);
-  assert(js.includes('EventMathFractalAxis'), `missing EventMathFractalAxis: ${js.slice(0,300)}`);
+  assert(js.includes('EventMathSpine'), `missing EventMathSpine: ${js.slice(0,300)}`);
 });
 
 // ── v2.1: Extended dimensions D27–D39 ───────────────────────────────────────
@@ -451,8 +451,8 @@ show grand fractal
 console.log('\nRuntime — extended dimensions D27–D39 (tier 3 shapes)');
 
 test('D27 torus spins and renders icosiheptagon', () => {
-  const t = new EM.EventMathTorus('t27');
-  t.spinFrom(null, 27);
+  const t = new EM.EventMathAnchor('t27');
+  t.setDepth(27);
   t.expand(2);
   const r = t.render();
   assert(r.includes('D27'), `missing D27: ${r}`);
@@ -460,8 +460,8 @@ test('D27 torus spins and renders icosiheptagon', () => {
 });
 
 test('D30 torus renders triacontagon', () => {
-  const t = new EM.EventMathTorus('t30');
-  t.spinFrom(null, 30);
+  const t = new EM.EventMathAnchor('t30');
+  t.setDepth(30);
   t.expand(2);
   const r = t.render();
   assert(r.includes('D30'), `missing D30: ${r}`);
@@ -469,8 +469,8 @@ test('D30 torus renders triacontagon', () => {
 });
 
 test('D39 torus spins and renders triacontaenneagon', () => {
-  const t = new EM.EventMathTorus('t39');
-  t.spinFrom(null, 39);
+  const t = new EM.EventMathAnchor('t39');
+  t.setDepth(39);
   t.expand(2);
   const r = t.render();
   assert(r.includes('D39'), `missing D39: ${r}`);
@@ -478,42 +478,42 @@ test('D39 torus spins and renders triacontaenneagon', () => {
 });
 
 test('negative D39 torus has inverted nucleus', () => {
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
   pos.expand(3);
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
   neg.expand(3);
   assert(pos.nucleusPresent() !== neg.nucleusPresent(),
     'D±39 should be complementary at same ring count');
 });
 
 test('D39 axis bridge is at D40', () => {
-  const neg = new EM.EventMathTorus('neg39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('pos39');
-  pos.spinFrom(null,  39);
+  const neg = new EM.EventMathAnchor('neg39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('pos39');
+  pos.setDepth( 39);
   const axis = new EM.EventMathAxis('ax39', neg, pos);
   assert(axis.bridge.zoomLevel === 40,
     `expected bridge at D40, got D${axis.bridge.zoomLevel}`);
 });
 
-test('spinFrom clamps above 39 back to 39', () => {
-  const t = new EM.EventMathTorus('t99');
-  t.spinFrom(null, 99);
-  assert(t.dimension === 39, `expected dimension 39, got ${t.dimension}`);
+test('setDepth above 39 stays unlimited (no cap)', () => {
+  const t = new EM.EventMathAnchor('t99');
+  t.setDepth(99);
+  assert(t.dimension === 99, `expected unlimited dimension 99, got ${t.dimension}`);
 });
 
 // ── v2.1: Fractal Axis tier 3 (D±39) ────────────────────────────────────────
 
 console.log('\nRuntime — fractal axis tier 3 (D±39)');
 
-test('EventMathFractalAxis creates 3 tiers for D±39 input', () => {
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
-  const fa = new EM.EventMathFractalAxis('fractal39', neg, pos);
+test('EventMathSpine creates 3 tiers for D±39 input', () => {
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
+  const fa = new EM.EventMathSpine('fractal39', neg, pos);
   assert(fa.tier1, 'missing tier1');
   assert(fa.tier2, 'missing tier2');
   assert(fa.tier3, 'missing tier3');
@@ -521,11 +521,11 @@ test('EventMathFractalAxis creates 3 tiers for D±39 input', () => {
 });
 
 test('tier3 fractal: tier1=D±13, tier2=D±26, tier3=D±39', () => {
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
-  const fa = new EM.EventMathFractalAxis('fa39', neg, pos);
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
+  const fa = new EM.EventMathSpine('fa39', neg, pos);
   assert(Math.abs(fa.tier1.dimension) === 13,
     `tier1 should be D13, got D${fa.tier1.dimension}`);
   assert(Math.abs(fa.tier2.dimension) === 26,
@@ -535,22 +535,22 @@ test('tier3 fractal: tier1=D±13, tier2=D±26, tier3=D±39', () => {
 });
 
 test('tier3 fractal signature shows D±13 ⊂ D±26 ⊂ D±39', () => {
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
-  const fa = new EM.EventMathFractalAxis('fa39', neg, pos);
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
+  const fa = new EM.EventMathSpine('fa39', neg, pos);
   assert(fa.signature.includes('D±13'), `missing D±13 in signature: ${fa.signature}`);
   assert(fa.signature.includes('D±26'), `missing D±26 in signature: ${fa.signature}`);
   assert(fa.signature.includes('D±39'), `missing D±39 in signature: ${fa.signature}`);
 });
 
 test('tier3 fractal grand axis chain: tier1→tier2→tier3 bridges', () => {
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
-  const fa = new EM.EventMathFractalAxis('fa39', neg, pos);
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
+  const fa = new EM.EventMathSpine('fa39', neg, pos);
   assert(fa.tier2.bridge.fractalFrom === fa.tier1.grandAxis.name,
     `tier2 bridge should fractalFrom tier1 grand axis`);
   assert(fa.tier3.bridge.fractalFrom === fa.tier2.grandAxis.name,
@@ -558,11 +558,11 @@ test('tier3 fractal grand axis chain: tier1→tier2→tier3 bridges', () => {
 });
 
 test('tier3 fractal render includes TIER 1, TIER 2, TIER 3 headings', () => {
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
-  const fa = new EM.EventMathFractalAxis('deep fractal', neg, pos);
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
+  const fa = new EM.EventMathSpine('deep fractal', neg, pos);
   const r = fa.render();
   assert(r.includes('TIER 1'), `missing TIER 1: ${r.slice(0, 200)}`);
   assert(r.includes('TIER 2'), `missing TIER 2: ${r.slice(0, 200)}`);
@@ -572,22 +572,22 @@ test('tier3 fractal render includes TIER 1, TIER 2, TIER 3 headings', () => {
 });
 
 test('D±26 input still creates exactly 2 tiers (backward compat)', () => {
-  const neg = new EM.EventMathTorus('n26');
-  neg.spinFrom(null, -26);
-  const pos = new EM.EventMathTorus('p26');
-  pos.spinFrom(null,  26);
-  const fa = new EM.EventMathFractalAxis('fa26', neg, pos);
+  const neg = new EM.EventMathAnchor('n26');
+  neg.setDepth(-26);
+  const pos = new EM.EventMathAnchor('p26');
+  pos.setDepth( 26);
+  const fa = new EM.EventMathSpine('fa26', neg, pos);
   assert(fa.fractalDepth === 2, `expected depth 2, got ${fa.fractalDepth}`);
   assert(!fa.tier3, 'tier3 should not exist for D±26');
   assert(r => true); // render still includes D±52 as "next pass"
 });
 
 test('tier3 fractal render says D±52 next pass', () => {
-  const neg = new EM.EventMathTorus('n39');
-  neg.spinFrom(null, -39);
-  const pos = new EM.EventMathTorus('p39');
-  pos.spinFrom(null,  39);
-  const fa = new EM.EventMathFractalAxis('fa39', neg, pos);
+  const neg = new EM.EventMathAnchor('n39');
+  neg.setDepth(-39);
+  const pos = new EM.EventMathAnchor('p39');
+  pos.setDepth( 39);
+  const fa = new EM.EventMathSpine('fa39', neg, pos);
   const r = fa.render();
   assert(r.includes('D±52'), `expected D±52 as next pass, not found in: ${r.slice(-200)}`);
 });
@@ -609,7 +609,7 @@ spin deep pos into pos39 at dimension 39
 fractal neg39 and pos39 into tier3 fractal
 show tier3 fractal
 `);
-  assert(js.includes('EventMathFractalAxis'), `missing EventMathFractalAxis: ${js.slice(0,300)}`);
+  assert(js.includes('EventMathSpine'), `missing EventMathSpine: ${js.slice(0,300)}`);
   assert(js.includes('-39'), `missing -39 dimension: ${js.slice(0,300)}`);
   assert(js.includes('39'),  `missing 39 dimension: ${js.slice(0,300)}`);
 });
