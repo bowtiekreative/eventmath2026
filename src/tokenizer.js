@@ -1116,10 +1116,10 @@ class EventMathTokenizer {
       if (opWords[0] === 'not') {
         tokens.push(new Token('KEYWORD', 'not', lineNum));
         tokens.push(new Token('NAME', opWords.slice(1).join(' '), lineNum));
-      } else if (opWords.length >= 2 && opWords[0] === 'greater' && opWords[1] === 'than') {
+      } else if (opWords.length >= 2 && (opWords[0] === 'greater' || opWords[0] === 'more') && opWords[1] === 'than') {
         tokens.push(new Token('KEYWORD', 'greater than', lineNum));
         tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
-      } else if (opWords.length >= 2 && opWords[0] === 'less' && opWords[1] === 'than') {
+      } else if (opWords.length >= 2 && (opWords[0] === 'less' || opWords[0] === 'fewer') && opWords[1] === 'than') {
         tokens.push(new Token('KEYWORD', 'less than', lineNum));
         tokens.push(new Token('NAME', opWords.slice(2).join(' '), lineNum));
       } else if (opWords.length >= 2 && opWords[0] === 'at' && opWords[1] === 'least') {

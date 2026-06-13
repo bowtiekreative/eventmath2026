@@ -654,7 +654,16 @@ class EventMathCodeGen {
     // Door closed — return value
     if (stmt.doorClosed) {
       if (stmt.doorClosed.returns) {
-        this._line(`return ${this._safeName(stmt.doorClosed.returns)};`);
+        const ret = stmt.doorClosed.returns;
+        if ((ret.startsWith('"') && ret.endsWith('"')) || (ret.startsWith("'") && ret.endsWith("'"))) {
+          this._line(`return ${ret};`);
+        } else if (/^-?\d+(\.\d+)?$/.test(ret)) {
+          this._line(`return ${ret};`);
+        } else if (ret === 'true' || ret === 'false' || ret === 'void' || ret === 'null') {
+          this._line(`return ${ret === 'void' ? 'null' : ret};`);
+        } else {
+          this._line(`return ${this._safeName(ret)};`);
+        }
       } else {
         this._line(`return;`);
       }
