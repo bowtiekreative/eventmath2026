@@ -23,6 +23,8 @@ const { EventMathParser } = require(path.join(ROOT, 'src/parser.js'));
 const { EventMathCodeGen } = require(path.join(ROOT, 'src/codegen.js'));
 const { EventMathFormatter } = require(path.join(ROOT, 'src/formatter.js'));
 const { EventMathValidator } = require(path.join(ROOT, 'src/validator.js'));
+const { EventMathSystemMap } = require(path.join(ROOT, 'src/system-map.js'));
+const { EventMathWhy } = require(path.join(ROOT, 'src/why.js'));
 
 function die(msg) {
   console.error(msg);
@@ -99,6 +101,8 @@ EventMath v0.2 — CLI
   em compile [options] <file>    Compile .em → .em.js
     -o, --output <path>           Output path (default: <file>.js)
     -w, --watch                   Watch for changes (NYI)
+    --map                         Emit system map JSON alongside compiled JS
+    --map-only                    Emit system map JSON only (skip JS compilation)
 
   em format <file>               Format .em in place
     -c, --check                   Only check format (exit 1 if not canonical)
@@ -106,6 +110,13 @@ EventMath v0.2 — CLI
 
   em run <file>                  Compile + execute
     --no-runtime                  Skip runtime import (standalone JS)
+
+  em map <file>                  Emit system map (dependency graph) as JSON
+    -o, --output <path>           Output path (default: stdout)
+    --pretty                      Pretty-print JSON
+
+  em why [options] <name> <file> Explain a signal, lens, cloud, or action
+    -r, --report                  Show full annotated report of all nodes
 
   em debug <file>                Launch Mender debugger
 
@@ -138,12 +149,31 @@ function cmdCompile(file, opts) {
     compileDependencies(ast, file, new Set());
   }
 
-  const codegen = new EventMathCodeGen();
-  const js = codegen.generate(ast);
-
   const output = opts.output || (file && file !== '-'
     ? file.replace(/\.em$/, '') + '.em.js'
     : null);
+
+  // ── System map (dependency graph) ──
+  if (opts.map || opts.mapOnly) {
+    const mapper = new EventMathSystemMap();
+    const graph = mapper.build(ast);
+    const mapJson = JSON.stringify(graph, null, 2);
+    const mapOutput = output
+      ? output.replace(/\.em\.js$/, '') + '.system-map.json'
+      : null;
+
+    if (mapOutput) {
+      fs.writeFileSync(path.resolve(mapOutput), mapJson, 'utf-8');
+      console.log(`🗺️  Wrote system map to ${mapOutput} (${graph.nodes.length} nodes, ${graph.edges.length} edges)`);
+    } else {
+      process.stdout.write(mapJson + '\n');
+    }
+  }
+
+  if (opts.mapOnly) return;
+
+  const codegen = new EventMathCodeGen();
+  const js = codegen.generate(ast);
 
   if (output) {
     fs.writeFileSync(path.resolve(output), js, 'utf-8');
@@ -304,6 +334,47 @@ function cmdDebug(file) {
   child.on('exit', (code) => process.exit(code || 0));
 }
 
+// ── map ──────────────────────────────────────────────────
+
+function cmdMap(file, opts) {
+  const src = readFileOrStdin(file);
+  const ast = parseEM(src, file);
+  if (!ast) process.exit(1);
+
+  const mapper = new EventMathSystemMap();
+  const graph = mapper.build(ast);
+  const mapJson = opts.pretty
+    ? JSON.stringify(graph, null, 2)
+    : JSON.stringify(graph);
+
+  if (opts.output) {
+    fs.writeFileSync(path.resolve(opts.output), mapJson, 'utf-8');
+    console.log(`🗺️  Wrote system map to ${opts.output} (${graph.nodes.length} nodes, ${graph.edges.length} edges)`);
+  } else {
+    process.stdout.write(mapJson + '\n');
+  }
+}
+
+// ── why ──────────────────────────────────────────────────
+
+function cmdWhy(name, file, opts) {
+  if (!name) {
+    die('Usage: em why <name> <file>\n  Explain a signal, lens, cloud, or action.');
+  }
+
+  const src = readFileOrStdin(file);
+  const ast = parseEM(src, file);
+  if (!ast) process.exit(1);
+
+  const explainer = new EventMathWhy(ast);
+
+  if (opts.report) {
+    console.log(explainer.fullReport());
+  } else {
+    console.log(explainer.explain(name));
+  }
+}
+
 // ── Main dispatch ────────────────────────────────────────
 
 function main() {
@@ -334,6 +405,14 @@ function main() {
       opts.watch = true;
     } else if (a === '--no-runtime') {
       opts.noRuntime = true;
+    } else if (a === '--map') {
+      opts.map = true;
+    } else if (a === '--map-only') {
+      opts.mapOnly = true;
+    } else if (a === '--pretty') {
+      opts.pretty = true;
+    } else if (a === '-r' || a === '--report') {
+      opts.report = true;
     } else if (a.startsWith('-')) {
       die(`Unknown option: ${a}`);
     } else {
@@ -342,10 +421,12 @@ function main() {
   }
 
   const file = files[0] || '-';
+  const whyName = (command === 'why') ? (files[0] || '') : null;
+  const whyFile = (command === 'why') ? (files[1] || '-') : null;
 
   switch (command) {
     case 'compile':
-      return cmdCompile(file, opts);
+      return cmdCompile(whyName || file, opts); // whyName is empty string for non-why commands
     case 'format':
       return cmdFormat(file, opts);
     case 'run':
@@ -354,6 +435,10 @@ function main() {
       return cmdCheck(file, opts);
     case 'debug':
       return cmdDebug(file);
+    case 'map':
+      return cmdMap(file, opts);
+    case 'why':
+      return cmdWhy(whyName, whyFile, opts);
     default:
       die(`Unknown command: ${command}\nRun 'em help' for usage.`);
   }
