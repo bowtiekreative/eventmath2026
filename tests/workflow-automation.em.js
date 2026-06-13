@@ -5,6 +5,9 @@ const EM = typeof EventMathRuntime !== 'undefined'
   ? EventMathRuntime
   : require('../runtime/eventmath-runtime.js');
 
+const __weights = {};
+const __assumptions = [];
+
 let all_done = false;
 
 // Event: "task 1"

@@ -5,6 +5,9 @@ const EM = typeof EventMathRuntime !== 'undefined'
   ? EventMathRuntime
   : require('../runtime/eventmath-runtime.js');
 
+const __weights = {};
+const __assumptions = [];
+
 // Event: "scene 1"
 const scene_1 = new EM.EventMathEvent(
   "scene 1",
@@ -45,7 +48,6 @@ const act_1 = new EM.EventMathLayer("act 1", [
 // Timeline: "story"
 const story = new EM.EventMathTimeline("story");
 
-// Present: act 1
 story.log.push(...act_1.events);
 
 console.log(story.renderSection('present'));
