@@ -388,6 +388,100 @@ test('word atom → \\\\w in generated regex', () => {
   assert.ok(code.includes('\\w'), 'Expected \\w in output');
 });
 
+// ── Part name collision checks ─────────────────────────────────────────
+console.log('\n─ Part name collision checks ─');
+
+test('"open" is usable as a part name (tokenized as NAME)', () => {
+  // 'open' appears in KEYWORDS but the tokenizer emits NAME at line-start — safe.
+  const src = `pattern tag\n  open is "<" then letters repeated then ">"\nend`;
+  const code = gen(src);
+  assert.ok(code.includes('(?<open>'), 'Expected named group open in output: ' + code);
+});
+
+test('"not", "to", "from", "by" tokenize as NAME — usable as part names', () => {
+  const src = `pattern file path\n  not is "!" then letters repeated\n  to  is "/" then letters repeated\nend`;
+  const code = gen(src);
+  assert.ok(code.includes('(?<not>'), 'Expected named group not');
+  assert.ok(code.includes('(?<to>'), 'Expected named group to');
+});
+
+test('non-keyword names are always safe as part names', () => {
+  const src = `pattern html heading\n  open tag is "<h" then digit 1 through 6 then ">"\n  content is any text lazily\n  close tag is "</h" then digit 1 through 6 then ">"\nend`;
+  const code = gen(src);
+  assert.ok(code.includes('(?<open_tag>'), 'Expected open_tag group');
+  assert.ok(code.includes('(?<content>'), 'Expected content group');
+  assert.ok(code.includes('(?<close_tag>'), 'Expected close_tag group');
+});
+
+// ── Regression: runtime correctness ──────────────────────────────────
+console.log('\n─ Runtime correctness ─');
+
+// The codegen wraps the regex with JSON.stringify, so the code contains a
+// JS string literal.  Extract it and JSON.parse to get the actual regex chars.
+function rxFromCode(code, flags) {
+  const raw = code.match(/new RegExp\("([^"]+)"/)?.[1] || '';
+  const str = JSON.parse('"' + raw + '"');
+  return new RegExp(str, flags || 'gm');
+}
+
+test('html heading pattern matches h1-h6 at runtime', () => {
+  const src = `pattern html heading
+  open tag  is "<h" then digit 1 through 6 then optional attributes then ">"
+  content   is any text lazily
+  close tag is "</h" then digit 1 through 6 then ">"
+end`;
+  const code = gen(src);
+  const rx = rxFromCode(code);
+  const page = '<h1>Title</h1><h2>Sub</h2><h7>Invalid</h7>';
+  const matches = [...page.matchAll(rx)].map(m => m.groups);
+  assert.strictEqual(matches.length, 2, 'Expected 2 headings (h7 excluded), got ' + matches.length);
+  assert.strictEqual(matches[0].open_tag, '<h1>', 'Expected open_tag <h1>');
+  assert.strictEqual(matches[0].content, 'Title', 'Expected content Title');
+  assert.strictEqual(matches[1].open_tag, '<h2>', 'Expected open_tag <h2>');
+});
+
+test('email pattern matches correctly at runtime', () => {
+  const code = gen(`pattern email address
+  user      is letters and digits and "._%-+" repeated
+  at        is "@"
+  domain    is letters and digits and "." and "-" repeated
+  extension is "." then letters at least 2
+end`);
+  const rx = rxFromCode(code);
+  const text = 'alice@example.com and bob@test.org';
+  const matches = [...text.matchAll(rx)].map(m => m.groups);
+  assert.strictEqual(matches.length, 2, 'Expected 2 email matches');
+  assert.strictEqual(matches[0].user, 'alice');
+  assert.strictEqual(matches[0].domain, 'example');
+  assert.strictEqual(matches[0].extension, '.com');
+  assert.strictEqual(matches[1].user, 'bob');
+});
+
+test('seek returns first match groups or null', () => {
+  const code = gen(`pattern word
+  w is letters repeated
+end
+mark text as "hello world"
+seek text with word into first`);
+  const rx = rxFromCode(code, 'm');
+  const r = rx.exec('hello world');
+  assert.ok(r !== null, 'Expected a match');
+  assert.strictEqual(r.groups.w, 'hello', 'Expected first word "hello"');
+});
+
+test('backreference \\\\k<name> resolves at runtime', () => {
+  // Use 'dup' as the part name — 'again' is a keyword that consumes its line.
+  const code = gen(`pattern repeated word
+  word is letters repeated
+  gap  is whitespace repeated
+  dup  is matches word
+end`);
+  assert.ok(code.includes('\\k<word>'), 'Expected \\k<word> backreference in output');
+  const rx = rxFromCode(code, 'gim');
+  const found = [...'foo foo bar baz baz'.matchAll(rx)].map(m => m.groups.word);
+  assert.deepStrictEqual(found, ['foo', 'baz'], 'Expected repeated words foo and baz');
+});
+
 // ── Summary ──────────────────────────────────────────────────────────
 console.log('');
 console.log(`  ${passed} passed, ${failed} failed`);

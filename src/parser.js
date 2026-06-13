@@ -1855,7 +1855,13 @@ class EventMathParser {
     let guard = 0;
     while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
       const nameTok = this.peek();
-      if (nameTok && nameTok.type === 'NAME') {
+      // Accept NAME or any KEYWORD (except 'end'/'is') as a part name — common words
+      // like 'open', 'again', 'path' are keywords but valid as named capture groups.
+      const isPartName = nameTok && (
+        nameTok.type === 'NAME' ||
+        (nameTok.type === 'KEYWORD' && nameTok.value !== 'end' && nameTok.value !== 'is')
+      );
+      if (isPartName) {
         const partName = this.advance().value;
         if (this.peek() && this.peek().type === 'KEYWORD' && this.peek().value === 'is') {
           this.advance(); // consume 'is'
