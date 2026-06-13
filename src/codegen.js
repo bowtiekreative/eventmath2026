@@ -1552,9 +1552,18 @@ class EventMathCodeGen {
     // Simple condition (Condition node)
     const left = this._walkRef(cond.left);
     const rightVal = cond.right || '';
+
+    // void on the right → null check, matching expression.js semantics.
+    // "X is void" → X is empty; "X is not void" → X has a value.
+    if (rightVal === 'void') {
+      if (cond.op === 'is')     return `(${left} === null || ${left} === undefined)`;
+      if (cond.op === 'is not') return `(${left} !== null && ${left} !== undefined)`;
+    }
+
     let right;
     if (rightVal === 'true') right = 'true';
     else if (rightVal === 'false') right = 'false';
+    else if (rightVal === 'now') right = 'Date.now()';
     else if (/^\d+(\.\d+)?$/.test(rightVal)) right = rightVal;
     else right = `"${this._escape(rightVal)}"`;
 

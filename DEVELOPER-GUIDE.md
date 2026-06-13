@@ -2,7 +2,9 @@
 
 **For any developer continuing this work — read this first.**
 
-EventMath is a time-native programming language that compiles to JavaScript. It was built incrementally in passes. Each pass added new language features end-to-end: tokenizer → parser → codegen → formatter → validator → runtime → tests → example. This document explains the full architecture so you can continue without losing momentum.
+EventMath is a programming language built so that **people can understand systems, and systems can understand people** — legibility in both directions, not just one. It compiles to JavaScript. It was built incrementally in passes; each pass added new language features end-to-end: tokenizer → parser → codegen → formatter → validator → runtime → tests → example. This document explains the full architecture so you can continue without losing momentum.
+
+**Read [README.md](README.md) first for the vision.** This guide is the *how*; the README is the *why*. The single most important thing to internalize before you touch the code: **legibility is the product.** A change that makes the system harder to see is a regression even if it compiles. The frontier of this project is not more vocabulary — the language is already deep — it is making the *system itself* visible and self-explaining (system maps, `why` queries). Spend your effort there.
 
 ---
 
