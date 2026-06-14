@@ -73,6 +73,13 @@ const KEYWORDS = new Set([
   'story', 'narrative', 'scope',
   // v2.21 — intelligence layer
   'emerge', 'wifi', 'lookup', 'watch',
+  // v2.22 — agent, OS, messaging, commerce, media
+  'agent', 'remember', 'recall', 'alert', 'control',
+  'send', 'charge', 'refund', 'loop', 'sync',
+  'play', 'pause', 'next', 'previous',
+  'via', 'computer', 'mute', 'unmute',
+  'telegram', 'slack', 'webhook', 'email',
+  'stripe', 'shopify', 'paypal', 'media',
 ]);
 
 class Token {
@@ -300,6 +307,20 @@ class EventMathTokenizer {
     if (lead === 'wifi')       return this._tokenizeWifiStmt(words, lineNum);
     if (lead === 'lookup')     return this._tokenizeLookupStmt(words, lineNum);
     if (lead === 'watch')      return this._tokenizeWatchStmt(words, lineNum);
+    // v2.22 — agent layer, OS control, messaging, commerce, media
+    if (lead === 'agent')    return this._tokenizeAgentStmt(words, lineNum);
+    if (lead === 'remember') return this._tokenizeRememberStmt(words, lineNum);
+    if (lead === 'recall')   return this._tokenizeRecallStmt(words, lineNum);
+    if (lead === 'alert')    return this._tokenizeAlertStmt(words, lineNum);
+    if (lead === 'control')  return this._tokenizeControlStmt(words, lineNum);
+    if (lead === 'send')     return this._tokenizeSendStmt(words, lineNum);
+    if (lead === 'charge')   return this._tokenizeChargeStmt(words, lineNum);
+    if (lead === 'refund')   return this._tokenizeRefundStmt(words, lineNum);
+    if (lead === 'sync')     return this._tokenizeSyncStmt(words, lineNum);
+    if (lead === 'play')     return this._tokenizePlayStmt(words, lineNum);
+    if (lead === 'pause')    return this._tokenizePauseStmt(words, lineNum);
+    if (lead === 'next')     return this._tokenizeNextTrackStmt(words, lineNum);
+    if (lead === 'previous') return this._tokenizePreviousTrackStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -3191,6 +3212,268 @@ class EventMathTokenizer {
       return tokens;
     }
 
+    return tokens;
+  }
+  // ── v2.22 agent layer tokenizers ─────────────────────────────────────────
+
+  /**
+   * agent NAME
+   */
+  _tokenizeAgentStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'agent', lineNum)];
+    if (words.length > 1) {
+      tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * remember VALUE [as "KEY"]
+   */
+  _tokenizeRememberStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'remember', lineNum)];
+    const asIdx = this._indexOf(words, 'as');
+    if (asIdx > 0) {
+      tokens.push(new Token('NAME', words.slice(1, asIdx).join(' '), lineNum));
+      tokens.push(new Token('KEYWORD', 'as', lineNum));
+      const keyRaw = words.slice(asIdx + 1).join(' ').replace(/^["']|["']$/g, '');
+      tokens.push(new Token('LITERAL', keyRaw, lineNum));
+    } else {
+      if (words.length > 1) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * recall "KEY" into NAME
+   */
+  _tokenizeRecallStmt(words, lineNum) {
+    const intoIdx = this._indexOf(words, 'into');
+    const tokens = [new Token('KEYWORD', 'recall', lineNum)];
+    const keyEnd = intoIdx >= 0 ? intoIdx : words.length;
+    const keyRaw = words.slice(1, keyEnd).join(' ').replace(/^["']|["']$/g, '');
+    tokens.push(new Token('LITERAL', keyRaw, lineNum));
+    if (intoIdx >= 0) {
+      tokens.push(new Token('KEYWORD', 'into', lineNum));
+      tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * alert AGENT with PAYLOAD
+   * alert "MESSAGE" with PAYLOAD via CHANNEL to "RECIPIENT"
+   */
+  _tokenizeAlertStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'alert', lineNum)];
+    const line = words.join(' ');
+    let m = line.match(/^alert\s+"([^"]*)"\s+with\s+(\S+)\s+via\s+(\S+)\s+to\s+"([^"]*)"\s*$/i);
+    if (m) {
+      tokens.push(new Token('LITERAL', m[1], lineNum));
+      tokens.push(new Token('KEYWORD', 'with', lineNum));
+      tokens.push(new Token('NAME', m[2], lineNum));
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[3].toLowerCase(), lineNum));
+      tokens.push(new Token('KEYWORD', 'to', lineNum));
+      tokens.push(new Token('LITERAL', m[4], lineNum));
+      return tokens;
+    }
+    const withIdx = this._indexOf(words, 'with');
+    if (withIdx > 0) {
+      tokens.push(new Token('NAME', words.slice(1, withIdx).join(' '), lineNum));
+      tokens.push(new Token('KEYWORD', 'with', lineNum));
+      tokens.push(new Token('NAME', words.slice(withIdx + 1).join(' '), lineNum));
+      return tokens;
+    }
+    if (words.length > 1) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    return tokens;
+  }
+
+  /**
+   * control computer volume up 20
+   * control computer mute
+   * control computer sleep
+   * control computer launch "Spotify"
+   * control computer brightness set 80
+   */
+  _tokenizeControlStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'control', lineNum)];
+    if (words.length < 2) return tokens;
+    let i = 1;
+    if (words[i] && words[i].toLowerCase() === 'computer') {
+      tokens.push(new Token('KEYWORD', 'computer', lineNum));
+      i++;
+    }
+    if (i >= words.length) return tokens;
+    const action = words[i].toLowerCase();
+    tokens.push(new Token('KEYWORD', action, lineNum));
+    i++;
+    if (action === 'volume' || action === 'brightness') {
+      if (i < words.length) {
+        const subaction = words[i].toLowerCase();
+        tokens.push(new Token('KEYWORD', subaction, lineNum));
+        i++;
+      }
+      if (i < words.length && /^\d+$/.test(words[i])) {
+        tokens.push(new Token('NUMBER', words[i], lineNum));
+        i++;
+      }
+    } else if (action === 'launch') {
+      const rest = words.slice(i).join(' ').replace(/^["']|["']$/g, '');
+      tokens.push(new Token('LITERAL', rest, lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * send via telegram "msg" with payload to "recipient"
+   * send via slack "msg" to "#channel"
+   * send via webhook with payload to "url"
+   * send via email "subject" with body to "email"
+   */
+  _tokenizeSendStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'send', lineNum)];
+    const line = words.join(' ');
+    let m = line.match(/^send\s+via\s+(\S+)\s+"([^"]*)"\s+with\s+(\S+)\s+to\s+"([^"]*)"\s*$/i);
+    if (m) {
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[1].toLowerCase(), lineNum));
+      tokens.push(new Token('LITERAL', m[2], lineNum));
+      tokens.push(new Token('KEYWORD', 'with', lineNum));
+      tokens.push(new Token('NAME', m[3], lineNum));
+      tokens.push(new Token('KEYWORD', 'to', lineNum));
+      tokens.push(new Token('LITERAL', m[4], lineNum));
+      return tokens;
+    }
+    m = line.match(/^send\s+via\s+(\S+)\s+"([^"]*)"\s+to\s+"([^"]*)"\s*$/i);
+    if (m) {
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[1].toLowerCase(), lineNum));
+      tokens.push(new Token('LITERAL', m[2], lineNum));
+      tokens.push(new Token('KEYWORD', 'to', lineNum));
+      tokens.push(new Token('LITERAL', m[3], lineNum));
+      return tokens;
+    }
+    m = line.match(/^send\s+via\s+(\S+)\s+with\s+(\S+)\s+to\s+"([^"]*)"\s*$/i);
+    if (m) {
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[1].toLowerCase(), lineNum));
+      tokens.push(new Token('KEYWORD', 'with', lineNum));
+      tokens.push(new Token('NAME', m[2], lineNum));
+      tokens.push(new Token('KEYWORD', 'to', lineNum));
+      tokens.push(new Token('LITERAL', m[3], lineNum));
+      return tokens;
+    }
+    tokens.push(new Token('KEYWORD', 'via', lineNum));
+    return tokens;
+  }
+
+  /**
+   * charge via stripe amount 99.99 currency "USD" to "cus_xxx" into receipt
+   */
+  _tokenizeChargeStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'charge', lineNum)];
+    const line = words.join(' ');
+    const m = line.match(/^charge\s+via\s+(\S+)\s+amount\s+([\d.]+)\s+currency\s+"([^"]*)"\s+to\s+"([^"]*)"\s+into\s+(.+?)\s*$/i);
+    if (m) {
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[1].toLowerCase(), lineNum));
+      tokens.push(new Token('KEYWORD', 'amount', lineNum));
+      tokens.push(new Token('NUMBER', m[2], lineNum));
+      tokens.push(new Token('KEYWORD', 'currency', lineNum));
+      tokens.push(new Token('LITERAL', m[3], lineNum));
+      tokens.push(new Token('KEYWORD', 'to', lineNum));
+      tokens.push(new Token('LITERAL', m[4], lineNum));
+      tokens.push(new Token('KEYWORD', 'into', lineNum));
+      tokens.push(new Token('NAME', m[5].trim(), lineNum));
+      return tokens;
+    }
+    tokens.push(new Token('KEYWORD', 'via', lineNum));
+    return tokens;
+  }
+
+  /**
+   * refund via stripe charge "ch_xxx" amount 50.00 into refund result
+   */
+  _tokenizeRefundStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'refund', lineNum)];
+    const line = words.join(' ');
+    const m = line.match(/^refund\s+via\s+(\S+)\s+charge\s+"([^"]*)"\s+(?:amount\s+([\d.]+)\s+)?into\s+(.+?)\s*$/i);
+    if (m) {
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[1].toLowerCase(), lineNum));
+      tokens.push(new Token('KEYWORD', 'charge', lineNum));
+      tokens.push(new Token('LITERAL', m[2], lineNum));
+      if (m[3]) {
+        tokens.push(new Token('KEYWORD', 'amount', lineNum));
+        tokens.push(new Token('NUMBER', m[3], lineNum));
+      }
+      tokens.push(new Token('KEYWORD', 'into', lineNum));
+      tokens.push(new Token('NAME', m[4].trim(), lineNum));
+      return tokens;
+    }
+    tokens.push(new Token('KEYWORD', 'via', lineNum));
+    return tokens;
+  }
+
+  /**
+   * sync via shopify products into catalog
+   */
+  _tokenizeSyncStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'sync', lineNum)];
+    const line = words.join(' ');
+    const m = line.match(/^sync\s+via\s+(\S+)\s+(\S+)\s+into\s+(.+?)\s*$/i);
+    if (m) {
+      tokens.push(new Token('KEYWORD', 'via', lineNum));
+      tokens.push(new Token('KEYWORD', m[1].toLowerCase(), lineNum));
+      tokens.push(new Token('NAME', m[2], lineNum));
+      tokens.push(new Token('KEYWORD', 'into', lineNum));
+      tokens.push(new Token('NAME', m[3].trim(), lineNum));
+      return tokens;
+    }
+    tokens.push(new Token('KEYWORD', 'via', lineNum));
+    return tokens;
+  }
+
+  /**
+   * play media "spotify:track:xxx"
+   */
+  _tokenizePlayStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'play', lineNum)];
+    if (words[1] && words[1].toLowerCase() === 'media') {
+      tokens.push(new Token('KEYWORD', 'media', lineNum));
+      const rest = words.slice(2).join(' ').replace(/^["']|["']$/g, '');
+      if (rest) tokens.push(new Token('LITERAL', rest, lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * pause media
+   */
+  _tokenizePauseStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'pause', lineNum)];
+    if (words[1] && words[1].toLowerCase() === 'media') {
+      tokens.push(new Token('KEYWORD', 'media', lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * next track
+   */
+  _tokenizeNextTrackStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'next', lineNum)];
+    if (words[1]) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    return tokens;
+  }
+
+  /**
+   * previous track
+   */
+  _tokenizePreviousTrackStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'previous', lineNum)];
+    if (words[1]) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
     return tokens;
   }
 }

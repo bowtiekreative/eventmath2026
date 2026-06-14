@@ -141,7 +141,12 @@ class EventMathCodeGen {
     this._hasSecurityAny   = this._hasSecurityAsync || this._detectSecurityAny(ast.statements);
     this._hasStory         = this._detectStory(ast.statements);
     this._hasIntelligence  = this._detectIntelligence(ast.statements);
-    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence;
+    this._hasAgent         = this._detectAgent(ast.statements);
+    this._hasOS            = this._detectOS(ast.statements);
+    this._hasMessaging     = this._detectMessaging(ast.statements);
+    this._hasCommerce      = this._detectCommerce(ast.statements);
+    this._hasMedia         = this._detectMedia(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia;
 
     // Emit security runtime require only when needed
     if (this._hasSecurityAny) {
@@ -157,6 +162,26 @@ class EventMathCodeGen {
     // Emit intelligence runtime require only when needed
     if (this._hasIntelligence) {
       this._line(`const __emIntel = require('../runtime/eventmath-intelligence-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasAgent) {
+      this._line(`const __emAgent = require('../runtime/eventmath-agent-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasOS) {
+      this._line(`const __emOS = require('../runtime/eventmath-os-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasMessaging) {
+      this._line(`const __emMsg = require('../runtime/eventmath-messaging-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasCommerce) {
+      this._line(`const __emCommerce = require('../runtime/eventmath-commerce-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasMedia) {
+      this._line(`const __emMedia = require('../runtime/eventmath-media-runtime.js');`);
       this._line('');
     }
     if (_needsAsync) {
@@ -449,6 +474,26 @@ class EventMathCodeGen {
         case 'WatchStmt':
           // Result variables are declared inline with const inside _genXxxStmt
           break;
+        // v2.22
+        case 'AgentStmt':
+          this._firstPass(stmt.body || []);
+          break;
+        case 'RememberStmt':
+        case 'AlertStmt':
+        case 'ControlStmt':
+        case 'SendStmt':
+        case 'ChargeStmt':
+        case 'RefundStmt':
+        case 'SyncStmt':
+        case 'MediaStmt':
+          // no hoist needed
+          break;
+        case 'RecallStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
       }
     }
   }
@@ -597,6 +642,17 @@ class EventMathCodeGen {
       case 'WifiMapStmt':       return this._genWifiStmt(stmt);
       case 'LookupStmt':        return this._genLookupStmt(stmt);
       case 'WatchStmt':         return this._genWatchStmt(stmt);
+      // v2.22
+      case 'AgentStmt':      return this._genAgentStmt(stmt);
+      case 'RememberStmt':   return this._genRememberStmt(stmt);
+      case 'RecallStmt':     return this._genRecallStmt(stmt);
+      case 'AlertStmt':      return this._genAlertStmt(stmt);
+      case 'ControlStmt':    return this._genControlStmt(stmt);
+      case 'SendStmt':       return this._genSendStmt(stmt);
+      case 'ChargeStmt':     return this._genChargeStmt(stmt);
+      case 'RefundStmt':     return this._genRefundStmt(stmt);
+      case 'SyncStmt':       return this._genSyncStmt(stmt);
+      case 'MediaStmt':      return this._genMediaStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -3615,6 +3671,160 @@ class EventMathCodeGen {
     } else {
       this._line(`// watch cameras`);
       this._line(`const ${varName} = await __emIntel.watchCameras(${JSON.stringify(stmt.location)});`);
+    }
+    this._line('');
+  }
+
+  // ── v2.22 detect functions ─────────────────────────────────────────────────
+
+  _detectAgent(statements) {
+    const types = new Set(['AgentStmt', 'RememberStmt', 'RecallStmt', 'AlertStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectOS(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'ControlStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectMessaging(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'SendStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectCommerce(statements) {
+    const types = new Set(['ChargeStmt', 'RefundStmt', 'SyncStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectMedia(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'MediaStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  // ── v2.22 codegen methods ─────────────────────────────────────────────────
+
+  _genAgentStmt(stmt) {
+    const varName = this._safeName('__agent_' + stmt.name);
+    this._line(`// agent: ${this._escape(stmt.name)} — every ${stmt.loopMinutes || 5} minute(s)`);
+    this._line(`const ${varName} = __emAgent.createAgentLoop(${JSON.stringify(stmt.name)}, ${stmt.loopMinutes || 5}, async () => {`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this.indent--;
+    this._line(`});`);
+    this._line('');
+  }
+
+  _genRememberStmt(stmt) {
+    this._line(`// remember: "${this._escape(stmt.key)}" = ${this._escape(stmt.value || '')}`);
+    this._line(`__emAgent.rememberValue(${JSON.stringify(stmt.key)}, ${JSON.stringify(stmt.value || '')});`);
+    this._line('');
+  }
+
+  _genRecallStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    this._line(`// recall: "${this._escape(stmt.key)}" into ${this._escape(stmt.intoName)}`);
+    this._line(`${varName} = __emAgent.recallValue(${JSON.stringify(stmt.key)});`);
+    this._line('');
+  }
+
+  _genAlertStmt(stmt) {
+    this._line(`// alert: ${this._escape(stmt.agentName || stmt.message || '')}`);
+    if (stmt.channel && stmt.recipient) {
+      const msg = stmt.message ? JSON.stringify(stmt.message) : 'null';
+      const payload = stmt.payloadName ? this._safeName(stmt.payloadName) : 'null';
+      this._line(`await __emAgent.sendAlert(${JSON.stringify(stmt.channel)}, ${JSON.stringify(stmt.recipient)}, ${msg}, ${payload});`);
+    } else {
+      const payload = stmt.payloadName ? this._safeName(stmt.payloadName) : 'null';
+      const agent = stmt.agentName ? JSON.stringify(stmt.agentName) : 'null';
+      this._line(`await __emAgent.sendAlert('default', ${agent}, null, ${payload});`);
+    }
+    this._line('');
+  }
+
+  _genControlStmt(stmt) {
+    this._line(`// control: ${stmt.target} ${stmt.action}${stmt.subaction ? ' ' + stmt.subaction : ''}${stmt.value !== null && stmt.value !== undefined ? ' ' + stmt.value : ''}`);
+    const action = stmt.action;
+    const subaction = stmt.subaction;
+    const value = stmt.value;
+    const app = stmt.app;
+    if (action === 'volume') {
+      this._line(`await __emOS.controlVolume(${JSON.stringify(subaction || 'set')}, ${value || 50});`);
+    } else if (action === 'mute') {
+      this._line(`await __emOS.controlVolume('mute', 0);`);
+    } else if (action === 'unmute') {
+      this._line(`await __emOS.controlVolume('unmute', 0);`);
+    } else if (action === 'sleep') {
+      this._line(`await __emOS.controlSleep();`);
+    } else if (action === 'shutdown') {
+      this._line(`await __emOS.controlShutdown();`);
+    } else if (action === 'restart') {
+      this._line(`await __emOS.controlRestart();`);
+    } else if (action === 'launch') {
+      this._line(`await __emOS.controlLaunch(${JSON.stringify(app || '')});`);
+    } else if (action === 'brightness') {
+      this._line(`await __emOS.controlBrightness(${JSON.stringify(subaction || 'set')}, ${value || 80});`);
+    } else {
+      this._line(`// unknown control action: ${action}`);
+    }
+    this._line('');
+  }
+
+  _genSendStmt(stmt) {
+    const channel = stmt.channel;
+    const msg = stmt.message ? JSON.stringify(stmt.message) : 'null';
+    const payload = stmt.payloadName ? this._safeName(stmt.payloadName) : 'null';
+    const recipient = JSON.stringify(stmt.recipient || '');
+    this._line(`// send via ${channel} to ${stmt.recipient || ''}`);
+    if (channel === 'telegram') {
+      this._line(`await __emMsg.sendTelegram(process.env.TELEGRAM_BOT_TOKEN, ${recipient}, ${msg}, ${payload});`);
+    } else if (channel === 'slack') {
+      this._line(`await __emMsg.sendSlack(process.env.SLACK_WEBHOOK_URL, ${msg}, ${payload});`);
+    } else if (channel === 'email') {
+      this._line(`await __emMsg.sendEmail(${recipient}, ${msg}, ${payload});`);
+    } else if (channel === 'webhook') {
+      this._line(`await __emMsg.sendWebhook(${recipient}, ${payload});`);
+    } else {
+      this._line(`await __emMsg.sendTelegram(process.env.TELEGRAM_BOT_TOKEN, ${recipient}, ${msg}, ${payload});`);
+    }
+    this._line('');
+  }
+
+  _genChargeStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    this._line(`// charge via ${stmt.provider}`);
+    this._line(`const ${varName} = await __emCommerce.stripeCharge(${stmt.amount}, ${JSON.stringify(stmt.currency)}, ${JSON.stringify(stmt.recipient)});`);
+    this._line('');
+  }
+
+  _genRefundStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    this._line(`// refund via ${stmt.provider}`);
+    this._line(`const ${varName} = await __emCommerce.stripeRefund(${JSON.stringify(stmt.chargeId)}, ${stmt.amount || null});`);
+    this._line('');
+  }
+
+  _genSyncStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    this._line(`// sync via ${stmt.provider} ${stmt.resource}`);
+    this._line(`const ${varName} = await __emCommerce.shopifySync(${JSON.stringify(stmt.resource)});`);
+    this._line('');
+  }
+
+  _genMediaStmt(stmt) {
+    this._line(`// media: ${stmt.action}${stmt.target ? ' ' + stmt.target : ''}`);
+    if (stmt.action === 'play') {
+      this._line(`await __emMedia.playMedia(${JSON.stringify(stmt.target)});`);
+    } else if (stmt.action === 'pause') {
+      this._line(`await __emMedia.pauseMedia();`);
+    } else if (stmt.action === 'stop') {
+      this._line(`await __emMedia.stopMedia();`);
+    } else if (stmt.action === 'next') {
+      this._line(`await __emMedia.nextTrack();`);
+    } else if (stmt.action === 'previous') {
+      this._line(`await __emMedia.previousTrack();`);
     }
     this._line('');
   }

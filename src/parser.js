@@ -188,6 +188,20 @@ class EventMathParser {
     if (t.type === 'KEYWORD' && t.value === 'wifi')    return this._parseWifiStmt();
     if (t.type === 'KEYWORD' && t.value === 'lookup')  return this._parseLookupStmt();
     if (t.type === 'KEYWORD' && t.value === 'watch')   return this._parseWatchStmt();
+    // v2.22 — agent layer, OS control, messaging, commerce, media
+    if (t.type === 'KEYWORD' && t.value === 'agent')    return this._parseAgentStmt();
+    if (t.type === 'KEYWORD' && t.value === 'remember') return this._parseRememberStmt();
+    if (t.type === 'KEYWORD' && t.value === 'recall')   return this._parseRecallStmt();
+    if (t.type === 'KEYWORD' && t.value === 'alert')    return this._parseAlertStmt();
+    if (t.type === 'KEYWORD' && t.value === 'control')  return this._parseControlStmt();
+    if (t.type === 'KEYWORD' && t.value === 'send')     return this._parseSendStmt();
+    if (t.type === 'KEYWORD' && t.value === 'charge')   return this._parseChargeStmt();
+    if (t.type === 'KEYWORD' && t.value === 'refund')   return this._parseRefundStmt();
+    if (t.type === 'KEYWORD' && t.value === 'sync')     return this._parseSyncStmt();
+    if (t.type === 'KEYWORD' && t.value === 'play')     return this._parsePlayStmt();
+    if (t.type === 'KEYWORD' && t.value === 'pause')    return this._parsePauseStmt();
+    if (t.type === 'KEYWORD' && t.value === 'next')     return this._parseNextTrackStmt();
+    if (t.type === 'KEYWORD' && t.value === 'previous') return this._parsePreviousTrackStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -2392,6 +2406,214 @@ class EventMathParser {
     while (this.peek() && !this.isKeyword('end') && guard++ < 10000) this.advance();
     if (this.isKeyword('end')) this.advance();
     return null;
+  }
+
+  // ── v2.22 agent layer ─────────────────────────────────────────────────────
+
+  _parseAgentStmt() {
+    this.expect('KEYWORD', 'agent');
+    const nameTok = this.match('NAME');
+    const name = nameTok ? nameTok.value : 'unnamed';
+    let loopMinutes = 5; // default interval
+
+    // Optional inline interval: agent NAME loop every N minutes
+    if (this.isKeyword('loop')) {
+      this.advance();
+      this.match('KEYWORD', 'every');
+      const numTok = this.match('NUMBER');
+      if (numTok) loopMinutes = parseInt(numTok.value, 10);
+      this.match('NAME'); // skip "minutes"
+    }
+
+    // Collect arbitrary body statements until 'end'
+    const body = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 10000) {
+      const stmt = this._parseStatement();
+      if (stmt) body.push(stmt);
+      else { this.advance(); }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('AgentStmt', { name, loopMinutes, body });
+  }
+
+  _parseRememberStmt() {
+    this.expect('KEYWORD', 'remember');
+    const valueTok = this.match('NAME');
+    const value = valueTok ? valueTok.value : '';
+    let key = value;
+    if (this.isKeyword('as')) {
+      this.advance();
+      const keyTok = this.match('LITERAL');
+      if (keyTok) key = keyTok.value;
+    }
+    return ast('RememberStmt', { value, key });
+  }
+
+  _parseRecallStmt() {
+    this.expect('KEYWORD', 'recall');
+    const keyTok = this.match('LITERAL');
+    const key = keyTok ? keyTok.value : '';
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.match('NAME');
+    return ast('RecallStmt', { key, intoName: intoTok ? intoTok.value : 'recalled' });
+  }
+
+  _parseAlertStmt() {
+    this.expect('KEYWORD', 'alert');
+    const t = this.peek();
+    if (t && t.type === 'LITERAL') {
+      const message = this.advance().value;
+      let payloadName = null, channel = null, recipient = null;
+      if (this.isKeyword('with')) {
+        this.advance();
+        const payloadTok = this.match('NAME');
+        if (payloadTok) payloadName = payloadTok.value;
+      }
+      if (this.isKeyword('via')) {
+        this.advance();
+        const chanTok = this.peek();
+        if (chanTok && chanTok.type === 'KEYWORD') channel = this.advance().value;
+      }
+      if (this.isKeyword('to')) {
+        this.advance();
+        const recTok = this.match('LITERAL');
+        if (recTok) recipient = recTok.value;
+      }
+      return ast('AlertStmt', { agentName: null, message, payloadName, channel, recipient });
+    }
+    const agentNameTok = this.match('NAME');
+    const agentName = agentNameTok ? agentNameTok.value : '';
+    let payloadName = null;
+    if (this.isKeyword('with')) {
+      this.advance();
+      const payloadTok = this.match('NAME');
+      if (payloadTok) payloadName = payloadTok.value;
+    }
+    return ast('AlertStmt', { agentName, message: null, payloadName, channel: null, recipient: null });
+  }
+
+  // ── v2.22 OS control ──────────────────────────────────────────────────────
+
+  _parseControlStmt() {
+    this.expect('KEYWORD', 'control');
+    const target = this.isKeyword('computer') ? this.advance().value : 'computer';
+    const actionTok = this.peek();
+    const action = actionTok && actionTok.type === 'KEYWORD' ? this.advance().value : 'volume';
+    let subaction = null, value = null, app = null;
+
+    if (action === 'volume' || action === 'brightness') {
+      const subTok = this.peek();
+      if (subTok && subTok.type === 'KEYWORD') {
+        subaction = this.advance().value;
+      }
+      const numTok = this.match('NUMBER');
+      if (numTok) value = parseInt(numTok.value, 10);
+    } else if (action === 'launch') {
+      const appTok = this.match('LITERAL');
+      if (appTok) app = appTok.value;
+    }
+    return ast('ControlStmt', { target, action, subaction, value, app });
+  }
+
+  // ── v2.22 messaging ───────────────────────────────────────────────────────
+
+  _parseSendStmt() {
+    this.expect('KEYWORD', 'send');
+    this.expect('KEYWORD', 'via');
+    const chanTok = this.peek();
+    const channel = chanTok && chanTok.type === 'KEYWORD' ? this.advance().value : 'webhook';
+    const msgTok = this.match('LITERAL');
+    const message = msgTok ? msgTok.value : null;
+    let payloadName = null;
+    if (this.isKeyword('with')) {
+      this.advance();
+      const payloadTok = this.match('NAME');
+      if (payloadTok) payloadName = payloadTok.value;
+    }
+    this.expect('KEYWORD', 'to');
+    const recipientTok = this.match('LITERAL');
+    const recipient = recipientTok ? recipientTok.value : '';
+    return ast('SendStmt', { channel, message, payloadName, recipient });
+  }
+
+  // ── v2.22 commerce ────────────────────────────────────────────────────────
+
+  _parseChargeStmt() {
+    this.expect('KEYWORD', 'charge');
+    this.expect('KEYWORD', 'via');
+    const providerTok = this.peek();
+    const provider = providerTok && providerTok.type === 'KEYWORD' ? this.advance().value : 'stripe';
+    this.match('KEYWORD', 'amount');
+    const amountTok = this.match('NUMBER');
+    const amount = amountTok ? parseFloat(amountTok.value) : 0;
+    this.match('KEYWORD', 'currency');
+    const currTok = this.match('LITERAL');
+    const currency = currTok ? currTok.value : 'USD';
+    this.expect('KEYWORD', 'to');
+    const recipientTok = this.match('LITERAL');
+    const recipient = recipientTok ? recipientTok.value : '';
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.match('NAME');
+    return ast('ChargeStmt', { provider, amount, currency, recipient, intoName: intoTok ? intoTok.value : 'receipt' });
+  }
+
+  _parseRefundStmt() {
+    this.expect('KEYWORD', 'refund');
+    this.expect('KEYWORD', 'via');
+    const providerTok = this.peek();
+    const provider = providerTok && providerTok.type === 'KEYWORD' ? this.advance().value : 'stripe';
+    this.match('KEYWORD', 'charge');
+    const chargeIdTok = this.match('LITERAL');
+    const chargeId = chargeIdTok ? chargeIdTok.value : '';
+    let amount = null;
+    if (this.isKeyword('amount')) {
+      this.advance();
+      const amountTok = this.match('NUMBER');
+      if (amountTok) amount = parseFloat(amountTok.value);
+    }
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.match('NAME');
+    return ast('RefundStmt', { provider, chargeId, amount, intoName: intoTok ? intoTok.value : 'refund result' });
+  }
+
+  _parseSyncStmt() {
+    this.expect('KEYWORD', 'sync');
+    this.expect('KEYWORD', 'via');
+    const providerTok = this.peek();
+    const provider = providerTok && providerTok.type === 'KEYWORD' ? this.advance().value : 'shopify';
+    const resourceTok = this.match('NAME');
+    const resource = resourceTok ? resourceTok.value : 'products';
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.match('NAME');
+    return ast('SyncStmt', { provider, resource, intoName: intoTok ? intoTok.value : 'catalog' });
+  }
+
+  // ── v2.22 media ───────────────────────────────────────────────────────────
+
+  _parsePlayStmt() {
+    this.expect('KEYWORD', 'play');
+    this.match('KEYWORD', 'media');
+    const targetTok = this.match('LITERAL');
+    return ast('MediaStmt', { action: 'play', target: targetTok ? targetTok.value : null, value: null });
+  }
+
+  _parsePauseStmt() {
+    this.expect('KEYWORD', 'pause');
+    this.match('KEYWORD', 'media');
+    return ast('MediaStmt', { action: 'pause', target: null, value: null });
+  }
+
+  _parseNextTrackStmt() {
+    this.expect('KEYWORD', 'next');
+    this.match('NAME');
+    return ast('MediaStmt', { action: 'next', target: null, value: null });
+  }
+
+  _parsePreviousTrackStmt() {
+    this.expect('KEYWORD', 'previous');
+    this.match('NAME');
+    return ast('MediaStmt', { action: 'previous', target: null, value: null });
   }
 }
 
