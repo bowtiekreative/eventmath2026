@@ -187,8 +187,16 @@ function cmdCompile(file, opts) {
     if (!runtimePath.startsWith('.')) runtimePath = './' + runtimePath;
   }
 
+  // Compute the security runtime path relative to the output location.
+  let securityRuntimePath = '../security/eventmath-security-runtime.js';
+  if (output) {
+    const securityRuntimeAbs = path.join(ROOT, 'security/eventmath-security-runtime.js');
+    securityRuntimePath = path.relative(path.dirname(path.resolve(output)), securityRuntimeAbs);
+    if (!securityRuntimePath.startsWith('.')) securityRuntimePath = './' + securityRuntimePath;
+  }
+
   const codegen = new EventMathCodeGen();
-  const js = codegen.generate(ast, { target, runtimePath });
+  const js = codegen.generate(ast, { target, runtimePath, securityRuntimePath });
 
   if (output) {
     fs.writeFileSync(path.resolve(output), js, 'utf-8');

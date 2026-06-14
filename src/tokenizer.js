@@ -2846,39 +2846,43 @@ class EventMathTokenizer {
 
   /**
    * intercept traffic on "IFACE" [matching "FILTER"] for N seconds into RESULT
+   * Uses raw line reconstruction to handle multi-word quoted strings in the filter.
    */
   _tokenizeInterceptStmt(words, lineNum) {
-    const onIdx      = this._indexOf(words, 'on');
-    const forIdx     = this._indexOf(words, 'for');
-    const intoIdx    = this._lastIndexOf(words, 'into');
-    const matchIdx   = this._indexOf(words, 'matching');
+    // Reconstruct the full line to reliably parse quoted strings
+    const line = words.join(' ');
 
-    if (onIdx < 0 || forIdx < 0 || intoIdx < 0) {
-      return [new Token('ERROR', { message: 'intercept needs: intercept traffic on "<iface>" [matching "<filter>"] for <N> seconds into <result>' }, lineNum)];
+    // Match with optional filter: intercept traffic on "IFACE" matching "FILTER" for N seconds into RESULT
+    let m = line.match(/^intercept\s+traffic\s+on\s+"([^"]*)"\s+matching\s+"([^"]*)"\s+for\s+(\d+)\s+seconds?\s+into\s+(.+)$/i);
+    if (m) {
+      return [
+        new Token('KEYWORD', 'intercept', lineNum),
+        new Token('KEYWORD', 'on',        lineNum),
+        new Token('LITERAL', m[1],        lineNum),
+        new Token('KEYWORD', 'matching',  lineNum),
+        new Token('LITERAL', m[2],        lineNum),
+        new Token('KEYWORD', 'for',       lineNum),
+        new Token('NUMBER',  m[3],        lineNum),
+        new Token('KEYWORD', 'into',      lineNum),
+        new Token('NAME',    m[4].trim(), lineNum),
+      ];
     }
 
-    const ifaceRaw  = words[onIdx + 1] ? words[onIdx + 1].replace(/^["']|["']$/g, '') : '';
-    const seconds   = parseInt(words[forIdx + 1], 10) || 10;
-    const intoName  = words.slice(intoIdx + 1).join(' ');
-
-    const tokens = [
-      new Token('KEYWORD', 'intercept', lineNum),
-      new Token('KEYWORD', 'on',        lineNum),
-      new Token('LITERAL', ifaceRaw,    lineNum),
-    ];
-
-    if (matchIdx >= 0 && matchIdx < forIdx) {
-      // Find the quoted filter string
-      const filterRaw = words[matchIdx + 1] ? words[matchIdx + 1].replace(/^["']|["']$/g, '') : '';
-      tokens.push(new Token('KEYWORD', 'matching',  lineNum));
-      tokens.push(new Token('LITERAL', filterRaw,   lineNum));
+    // Without filter: intercept traffic on "IFACE" for N seconds into RESULT
+    m = line.match(/^intercept\s+traffic\s+on\s+"([^"]*)"\s+for\s+(\d+)\s+seconds?\s+into\s+(.+)$/i);
+    if (m) {
+      return [
+        new Token('KEYWORD', 'intercept', lineNum),
+        new Token('KEYWORD', 'on',        lineNum),
+        new Token('LITERAL', m[1],        lineNum),
+        new Token('KEYWORD', 'for',       lineNum),
+        new Token('NUMBER',  m[2],        lineNum),
+        new Token('KEYWORD', 'into',      lineNum),
+        new Token('NAME',    m[3].trim(), lineNum),
+      ];
     }
 
-    tokens.push(new Token('KEYWORD', 'for',     lineNum));
-    tokens.push(new Token('NUMBER',  String(seconds), lineNum));
-    tokens.push(new Token('KEYWORD', 'into',    lineNum));
-    tokens.push(new Token('NAME',    intoName,  lineNum));
-    return tokens;
+    return [new Token('ERROR', { message: 'intercept needs: intercept traffic on "<iface>" [matching "<filter>"] for <N> seconds into <result>' }, lineNum)];
   }
 
   /**

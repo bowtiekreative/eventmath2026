@@ -171,6 +171,13 @@ class EventMathParser {
     if (t.type === 'REPLACE_STMT')       return this._parseReplaceStmt();
     if (t.type === 'ZOOM_OUT_FROM')      return this._parseZoomOutFrom();
     if (t.type === 'ZOOM_EXPAND')        return this._parseZoomExpand();
+    // v2.19 — security layer
+    if (t.type === 'KEYWORD' && t.value === 'probe')     return this._parseProbeStmt();
+    if (t.type === 'KEYWORD' && t.value === 'authorize') return this._parseAuthorizeStmt();
+    if (t.type === 'KEYWORD' && t.value === 'threat')    return this._parseThreatStmt();
+    if (t.type === 'KEYWORD' && t.value === 'harden')    return this._parseHardenStmt();
+    if (t.type === 'KEYWORD' && t.value === 'discover')  return this._parseDiscoverStmt();
+    if (t.type === 'KEYWORD' && t.value === 'intercept') return this._parseInterceptStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1901,6 +1908,222 @@ class EventMathParser {
   _parseZoomOutFrom() {
     const t = this.advance();
     return ast('ZoomOutFrom', { sourceName: t.value.sourceName, intoName: t.value.intoName });
+  }
+
+  // ── v2.19 security layer ─────────────────────────────────────────
+
+  /**
+   * probe dns|mx|whois "HOST" into RESULT
+   * probe headers|ssl at "URL" into RESULT
+   * probe ports at "HOST" [from N through M] into RESULT
+   */
+  _parseProbeStmt() {
+    this.expect('KEYWORD', 'probe');
+    const probeTypeTok = this.expect('NAME');
+    const probeType    = probeTypeTok ? probeTypeTok.value : 'dns';
+
+    let target = null, fromPort = 1, toPort = 1024;
+
+    if (['dns', 'mx', 'whois'].includes(probeType)) {
+      // Next token is the LITERAL host
+      const hostTok = this.match('LITERAL');
+      target = hostTok ? hostTok.value : null;
+    } else {
+      // headers, ssl, ports — expect KEYWORD 'at' then LITERAL
+      this.expect('KEYWORD', 'at');
+      const hostTok = this.match('LITERAL');
+      target = hostTok ? hostTok.value : null;
+
+      if (probeType === 'ports') {
+        if (this.isKeyword('from')) {
+          this.advance(); // consume 'from'
+          const startTok = this.match('NUMBER');
+          if (startTok) fromPort = parseInt(startTok.value, 10);
+          if (this.isKeyword('through')) {
+            this.advance(); // consume 'through'
+            const endTok = this.match('NUMBER');
+            if (endTok) toPort = parseInt(endTok.value, 10);
+          }
+        }
+      }
+    }
+
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.expect('NAME');
+    const intoName = intoTok ? intoTok.value : 'result';
+
+    return ast('ProbeStmt', { probeType, target, fromPort, toPort, intoName });
+  }
+
+  /**
+   * authorize audit
+   *   scope   is "..."
+   *   target  is "..."
+   *   allowed by "..."
+   *   expires is "..."
+   * end
+   *
+   * The tokenizer collapses body lines that start with unrecognised words
+   * (e.g. "allowed by ...") into a single NAME token. We handle both forms:
+   *   (a) NAME KEYWORD:is/by LITERAL  — normal key-is-value lines
+   *   (b) Single NAME containing the whole "key ... value" phrase
+   */
+  _parseAuthorizeStmt() {
+    this.expect('KEYWORD', 'authorize');
+    const nameTok = this.expect('NAME');
+    const name    = nameTok ? nameTok.value : 'audit';
+    const fields  = new Map();
+
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const t = this.peek();
+      if (!t) break;
+      if (t.type === 'NAME') {
+        const raw = this.advance().value;
+        // Check whether the next token is a connective keyword ('is', 'by', 'at')
+        const conn = this.peek();
+        if (conn && conn.type === 'KEYWORD' && ['is', 'by', 'at'].includes(conn.value)) {
+          // Normal form: NAME KEYWORD:is LITERAL
+          this.advance(); // consume connective
+          const valTok = this.match('LITERAL') || this.match('NAME');
+          if (valTok) {
+            // Strip surrounding quotes that may appear in the LITERAL value
+            const val = valTok.value.replace(/^["']|["']$/g, '');
+            fields.set(raw, val);
+          }
+        } else {
+          // Whole-line form: "allowed by \"Security Director\""
+          // Split on first occurrence of ' is ', ' by ', or ' at '
+          const m = raw.match(/^(.+?)\s+(?:is|by|at)\s+"(.+)"$/)
+                 || raw.match(/^(.+?)\s+(?:is|by|at)\s+'(.+)'$/)
+                 || raw.match(/^(.+?)\s+(?:is|by|at)\s+(.+)$/);
+          if (m) {
+            fields.set(m[1].trim(), m[2].trim());
+          } else {
+            fields.set(raw, '');
+          }
+        }
+      } else if (t.type === 'LITERAL') {
+        // Stray literal — skip
+        this.advance();
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('AuthorizeStmt', { name, fields });
+  }
+
+  /**
+   * threat NAME
+   *   category CATEGORY
+   *   matter
+   *     severity is high
+   *     vector   is "..."
+   *     fix      is "..."
+   *   end
+   * end
+   */
+  _parseThreatStmt() {
+    this.expect('KEYWORD', 'threat');
+    const nameTok  = this.expect('NAME');
+    const name     = nameTok ? nameTok.value : 'threat';
+    let category   = null;
+    let matter     = {};
+
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const t = this.peek();
+      if (!t) break;
+      if (t.type === 'KEYWORD' && (t.value === 'category' || t.value === 'cat')) {
+        this.advance();
+        const catTok = this.match('NAME');
+        if (catTok) category = catTok.value;
+      } else if (t.type === 'KEYWORD' && t.value === 'matter') {
+        this.advance(); // consume 'matter'
+        const matterBlock = this._parseMatterBlock();
+        for (const f of (matterBlock ? matterBlock.fields : [])) {
+          matter[f.key] = f.value;
+        }
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ThreatStmt', { name, category, matter });
+  }
+
+  /**
+   * harden from SOURCE1 and SOURCE2 ... into RESULT
+   * Token stream: KEYWORD:harden NAME... KEYWORD:and NAME... KEYWORD:into NAME
+   */
+  _parseHardenStmt() {
+    this.expect('KEYWORD', 'harden');
+    const sources = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('into') && guard++ < 100) {
+      const t = this.peek();
+      if (!t) break;
+      if (t.type === 'NAME') {
+        sources.push(this.advance().value);
+      } else if (t.type === 'KEYWORD' && t.value === 'and') {
+        this.advance(); // skip 'and'
+      } else {
+        break;
+      }
+    }
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.expect('NAME');
+    const intoName = intoTok ? intoTok.value : 'recommendations';
+    return ast('HardenStmt', { sources, intoName });
+  }
+
+  /**
+   * discover hosts on "CIDR" into RESULT
+   * Token stream: KEYWORD:discover NAME:hosts KEYWORD:on LITERAL:cidr KEYWORD:into NAME:result
+   */
+  _parseDiscoverStmt() {
+    this.expect('KEYWORD', 'discover');
+    this.match('NAME'); // consume 'hosts'
+    this.expect('KEYWORD', 'on');
+    const cidrTok = this.expect('LITERAL');
+    const target  = cidrTok ? cidrTok.value : '192.168.1.0/24';
+    this.expect('KEYWORD', 'into');
+    const intoTok  = this.expect('NAME');
+    const intoName = intoTok ? intoTok.value : 'live hosts';
+    return ast('DiscoverStmt', { target, intoName });
+  }
+
+  /**
+   * intercept traffic on "IFACE" [matching "FILTER"] for N seconds into RESULT
+   * Token stream: KEYWORD:intercept KEYWORD:on LITERAL:iface [KEYWORD:matching LITERAL:filter]
+   *               KEYWORD:for NUMBER:N KEYWORD:into NAME:result
+   */
+  _parseInterceptStmt() {
+    this.expect('KEYWORD', 'intercept');
+    this.expect('KEYWORD', 'on');
+    const ifaceTok = this.expect('LITERAL');
+    const iface    = ifaceTok ? ifaceTok.value : 'eth0';
+    let   filter   = null;
+
+    if (this.isKeyword('matching')) {
+      this.advance();
+      const filterTok = this.match('LITERAL');
+      if (filterTok) filter = filterTok.value;
+    }
+
+    this.expect('KEYWORD', 'for');
+    const secTok  = this.match('NUMBER');
+    const seconds = secTok ? parseInt(secTok.value, 10) : 10;
+    // consume optional word 'seconds'
+    const nextTok = this.peek();
+    if (nextTok && nextTok.type === 'NAME' && nextTok.value === 'seconds') this.advance();
+
+    this.expect('KEYWORD', 'into');
+    const intoTok  = this.expect('NAME');
+    const intoName = intoTok ? intoTok.value : 'packets';
+
+    return ast('InterceptStmt', { interface: iface, filter, seconds, intoName });
   }
 
   _parseZoomExpand() {

@@ -68,6 +68,8 @@ class EventMathCodeGen {
     // legacy sibling-of-runtime layout; bin/em computes the real relative path
     // for the actual output location so the file runs from anywhere.
     this._runtimePath = options.runtimePath || '../runtime/eventmath-runtime.js';
+    // Security runtime path — relative to the same directory as the main runtime
+    this._securityRuntimePath = options.securityRuntimePath || '../security/eventmath-security-runtime.js';
     this.indent = 0;
     this._vars = new Set();
     this._paramVars = new Set();
@@ -131,9 +133,17 @@ class EventMathCodeGen {
     }
 
     // Second pass: generate code
-    this._hasOverlap = this._detectOverlap(ast.statements);
-    this._hasAsk = this._detectAsk(ast.statements);
-    const _needsAsync = this._hasOverlap || this._hasAsk;
+    this._hasOverlap      = this._detectOverlap(ast.statements);
+    this._hasAsk          = this._detectAsk(ast.statements);
+    this._hasSecurityAsync = this._detectSecurity(ast.statements);
+    this._hasSecurityAny   = this._hasSecurityAsync || this._detectSecurityAny(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync;
+
+    // Emit security runtime require only when needed
+    if (this._hasSecurityAny) {
+      this._line(`const __emSec = require('${this._securityRuntimePath}');`);
+      this._line('');
+    }
     if (_needsAsync) {
       this._line('(async () => {');
       this.indent++;
@@ -401,8 +411,10 @@ class EventMathCodeGen {
         case 'Overlap':
           for (const track of (stmt.tracks || [])) this._firstPass(track);
           break;
-        // ReplaceStmt, ZoomOutFrom, ZoomExpand declare their result inline with
-        // `const` — do NOT hoist them here (same pattern as ScanStmt/SeekStmt).
+        // ReplaceStmt, ZoomOutFrom, ZoomExpand, and v2.19 security stmts
+        // (ProbeStmt, HardenStmt, DiscoverStmt, InterceptStmt) declare their
+        // result inline with `const` — do NOT hoist them here (same pattern as
+        // ScanStmt/SeekStmt). AuthorizeStmt and ThreatStmt produce no variable.
       }
     }
   }
@@ -534,6 +546,13 @@ class EventMathCodeGen {
       // v2.18 — zoom extensions
       case 'ZoomOutFrom':       return this._genZoomOutFrom(stmt);
       case 'ZoomExpand':        return this._genZoomExpand(stmt);
+      // v2.19 — security layer
+      case 'ProbeStmt':         return this._genProbeStmt(stmt);
+      case 'AuthorizeStmt':     return this._genAuthorizeStmt(stmt);
+      case 'ThreatStmt':        return this._genThreatStmt(stmt);
+      case 'HardenStmt':        return this._genHardenStmt(stmt);
+      case 'DiscoverStmt':      return this._genDiscoverStmt(stmt);
+      case 'InterceptStmt':     return this._genInterceptStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -1957,6 +1976,148 @@ class EventMathCodeGen {
       }
     }
     return false;
+  }
+
+  _detectSecurity(statements) {
+    // Only async security stmts (ProbeStmt, DiscoverStmt, InterceptStmt) need the
+    // async wrapper. HardenStmt is synchronous. AuthorizeStmt and ThreatStmt are
+    // completely synchronous. We still want to emit the __emSec require when any
+    // security stmt is present, but only force async for the async ones.
+    if (!statements) return false;
+    const asyncSecTypes = new Set(['ProbeStmt', 'DiscoverStmt', 'InterceptStmt']);
+    const anySecTypes   = new Set(['ProbeStmt', 'DiscoverStmt', 'InterceptStmt', 'HardenStmt', 'AuthorizeStmt', 'ThreatStmt']);
+    for (const stmt of statements) {
+      if (!stmt) continue;
+      if (asyncSecTypes.has(stmt.type)) return true;  // forces async
+      if (anySecTypes.has(stmt.type)) {
+        // Non-async security stmt — still need __emSec require, mark as 'sec-only'
+        // We return a truthy object to distinguish it from 'needs async'
+        // Actually: simplify — only return true if async is needed
+      }
+      if (stmt.body && this._detectSecurity(stmt.body)) return true;
+      if (stmt.otherwise && this._detectSecurity(stmt.otherwise)) return true;
+    }
+    return false;
+  }
+
+  _detectSecurityAny(statements) {
+    // Returns true if any security statement (async or not) is present, so we
+    // can emit the __emSec require even for sync-only security programs.
+    if (!statements) return false;
+    const anySecTypes = new Set(['ProbeStmt', 'DiscoverStmt', 'InterceptStmt', 'HardenStmt', 'AuthorizeStmt', 'ThreatStmt']);
+    for (const stmt of statements) {
+      if (!stmt) continue;
+      if (anySecTypes.has(stmt.type)) return true;
+      if (stmt.body && this._detectSecurityAny(stmt.body)) return true;
+      if (stmt.otherwise && this._detectSecurityAny(stmt.otherwise)) return true;
+    }
+    return false;
+  }
+
+  // ── v2.19 Security Layer ─────────────────────────────────────────────────
+
+  _genProbeStmt(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const host    = this._escape(stmt.target || '');
+    switch (stmt.probeType) {
+      case 'dns':
+        this._line(`// probe dns "${host}" into ${this._escape(stmt.intoName)}`);
+        this._line(`const ${intoVar} = await __emSec.probeDNS('${host}', 'A');`);
+        break;
+      case 'mx':
+        this._line(`// probe mx "${host}" into ${this._escape(stmt.intoName)}`);
+        this._line(`const ${intoVar} = await __emSec.probeDNS('${host}', 'MX');`);
+        break;
+      case 'whois':
+        this._line(`// probe whois "${host}" into ${this._escape(stmt.intoName)}`);
+        this._line(`const ${intoVar} = await __emSec.probeWhois('${host}');`);
+        break;
+      case 'headers':
+        this._line(`// probe headers at "${host}" into ${this._escape(stmt.intoName)}`);
+        this._line(`const ${intoVar} = await __emSec.probeHeaders('${host}');`);
+        break;
+      case 'ssl':
+        this._line(`// probe ssl at "${host}" into ${this._escape(stmt.intoName)}`);
+        this._line(`const ${intoVar} = await __emSec.probeSSL('${host}');`);
+        break;
+      case 'ports':
+        this._line(`// probe ports at "${host}" from ${stmt.fromPort} through ${stmt.toPort} into ${this._escape(stmt.intoName)}`);
+        this._line(`const ${intoVar} = await __emSec.probePorts('${host}', ${stmt.fromPort}, ${stmt.toPort});`);
+        break;
+      default:
+        this._line(`// unknown probe type: ${stmt.probeType}`);
+        this._line(`const ${intoVar} = null;`);
+    }
+    this._line('');
+  }
+
+  _genAuthorizeStmt(stmt) {
+    const varName = this._safeName('__auth_' + stmt.name);
+    this._line(`// authorize: ${this._escape(stmt.name)}`);
+    this._line(`const ${varName} = {`);
+    this.indent++;
+    if (stmt.fields) {
+      for (const [key, val] of stmt.fields) {
+        const safeKey = this._safeKey(key.replace(/\s+/g, '_'));
+        this._line(`${safeKey}: '${this._escape(val)}',`);
+      }
+    }
+    this.indent--;
+    this._line(`};`);
+    const scopeVal = stmt.fields && stmt.fields.get('scope')   ? this._escape(stmt.fields.get('scope'))   : '';
+    const targetVal = stmt.fields && stmt.fields.get('target') ? this._escape(stmt.fields.get('target')) : '';
+    this._line(`console.log('[AUTHORIZED SCOPE]', '${scopeVal}', '| target:', '${targetVal}');`);
+    this._line('');
+  }
+
+  _genThreatStmt(stmt) {
+    const varName  = this._safeName(stmt.name);
+    const category = this._escape(stmt.category || 'threat');
+    const matter   = stmt.matter || {};
+    this._line(`// threat: ${this._escape(stmt.name)}`);
+    this._line(`const ${varName} = new EM.EventMathEvent(`);
+    this.indent++;
+    this._line(`"${this._escape(stmt.name)}",`);
+    this._line(`"${category}",`);
+    this._line(`{`);
+    this.indent++;
+    this._line(`isThreat: true,`);
+    for (const [key, val] of Object.entries(matter)) {
+      // Strip surrounding quotes from literal values (they come pre-quoted from the tokenizer)
+      const cleanVal = typeof val === 'string' ? val.replace(/^["']|["']$/g, '') : val;
+      this._line(`${this._safeKey(key)}: "${this._escape(cleanVal)}",`);
+    }
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`);`);
+    this._line('');
+  }
+
+  _genHardenStmt(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const sources = (stmt.sources || []).map(s => this._safeName(s)).join(', ');
+    this._line(`// harden from ${(stmt.sources || []).join(', ')} into ${this._escape(stmt.intoName)}`);
+    this._line(`const ${intoVar} = __emSec.generateHardening([${sources}]);`);
+    this._line('');
+  }
+
+  _genDiscoverStmt(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const cidr    = this._escape(stmt.target || '');
+    this._line(`// discover hosts on "${cidr}" into ${this._escape(stmt.intoName)}`);
+    this._line(`const ${intoVar} = await __emSec.discoverHosts('${cidr}');`);
+    this._line('');
+  }
+
+  _genInterceptStmt(stmt) {
+    const intoVar = this._safeName(stmt.intoName);
+    const iface   = this._escape(stmt.interface || 'eth0');
+    const seconds = stmt.seconds || 10;
+    const filter  = stmt.filter ? `'${this._escape(stmt.filter)}'` : 'null';
+    this._line(`// intercept traffic on "${iface}" for ${seconds} seconds into ${this._escape(stmt.intoName)}`);
+    this._line(`const ${intoVar} = await __emSec.captureTraffic('${iface}', ${seconds}, ${filter});`);
+    this._line('');
   }
 
   _genOverlap(stmt) {
