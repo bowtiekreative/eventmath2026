@@ -1,0 +1,198 @@
+{
+  "program": "EventMath System Map",
+  "version": "0.1",
+  "generatedAt": "2026-06-14T02:41:36.384Z",
+  "totalNodes": 17,
+  "totalEdges": 0,
+  "nodes": [
+    {
+      "id": "story:washington_news",
+      "type": "story_source",
+      "kind": "story",
+      "name": "washington_news",
+      "source": "news",
+      "query": "\"Washington DC politics 2025\"",
+      "intoLayer": "dc_events",
+      "description": "Story — scans \"news\" for \"\"Washington DC politics 2025\"\""
+    },
+    {
+      "id": "story:trump_twitter",
+      "type": "story_source",
+      "kind": "story",
+      "name": "trump_twitter",
+      "source": "twitter",
+      "query": "\"Donald Trump Washington\"",
+      "intoLayer": "trump_tweets",
+      "description": "Story — scans \"twitter\" for \"\"Donald Trump Washington\"\""
+    },
+    {
+      "id": "story:congress_news",
+      "type": "story_source",
+      "kind": "story",
+      "name": "congress_news",
+      "source": "news",
+      "query": "\"Congress legislation 2025\"",
+      "intoLayer": "congress_events",
+      "description": "Story — scans \"news\" for \"\"Congress legislation 2025\"\""
+    },
+    {
+      "id": "narrative:trump_view",
+      "type": "perspective",
+      "kind": "narrative",
+      "name": "trump_view",
+      "storyName": "washington_news",
+      "perspective": "conservative",
+      "bodyStatementCount": 4,
+      "description": "Narrative — \"conservative\" view of \"washington_news\""
+    },
+    {
+      "id": "narrative:analyst_view",
+      "type": "perspective",
+      "kind": "narrative",
+      "name": "analyst_view",
+      "storyName": "washington_news",
+      "perspective": "scientific",
+      "bodyStatementCount": 3,
+      "description": "Narrative — \"scientific\" view of \"washington_news\""
+    },
+    {
+      "id": "scope:washington_alternatives",
+      "type": "analysis",
+      "kind": "scope",
+      "name": "washington_alternatives",
+      "subject": "washington_future",
+      "dimensions": [
+        "political",
+        "economic",
+        "legal",
+        "public_opinion"
+      ],
+      "description": "Scope — multi-dimensional analysis of \"washington_future\""
+    },
+    {
+      "id": "scope:trump_options",
+      "type": "analysis",
+      "kind": "scope",
+      "name": "trump_options",
+      "subject": "trump_strategy",
+      "dimensions": [
+        "negotiation",
+        "confrontation",
+        "media"
+      ],
+      "description": "Scope — multi-dimensional analysis of \"trump_strategy\""
+    },
+    {
+      "id": "scenario:major_policy_shift",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "major_policy_shift",
+      "condition": "bipartisan deal reached",
+      "probability": "medium",
+      "bodyStatementCount": 3,
+      "description": "Scenario — \"major_policy_shift\" when bipartisan deal reached, likely medium"
+    },
+    {
+      "id": "scenario:investigation_intensifies",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "investigation_intensifies",
+      "condition": "new evidence emerges",
+      "probability": "high",
+      "bodyStatementCount": 3,
+      "description": "Scenario — \"investigation_intensifies\" when new evidence emerges, likely high"
+    },
+    {
+      "id": "scenario:economic_downturn",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "economic_downturn",
+      "condition": "fed rate changes",
+      "probability": "medium",
+      "bodyStatementCount": 3,
+      "description": "Scenario — \"economic_downturn\" when fed rate changes, likely medium"
+    },
+    {
+      "id": "scenario:primary_challenge",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "primary_challenge",
+      "condition": "gop internal divisions deepen",
+      "probability": "low",
+      "bodyStatementCount": 3,
+      "description": "Scenario — \"primary_challenge\" when gop internal divisions deepen, likely low"
+    },
+    {
+      "id": "scenario:media_firestorm",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "media_firestorm",
+      "condition": "whistleblower leaks",
+      "probability": "high",
+      "bodyStatementCount": 3,
+      "description": "Scenario — \"media_firestorm\" when whistleblower leaks, likely high"
+    },
+    {
+      "id": "scenario:trump_endorsement_wave",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "trump_endorsement_wave",
+      "condition": "key senate races approach",
+      "probability": "high",
+      "bodyStatementCount": 3,
+      "description": "Scenario — \"trump_endorsement_wave\" when key senate races approach, likely high"
+    },
+    {
+      "id": "mark:top_scenario",
+      "type": "variable",
+      "kind": "mark",
+      "name": "top_scenario",
+      "value": "investigation_intensifies",
+      "description": "Mark — stores \"investigation_intensifies\""
+    },
+    {
+      "id": "mark:trump_likely_response",
+      "type": "variable",
+      "kind": "mark",
+      "name": "trump_likely_response",
+      "value": "attacks media, claims persecution",
+      "description": "Mark — stores \"attacks media, claims persecution\""
+    },
+    {
+      "id": "mark:confidence_score",
+      "type": "variable",
+      "kind": "mark",
+      "name": "confidence_score",
+      "value": "high",
+      "description": "Mark — stores \"high\""
+    },
+    {
+      "id": "mark:alternative_count",
+      "type": "variable",
+      "kind": "mark",
+      "name": "alternative_count",
+      "value": "8",
+      "description": "Mark — stores \"8\""
+    }
+  ],
+  "edges": [],
+  "summary": {
+    "sources": 0,
+    "derivedValues": 0,
+    "gates": 0,
+    "components": 0,
+    "functions": 0,
+    "schemas": 0,
+    "collections": 0,
+    "sequences": 0,
+    "variables": 4,
+    "constants": 0,
+    "byType": {
+      "story_source": 3,
+      "perspective": 2,
+      "analysis": 2,
+      "prediction": 6,
+      "variable": 4
+    }
+  }
+}

@@ -70,6 +70,8 @@ class EventMathCodeGen {
     this._runtimePath = options.runtimePath || '../runtime/eventmath-runtime.js';
     // Security runtime path — relative to the same directory as the main runtime
     this._securityRuntimePath = options.securityRuntimePath || '../security/eventmath-security-runtime.js';
+    // Story runtime path — same convention
+    this._storyRuntimePath = options.storyRuntimePath || '../runtime/eventmath-story-runtime.js';
     this.indent = 0;
     this._vars = new Set();
     this._paramVars = new Set();
@@ -137,11 +139,18 @@ class EventMathCodeGen {
     this._hasAsk          = this._detectAsk(ast.statements);
     this._hasSecurityAsync = this._detectSecurity(ast.statements);
     this._hasSecurityAny   = this._hasSecurityAsync || this._detectSecurityAny(ast.statements);
+    this._hasStory         = this._detectStory(ast.statements);
     const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync;
 
     // Emit security runtime require only when needed
     if (this._hasSecurityAny) {
       this._line(`const __emSec = require('${this._securityRuntimePath}');`);
+      this._line('');
+    }
+    // Emit story runtime require only when needed
+    if (this._hasStory) {
+      this._line(`const __emStory = require('${this._storyRuntimePath}');`);
+      this._line(`Object.assign(EM, __emStory);`);
       this._line('');
     }
     if (_needsAsync) {
@@ -2027,6 +2036,18 @@ class EventMathCodeGen {
       if (anySecTypes.has(stmt.type)) return true;
       if (stmt.body && this._detectSecurityAny(stmt.body)) return true;
       if (stmt.otherwise && this._detectSecurityAny(stmt.otherwise)) return true;
+    }
+    return false;
+  }
+
+  _detectStory(statements) {
+    if (!statements) return false;
+    const storyTypes = new Set(['StoryStmt', 'NarrativeStmt', 'ScopeStmt', 'ScenarioStmt']);
+    for (const stmt of statements) {
+      if (!stmt) continue;
+      if (storyTypes.has(stmt.type)) return true;
+      if (stmt.body && this._detectStory(stmt.body)) return true;
+      if (stmt.otherwise && this._detectStory(stmt.otherwise)) return true;
     }
     return false;
   }

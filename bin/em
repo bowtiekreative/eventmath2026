@@ -195,8 +195,16 @@ function cmdCompile(file, opts) {
     if (!securityRuntimePath.startsWith('.')) securityRuntimePath = './' + securityRuntimePath;
   }
 
+  // Compute the story runtime path relative to the output location.
+  let storyRuntimePath = '../runtime/eventmath-story-runtime.js';
+  if (output) {
+    const storyRuntimeAbs = path.join(ROOT, 'runtime/eventmath-story-runtime.js');
+    storyRuntimePath = path.relative(path.dirname(path.resolve(output)), storyRuntimeAbs);
+    if (!storyRuntimePath.startsWith('.')) storyRuntimePath = './' + storyRuntimePath;
+  }
+
   const codegen = new EventMathCodeGen();
-  const js = codegen.generate(ast, { target, runtimePath, securityRuntimePath });
+  const js = codegen.generate(ast, { target, runtimePath, securityRuntimePath, storyRuntimePath });
 
   if (output) {
     fs.writeFileSync(path.resolve(output), js, 'utf-8');

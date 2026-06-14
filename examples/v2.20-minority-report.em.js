@@ -39,6 +39,9 @@ let most_likely = "green_revolution";
 let risk_factors = "economic uncertainty and political division";
 let climate_awareness = undefined;
 
+const __emStory = require('../runtime/eventmath-story-runtime.js');
+Object.assign(EM, __emStory);
+
 // story: climate_debate
 climate_debate = new EM.EventMathStory('climate_debate', 'twitter', "\"climate change\"");
 climate_debate.scan().then(function(events) { climate_events = events; }).catch(function(err) { console.error('Story scan failed:', err); });
