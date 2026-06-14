@@ -150,7 +150,10 @@ class EventMathCodeGen {
     this._hasCredibility   = this._detectCredibility(ast.statements);
     this._hasWatchdog      = this._detectWatchdog(ast.statements);
     this._hasDefense       = this._detectDefense(ast.statements);
-    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia || this._hasDefense;
+    this._hasTaskRuntime   = this._detectTaskRuntime(ast.statements);
+    this._hasFundamental   = this._detectFundamental(ast.statements);
+    this._hasNetwork       = this._detectNetwork(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia || this._hasDefense || this._hasTaskRuntime || this._hasFundamental || this._hasNetwork;
 
     // Emit security runtime require only when needed
     if (this._hasSecurityAny) {
@@ -202,6 +205,18 @@ class EventMathCodeGen {
     }
     if (this._hasDefense) {
       this._line(`const __emDefense = require('../runtime/eventmath-defense-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasTaskRuntime) {
+      this._line(`const __emTask = require('../runtime/eventmath-task-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasFundamental) {
+      this._line(`const __emFundamental = require('../runtime/eventmath-fundamental-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasNetwork) {
+      this._line(`const __emNetwork = require('../runtime/eventmath-network-runtime.js');`);
       this._line('');
     }
     if (_needsAsync) {
@@ -566,6 +581,33 @@ class EventMathCodeGen {
           break;
         case 'InoculateStmt':
           break;
+        // v2.25 — agent commands
+        case 'InstructStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        // v2.26 — fundamental analysis
+        case 'FundamentalStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        // v2.27 — network + offline
+        case 'NetworkStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'OfflineStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
       }
     }
   }
@@ -736,6 +778,13 @@ class EventMathCodeGen {
       case 'SweepStmt':      return this._genSweepStmt(stmt);
       case 'QuarantineStmt': return this._genQuarantineStmt(stmt);
       case 'InoculateStmt':  return this._genInoculateStmt(stmt);
+      // v2.25 — agent commands
+      case 'InstructStmt':   return this._genInstructStmt(stmt);
+      // v2.26 — fundamental analysis
+      case 'FundamentalStmt': return this._genFundamentalStmt(stmt);
+      // v2.27 — network + offline
+      case 'NetworkStmt':    return this._genNetworkStmt(stmt);
+      case 'OfflineStmt':    return this._genOfflineStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -3936,6 +3985,22 @@ class EventMathCodeGen {
     return walk(statements);
   }
 
+  _detectTaskRuntime(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'InstructStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectFundamental(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'FundamentalStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectNetwork(statements) {
+    const types = new Set(['NetworkStmt', 'OfflineStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
   // ── v2.23 organizational intelligence codegen ─────────────────────────────
 
   _genRoleStmt(stmt) {
@@ -4031,6 +4096,88 @@ class EventMathCodeGen {
     const pidRef = stmt.pid ? this._safeName(stmt.pid) : 'null';
     this._line(`// inoculate: ${this._escape(stmt.source || '')}`);
     this._line(`await __emDefense.inoculateProcess(${pidRef}, ${sourceRef});`);
+    this._line('');
+  }
+
+  // ── v2.25 agent commands codegen ─────────────────────────────────────────
+
+  _genInstructStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const agentName = JSON.stringify(stmt.agentName || 'hermes');
+    const command = JSON.stringify(stmt.command || '');
+    this._line(`// instruct ${stmt.agentName || 'hermes'}: ${this._escape(stmt.command || '')}`);
+    const call = `await __emTask.instructAgent(${agentName}, ${command}, {})`;
+    if (varName) {
+      this._line(`${varName} = ${call};`);
+    } else {
+      this._line(`${call};`);
+    }
+    this._line('');
+  }
+
+  // ── v2.26 fundamental analysis codegen ───────────────────────────────────
+
+  _genFundamentalStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const ticker = JSON.stringify(stmt.ticker || '');
+    this._line(`// fundamental analysis (buffett): ${this._escape(stmt.ticker || '')}`);
+    const call = `await __emFundamental.buffettAnalysis(${ticker}, {})`;
+    if (varName) {
+      this._line(`${varName} = ${call};`);
+    } else {
+      this._line(`${call};`);
+    }
+    this._line('');
+  }
+
+  // ── v2.27 network + offline codegen ──────────────────────────────────────
+
+  _genNetworkStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const op = stmt.op || 'scan';
+    this._line(`// network ${op}`);
+    if (op === 'scan') {
+      const call = `await __emNetwork.discoverNetworks()`;
+      if (varName) {
+        this._line(`${varName} = ${call};`);
+      } else {
+        this._line(`${call};`);
+      }
+    } else if (op === 'connect') {
+      const ssid = JSON.stringify(stmt.ssid || '');
+      const pwd = stmt.password ? JSON.stringify(stmt.password) : 'undefined';
+      const call = `await __emNetwork.connectToNetwork(${ssid}, ${pwd})`;
+      if (varName) {
+        this._line(`${varName} = ${call};`);
+      } else {
+        this._line(`${call};`);
+      }
+    }
+    this._line('');
+  }
+
+  _genOfflineStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const op = stmt.op || 'check';
+    const key = JSON.stringify(stmt.key || '');
+    this._line(`// offline ${op}`);
+    if (op === 'cache') {
+      this._line(`__emNetwork.cacheData(${key}, {}, ${stmt.ttlHours || 24});`);
+    } else if (op === 'read') {
+      const call = `__emNetwork.readCache(${key})`;
+      if (varName) {
+        this._line(`${varName} = ${call};`);
+      } else {
+        this._line(`${call};`);
+      }
+    } else if (op === 'check') {
+      const call = `await __emNetwork.checkConnectivity('8.8.8.8')`;
+      if (varName) {
+        this._line(`${varName} = ${call};`);
+      } else {
+        this._line(`${call};`);
+      }
+    }
     this._line('');
   }
 }

@@ -84,6 +84,12 @@ const KEYWORDS = new Set([
   'role', 'hierarchy', 'incentive', 'align', 'credibility',
   // v2.24 — defense layer
   'watchdog', 'sweep', 'quarantine', 'inoculate',
+  // v2.25 — agent commands
+  'instruct',
+  // v2.26 — fundamental analysis
+  'fundamental', 'buffett',
+  // v2.27 — network + offline
+  'network', 'connect', 'offline',
 ]);
 
 class Token {
@@ -336,6 +342,13 @@ class EventMathTokenizer {
     if (lead === 'sweep')       return this._tokenizeSweepStmt(words, lineNum);
     if (lead === 'quarantine')  return this._tokenizeQuarantineStmt(words, lineNum);
     if (lead === 'inoculate')   return this._tokenizeInoculateStmt(words, lineNum);
+    // v2.25 — agent commands
+    if (lead === 'instruct')    return this._tokenizeInstructStmt(words, lineNum);
+    // v2.26 — fundamental analysis
+    if (lead === 'fundamental') return this._tokenizeFundamentalStmt(words, lineNum);
+    // v2.27 — network + offline
+    if (lead === 'network')     return this._tokenizeNetworkStmt(words, lineNum);
+    if (lead === 'offline')     return this._tokenizeOfflineStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -3588,6 +3601,82 @@ class EventMathTokenizer {
     const source = fromIdx > 0 ? words.slice(fromIdx + 1).join(' ') : words.slice(1).join(' ');
     const pid = fromIdx > 1 ? words.slice(1, fromIdx).join(' ') : null;
     return [new Token('INOCULATE_STMT', { source, pid }, lineNum)];
+  }
+
+  // ── v2.25 Agent Commands ───────────────────────────────────────────────────
+
+  _tokenizeInstructStmt(words, lineNum) {
+    // instruct AGENT_NAME "command text" into RESULT
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : null;
+    // Extract quoted command
+    const mCmd = line.match(/"([^"]*)"/);
+    const command = mCmd ? mCmd[1] : '';
+    // Agent name is between 'instruct' and the quoted command (or 'to' if present)
+    const cmdStart = mCmd ? line.indexOf('"') : line.length;
+    const afterInstruct = line.slice('instruct'.length).trim();
+    const toIdx = afterInstruct.indexOf('"');
+    let agentName = toIdx > 0 ? afterInstruct.slice(0, toIdx).replace(/\s+to\s*$/, '').trim() : words[1] || 'default';
+    return [new Token('INSTRUCT_STMT', { agentName, command, intoName }, lineNum)];
+  }
+
+  // ── v2.26 Fundamental Analysis ────────────────────────────────────────────
+
+  _tokenizeFundamentalStmt(words, lineNum) {
+    // fundamental "TICKER" via buffett into analysis
+    // fundamental "TICKER" into analysis
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'analysis';
+    const viaIdx = this._indexOf(words, 'via');
+    const provider = viaIdx > 0 ? words[viaIdx + 1] || 'buffett' : 'buffett';
+    const mTicker = line.match(/"([^"]*)"/);
+    const ticker = mTicker ? mTicker[1].toUpperCase() : (words[1] || '');
+    return [new Token('FUNDAMENTAL_STMT', { ticker, provider: provider.toLowerCase(), intoName }, lineNum)];
+  }
+
+  // ── v2.27 Network + Offline ────────────────────────────────────────────────
+
+  _tokenizeNetworkStmt(words, lineNum) {
+    // network scan into RESULT
+    // network connect to best
+    // network connect to "SSID" [with password "PWD"]
+    // network check into RESULT
+    const op = words[1] ? words[1].toLowerCase() : 'scan';
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'connections';
+
+    if (op === 'connect') {
+      const toIdx = this._indexOf(words, 'to');
+      const withIdx = this._indexOf(words, 'with');
+      const line = words.join(' ');
+      const mSsid = line.match(/"([^"]*)"/);
+      const ssid = mSsid ? mSsid[1] : (toIdx > 0 ? words.slice(toIdx + 1, withIdx > 0 ? withIdx : intoIdx > 0 ? intoIdx : words.length).join(' ') : 'best');
+      const mPwd = line.match(/password\s+"([^"]*)"/i);
+      const password = mPwd ? mPwd[1] : null;
+      return [new Token('NETWORK_STMT', { op: 'connect', ssid, password, intoName }, lineNum)];
+    }
+
+    return [new Token('NETWORK_STMT', { op, ssid: null, password: null, intoName }, lineNum)];
+  }
+
+  _tokenizeOfflineStmt(words, lineNum) {
+    // offline cache "KEY" for N hours
+    // offline read "KEY" into RESULT
+    // offline check into RESULT
+    const op = words[1] ? words[1].toLowerCase() : 'check';
+    const line = words.join(' ');
+    const mKey = line.match(/"([^"]*)"/);
+    const key = mKey ? mKey[1] : null;
+    const forIdx = this._indexOf(words, 'for');
+    let ttlHours = 24;
+    if (forIdx > 0 && words[forIdx + 1]) {
+      ttlHours = parseInt(words[forIdx + 1], 10) || 24;
+    }
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'cache result';
+    return [new Token('OFFLINE_STMT', { op, key, ttlHours, intoName }, lineNum)];
   }
 }
 

@@ -213,6 +213,13 @@ class EventMathParser {
     if (t.type === 'SWEEP_STMT')       return this._parseSweepStmt();
     if (t.type === 'QUARANTINE_STMT')  return this._parseQuarantineStmt();
     if (t.type === 'INOCULATE_STMT')   return this._parseInoculateStmt();
+    // v2.25 — agent commands
+    if (t.type === 'INSTRUCT_STMT')    return this._parseInstructStmt();
+    // v2.26 — fundamental analysis
+    if (t.type === 'FUNDAMENTAL_STMT') return this._parseFundamentalStmt();
+    // v2.27 — network + offline
+    if (t.type === 'NETWORK_STMT')     return this._parseNetworkStmt();
+    if (t.type === 'OFFLINE_STMT')     return this._parseOfflineStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -2728,6 +2735,36 @@ class EventMathParser {
     const t = this.advance();
     if (!t || !t.value) return null;
     return ast('InoculateStmt', { source: t.value.source, pid: t.value.pid });
+  }
+
+  // ── v2.25 agent commands ──────────────────────────────────────────────────
+
+  _parseInstructStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('InstructStmt', { agentName: t.value.agentName, command: t.value.command, intoName: t.value.intoName });
+  }
+
+  // ── v2.26 fundamental analysis ────────────────────────────────────────────
+
+  _parseFundamentalStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('FundamentalStmt', { ticker: t.value.ticker, provider: t.value.provider, intoName: t.value.intoName });
+  }
+
+  // ── v2.27 network + offline ───────────────────────────────────────────────
+
+  _parseNetworkStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('NetworkStmt', { op: t.value.op, ssid: t.value.ssid, password: t.value.password, intoName: t.value.intoName });
+  }
+
+  _parseOfflineStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('OfflineStmt', { op: t.value.op, key: t.value.key, ttlHours: t.value.ttlHours, intoName: t.value.intoName });
   }
 }
 

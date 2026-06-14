@@ -293,7 +293,8 @@ class EventMathValidator {
       'emerge', 'wifi', 'lookup', 'watch',
       'agent', 'remember', 'recall', 'alert', 'control', 'send', 'play', 'pause', 'next', 'previous', 'media', 'via', 'computer', 'mute', 'loop',
       'role', 'hierarchy', 'incentive', 'align', 'credibility',
-      'watchdog', 'sweep', 'quarantine', 'inoculate']);
+      'watchdog', 'sweep', 'quarantine', 'inoculate',
+      'instruct', 'fundamental', 'buffett', 'network', 'connect', 'offline']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();
