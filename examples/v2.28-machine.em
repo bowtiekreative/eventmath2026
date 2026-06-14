@@ -12,13 +12,13 @@ note ── HTTP: Talk to Web Servers (OSI Layer 7 — Application) ────
 note HTTP is how browsers talk to web servers. You send a GET request,
 note the server sends back a response. It runs over TCP/IP underneath.
 
-http get "https://api.github.com/users/octocat" into github profile
+fetch "https://api.github.com/users/octocat" into github profile
 show github profile
 
 note POST sends data to a server (e.g. submitting a form or calling an API).
 note The body is the data you're sending.
 
-http post "https://httpbin.org/post" with body "{\"action\":\"ping\"}" into post result
+fetch "https://httpbin.org/post" with body "{\"action\":\"ping\"}" into post result
 show post result
 
 note What you'll see in protocol_info:
@@ -120,10 +120,10 @@ note 3. HTTP GET request (application layer) → asks for the page
 note 4. TCP sends response in packets → your browser reassembles them
 note 5. TCP teardown (FIN, FIN-ACK, ACK) → closes connection
 
-note When you call: http get "https://example.com" into result
+note When you call: fetch "https://example.com" into result
 note EventMath handles steps 2-5 for you. The protocol_info explains each step.
 
-http get "https://httpbin.org/json" into json response
+fetch "https://httpbin.org/json" into json response
 show json response
 
 note ── End of v2.28 Machine Layer Example ─────────────────────────────────────

@@ -87,11 +87,11 @@ const KEYWORDS = new Set([
   // v2.25 — agent commands
   'instruct',
   // v2.26 — fundamental analysis
-  'fundamental', 'buffett',
+  'fundamental', 'buffett', 'graham',
   // v2.27 — network + offline
   'network', 'connect', 'offline',
-  // v2.28 — machine layer
-  'http', 'socket', 'serial', 'spawn', 'bytes',
+  // v2.28 — machine layer (fetch replaces http — http conflicts with URLs)
+  'fetch', 'socket', 'serial', 'spawn', 'bytes',
 ]);
 
 class Token {
@@ -352,7 +352,7 @@ class EventMathTokenizer {
     if (lead === 'network')     return this._tokenizeNetworkStmt(words, lineNum);
     if (lead === 'offline')     return this._tokenizeOfflineStmt(words, lineNum);
     // v2.28 — machine layer
-    if (lead === 'http')        return this._tokenizeHttpStmt(words, lineNum);
+    if (lead === 'fetch')       return this._tokenizeFetchStmt(words, lineNum);
     if (lead === 'socket')      return this._tokenizeSocketStmt(words, lineNum);
     if (lead === 'serial')      return this._tokenizeSerialStmt(words, lineNum);
     if (lead === 'spawn')       return this._tokenizeSpawnStmt(words, lineNum);
@@ -3689,36 +3689,36 @@ class EventMathTokenizer {
 
   // ── v2.28 Machine Layer ────────────────────────────────────────────────────
 
-  _tokenizeHttpStmt(words, lineNum) {
-    // http get "URL" into RESULT
-    // http post "URL" with body "DATA" into RESULT
-    // http post "URL" with body VARNAME into RESULT
-    const op = words[1] ? words[1].toLowerCase() : 'get';
+  _tokenizeFetchStmt(words, lineNum) {
+    // fetch "URL" into RESULT                        ← GET (default)
+    // fetch "URL" with body "DATA" into RESULT       ← POST (body present → POST)
+    // fetch "URL" with body VARNAME into RESULT      ← POST with variable body
     const line = words.join(' ');
     const intoIdx = this._lastIndexOf(words, 'into');
     const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'response';
     const mUrl = line.match(/"([^"]*)"/);
-    const url = mUrl ? mUrl[1] : (words[2] || '');
+    const url = mUrl ? mUrl[1] : (words[1] || '');
 
-    let body = null;
-    let bodyVar = null;
-    if (op === 'post') {
-      const bodyIdx = this._indexOf(words, 'body');
-      if (bodyIdx > 0) {
-        // Check if there's a quoted string after 'body'
-        const afterBody = words.slice(bodyIdx + 1).join(' ');
-        const mBody = afterBody.match(/^"([^"]*)"/);
-        if (mBody) {
-          body = mBody[1];
-        } else {
-          // bare name reference — take word(s) before 'into'
-          const endIdx = intoIdx > bodyIdx ? intoIdx : words.length;
-          bodyVar = words.slice(bodyIdx + 1, endIdx).join(' ') || null;
-        }
+    const bodyIdx = this._indexOf(words, 'body');
+    let op = 'get';
+    let requestBody = null;
+    let requestBodyVar = null;
+
+    if (bodyIdx > 0) {
+      op = 'post';
+      const afterBody = words.slice(bodyIdx + 1).join(' ');
+      // Second quoted string after the URL is the body
+      const allQuoted = [...line.matchAll(/"([^"]*)"/g)];
+      const bodyMatch = allQuoted[1]; // second quoted string
+      if (bodyMatch) {
+        requestBody = bodyMatch[1];
+      } else {
+        const endIdx = intoIdx > bodyIdx ? intoIdx : words.length;
+        requestBodyVar = words.slice(bodyIdx + 1, endIdx).join(' ') || null;
       }
     }
 
-    return [new Token('HTTP_STMT', { op, url, body, bodyVar, intoName }, lineNum)];
+    return [new Token('FETCH_STMT', { op, url, requestBody, requestBodyVar, intoName }, lineNum)];
   }
 
   _tokenizeSocketStmt(words, lineNum) {
@@ -3778,6 +3778,7 @@ class EventMathTokenizer {
   }
 
   _tokenizeSerialStmt(words, lineNum) {
+    // serial scan into ports
     // serial connect to "/dev/ttyUSB0" at 9600 baud into port
     // serial send "CMD\n" to port
     // serial read from port into data
@@ -3786,6 +3787,10 @@ class EventMathTokenizer {
     const line = words.join(' ');
     const intoIdx = this._lastIndexOf(words, 'into');
     const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : null;
+
+    if (op === 'scan') {
+      return [new Token('SERIAL_STMT', { op: 'scan', path: null, baud: null, data: null, dataVar: null, portRef: null, intoName: intoName || 'available ports' }, lineNum)];
+    }
 
     if (op === 'connect') {
       const mPath = line.match(/to\s+"([^"]*)"/);

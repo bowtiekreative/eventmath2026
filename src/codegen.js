@@ -614,7 +614,7 @@ class EventMathCodeGen {
           }
           break;
         // v2.28 — machine layer
-        case 'HttpStmt':
+        case 'FetchStmt':
         case 'SocketStmt':
         case 'SerialStmt':
         case 'SpawnStmt':
@@ -797,7 +797,7 @@ class EventMathCodeGen {
       // v2.25 — agent commands
       case 'InstructStmt':   return this._genInstructStmt(stmt);
       // v2.28 — machine layer
-      case 'HttpStmt':       return this._genHttpStmt(stmt);
+      case 'FetchStmt':      return this._genFetchStmt(stmt);
       case 'SocketStmt':     return this._genSocketStmt(stmt);
       case 'SerialStmt':     return this._genSerialStmt(stmt);
       case 'SpawnStmt':      return this._genSpawnStmt(stmt);
@@ -4024,7 +4024,7 @@ class EventMathCodeGen {
   }
 
   _detectMachine(statements) {
-    const types = new Set(['HttpStmt', 'SocketStmt', 'SerialStmt', 'SpawnStmt', 'BytesStmt']);
+    const types = new Set(['FetchStmt', 'SocketStmt', 'SerialStmt', 'SpawnStmt', 'BytesStmt']);
     const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
     return walk(statements);
   }
@@ -4148,8 +4148,10 @@ class EventMathCodeGen {
   _genFundamentalStmt(stmt) {
     const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
     const ticker = JSON.stringify(stmt.ticker || '');
-    this._line(`// fundamental analysis (buffett): ${this._escape(stmt.ticker || '')}`);
-    const call = `await __emFundamental.buffettAnalysis(${ticker}, {})`;
+    const provider = (stmt.provider || 'buffett').toLowerCase();
+    const fn = provider === 'graham' ? 'grahamAnalysis' : 'buffettAnalysis';
+    this._line(`// fundamental analysis (${provider}): ${this._escape(stmt.ticker || '')}`);
+    const call = `await __emFundamental.${fn}(${ticker}, {})`;
     if (varName) {
       this._line(`${varName} = ${call};`);
     } else {
@@ -4211,11 +4213,11 @@ class EventMathCodeGen {
 
   // ── v2.28 machine layer codegen ───────────────────────────────────────────
 
-  _genHttpStmt(stmt) {
+  _genFetchStmt(stmt) {
     const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
     const op = stmt.op || 'get';
     const url = JSON.stringify(stmt.url || '');
-    this._line(`// http ${op}: ${this._escape(stmt.url || '')}`);
+    this._line(`// fetch ${op}: ${this._escape(stmt.url || '')}`);
     if (op === 'get') {
       const call = `await __emMachine.httpGet(${url})`;
       if (varName) this._line(`${varName} = ${call};`);
@@ -4279,7 +4281,11 @@ class EventMathCodeGen {
     const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
     const op = stmt.op || 'connect';
     this._line(`// serial ${op}`);
-    if (op === 'connect') {
+    if (op === 'scan') {
+      const call = `await __emMachine.serialScan()`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'connect') {
       const path = JSON.stringify(stmt.path || '/dev/ttyUSB0');
       const baud = stmt.baud || 9600;
       const call = `await __emMachine.serialConnect(${path}, ${baud})`;

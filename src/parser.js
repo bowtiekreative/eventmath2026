@@ -221,7 +221,7 @@ class EventMathParser {
     if (t.type === 'NETWORK_STMT')     return this._parseNetworkStmt();
     if (t.type === 'OFFLINE_STMT')     return this._parseOfflineStmt();
     // v2.28 — machine layer
-    if (t.type === 'HTTP_STMT')        return this._parseHttpStmt();
+    if (t.type === 'FETCH_STMT')       return this._parseFetchStmt();
     if (t.type === 'SOCKET_STMT')      return this._parseSocketStmt();
     if (t.type === 'SERIAL_STMT')      return this._parseSerialStmt();
     if (t.type === 'SPAWN_STMT')       return this._parseSpawnStmt();
@@ -2775,10 +2775,10 @@ class EventMathParser {
 
   // ── v2.28 machine layer ───────────────────────────────────────────────────
 
-  _parseHttpStmt() {
+  _parseFetchStmt() {
     const t = this.advance();
     if (!t || !t.value) return null;
-    return ast('HttpStmt', { op: t.value.op, url: t.value.url, requestBody: t.value.body, requestBodyVar: t.value.bodyVar, intoName: t.value.intoName });
+    return ast('FetchStmt', { op: t.value.op, url: t.value.url, requestBody: t.value.requestBody, requestBodyVar: t.value.requestBodyVar, intoName: t.value.intoName });
   }
 
   _parseSocketStmt() {

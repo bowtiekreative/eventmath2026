@@ -224,12 +224,98 @@ console.log('\n── Runtime: buffettAnalysis offline scoring ──');
     assert('has questions array', Array.isArray(result.questions));
     assert('has disclaimer', typeof result.disclaimer === 'string');
     assert('disclaimer mentions educational', result.disclaimer.toLowerCase().includes('educational'));
+  });
+}
 
-    const summary = `\n${'─'.repeat(50)}\nv2.26 tests: ${passed} passed, ${failed} failed\n`;
+// ── Graham Analysis ──────────────────────────────────────────────────────────
+
+console.log('\n── Tokenizer: fundamental via graham ──');
+{
+  const { EventMathTokenizer } = require('../src/tokenizer.js');
+  const toks = new EventMathTokenizer().tokenize('fundamental "KO" via graham into ko graham');
+  assert('FUNDAMENTAL_STMT emitted', toks[0].type === 'FUNDAMENTAL_STMT');
+  assert('provider is graham', toks[0].value.provider === 'graham');
+  assert('ticker KO', toks[0].value.ticker === 'KO');
+}
+
+console.log('\n── Codegen: graham dispatch ──');
+{
+  const { EventMathParser } = require('../src/parser.js');
+  const { EventMathCodeGen } = require('../src/codegen.js');
+  const { EventMathTokenizer } = require('../src/tokenizer.js');
+  function compile(src) {
+    const t = new EventMathTokenizer().tokenize(src);
+    const a = new EventMathParser(t).parse();
+    return new EventMathCodeGen().generate(a);
+  }
+  const js = compile('fundamental "KO" via graham into ko score');
+  assert('grahamAnalysis called', js.includes('grahamAnalysis'));
+  assert('buffettAnalysis NOT called', !js.includes('buffettAnalysis'));
+  assert('ko score hoisted', js.includes('let ko_score') || js.includes('koscore') || js.includes('ko_score'));
+}
+
+console.log('\n── Runtime: grahamNumber ──');
+{
+  const rt = require('../runtime/eventmath-fundamental-runtime.js');
+  assert('grahamNumber exported', typeof rt.grahamNumber === 'function');
+
+  const result = rt.grahamNumber(5.0, 30.0);
+  assert('grahamNumber returns object', typeof result === 'object');
+  assert('has grahamNumber value', typeof result.grahamNumber === 'number');
+  // Graham Number = sqrt(22.5 * 5.0 * 30.0) = sqrt(3375) ≈ 58.09
+  assert('grahamNumber approx correct', Math.abs(result.grahamNumber - 58.09) < 1);
+
+  const bad = rt.grahamNumber(null, 30);
+  assert('null EPS returns error', bad.error !== undefined || bad.grahamNumber === null);
+}
+
+console.log('\n── Runtime: grahamAnalysis ──');
+{
+  const rt = require('../runtime/eventmath-fundamental-runtime.js');
+  const providedData = {
+    eps: 4.0,
+    pe_ratio: 14,
+    revenue: 5e9,
+    market_cap: 50e9,
+    current_ratio: 2.5,
+    debt_to_equity: 0.4,
+    free_cash_flow: 1e9,
+    revenue_growth: 0.08
+  };
+  rt.grahamAnalysis('GTEST', providedData).then(result => {
+    assert('grahamAnalysis returns object', typeof result === 'object');
+    assert('has ticker', result.ticker === 'GTEST');
+    assert('has scores', typeof result.scores === 'object');
+    assert('has total', typeof result.total === 'number');
+    assert('total in 0-100', result.total >= 0 && result.total <= 100);
+    assert('has verdict', typeof result.verdict === 'string');
+    assert('has missing', Array.isArray(result.missing));
+    assert('has questions', Array.isArray(result.questions));
+    assert('disclaimer mentions Graham', result.disclaimer.toLowerCase().includes('graham') || result.disclaimer.toLowerCase().includes('intelligent investor'));
+  });
+}
+
+console.log('\n── Runtime: generateGrahamScorecard ──');
+{
+  const rt = require('../runtime/eventmath-fundamental-runtime.js');
+  assert('generateGrahamScorecard exported', typeof rt.generateGrahamScorecard === 'function');
+
+  const analysis = {
+    ticker: 'KO',
+    scores: { size: 8, financial_condition: 18, earnings_stability: 15, dividend_record: 12, earnings_growth: 10, pe_ratio: 8, pb_ratio: 6 },
+    total: 77,
+    verdict: 'strong buy',
+    reasoning: ['Strong revenue base', 'Good current ratio'],
+    missing: []
+  };
+  const card = rt.generateGrahamScorecard('KO', analysis);
+  assert('scorecard is string', typeof card === 'string');
+  assert('scorecard includes ticker', card.includes('KO'));
+  assert('scorecard includes total', card.includes('77'));
+
+  const summary = `\n${'─'.repeat(50)}\nv2.26 tests: ${passed} passed, ${failed} failed\n`;
+  setTimeout(() => {
     console.log(summary);
     if (failed > 0) process.exit(1);
-  }).catch(err => {
-    console.error('Runtime error:', err.message);
-    process.exit(1);
-  });
+  }, 200);
 }

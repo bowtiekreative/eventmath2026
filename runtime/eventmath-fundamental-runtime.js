@@ -404,4 +404,319 @@ function generateScorecard(ticker, analysis) {
   return lines.join('\n');
 }
 
-module.exports = { buffettAnalysis, assessMoat, generateScorecard };
+// ---------------------------------------------------------------------------
+// grahamNumber(eps, bookValuePerShare) — SYNC
+// Calculates Benjamin Graham's intrinsic value estimate: √(22.5 × EPS × BV/share)
+// ---------------------------------------------------------------------------
+
+function grahamNumber(eps, bookValuePerShare) {
+  if (eps == null || bookValuePerShare == null || eps <= 0 || bookValuePerShare <= 0) {
+    return { error: 'Insufficient data for Graham Number', grahamNumber: null };
+  }
+  const gn = Math.sqrt(22.5 * eps * bookValuePerShare);
+  return {
+    grahamNumber: gn,
+    eps,
+    bookValuePerShare,
+    maxPrice: gn,
+    verdict: null, // No current price provided; caller must compare
+  };
+}
+
+// ---------------------------------------------------------------------------
+// grahamAnalysis(ticker, providedData) — ASYNC
+// Applies Benjamin Graham's 7 criteria from The Intelligent Investor
+// ---------------------------------------------------------------------------
+
+async function grahamAnalysis(ticker, providedData = {}) {
+  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
+  const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=defaultKeyStatistics%2CfinancialData`;
+
+  const [chartJson, summaryJson] = await Promise.all([
+    _httpsGet(chartUrl),
+    _httpsGet(summaryUrl),
+  ]);
+
+  // Also try to pull pb_ratio and current_ratio from summaryData if available
+  const fetched = Object.assign(
+    {},
+    _extractChartData(chartJson),
+    _extractSummaryData(summaryJson),
+    _extractGrahamExtras(summaryJson)
+  );
+
+  // providedData overrides fetched
+  const data = Object.assign({}, fetched, providedData);
+
+  // Fields needed for Graham's 7 criteria
+  const FIELDS = [
+    'revenue', 'market_cap',       // 1. Adequate size
+    'current_ratio',               // 2. Financial condition
+    'eps',                         // 3. Earnings stability
+    'free_cash_flow',              // 4. Dividend record (proxy)
+    'revenue_growth',              // 5. Earnings growth
+    'pe_ratio',                    // 6. Moderate P/E
+    'pb_ratio',                    // 7. Moderate P/B
+  ];
+  const missing = FIELDS.filter(f => data[f] == null);
+  const questions = missing.map(f => {
+    const qmap = {
+      revenue: `What is ${ticker}'s annual revenue?`,
+      market_cap: `What is ${ticker}'s current market capitalization?`,
+      current_ratio: `What is ${ticker}'s current ratio?`,
+      eps: `What is ${ticker}'s trailing twelve-month EPS?`,
+      free_cash_flow: `Does ${ticker} pay consistent dividends?`,
+      revenue_growth: `What has been ${ticker}'s earnings growth over the past 5 years?`,
+      pe_ratio: `What is ${ticker}'s current P/E ratio?`,
+      pb_ratio: `What is ${ticker}'s current price-to-book ratio?`,
+    };
+    return qmap[f] || `What is ${ticker}'s current ${f.replace(/_/g, ' ')}?`;
+  });
+
+  // Score each of Graham's 7 criteria
+  const scores = {};
+  const reasoning = [];
+
+  // 1. Adequate size (0-10 pts)
+  {
+    let s = 0;
+    if (data.revenue != null && data.revenue >= 100e6) {
+      s = 10; reasoning.push('Revenue meets Graham\'s minimum size threshold (≥ $100M)');
+    } else if (data.market_cap != null && data.market_cap >= 500e6) {
+      s = 7; reasoning.push('Market cap suggests adequate enterprise size (≥ $500M)');
+    } else if (data.revenue != null || data.market_cap != null) {
+      s = 3; reasoning.push('Company appears below Graham\'s preferred size threshold');
+    } else {
+      reasoning.push('Size data unavailable — cannot assess adequate size criterion');
+    }
+    scores.adequate_size = Math.min(s, 10);
+  }
+
+  // 2. Financial condition (0-20 pts)
+  {
+    let s = 0;
+    const cr = data.current_ratio;
+    if (cr != null) {
+      if (cr >= 2.0) {
+        s += 15; reasoning.push(`Current ratio of ${cr.toFixed(2)} meets Graham's ≥ 2.0 standard`);
+      } else if (cr >= 1.5) {
+        s += 8; reasoning.push(`Current ratio of ${cr.toFixed(2)} is below Graham's ideal but acceptable`);
+      } else {
+        reasoning.push(`Current ratio of ${cr.toFixed(2)} is below Graham's minimum of 1.5`);
+      }
+    } else {
+      reasoning.push('Current ratio unavailable — financial condition partially unscored');
+    }
+    // LTD <= 2× net working capital proxy: use debt_to_equity as signal
+    if (data.debt_to_equity != null) {
+      if (data.debt_to_equity < 0.5) {
+        s += 5; reasoning.push('Low debt-to-equity supports Graham\'s long-term debt constraint');
+      } else if (data.debt_to_equity < 1.0) {
+        s += 2; reasoning.push('Moderate debt-to-equity — borderline on Graham\'s debt criterion');
+      }
+    }
+    scores.financial_condition = Math.min(s, 20);
+  }
+
+  // 3. Earnings stability (0-20 pts)
+  {
+    let s = 0;
+    if (data.eps != null && data.eps > 0) {
+      s = 20; reasoning.push(`Positive EPS of ${data.eps.toFixed(2)} supports earnings stability`);
+    } else if (data.eps != null && data.eps <= 0) {
+      s = 0; reasoning.push('Negative EPS — fails Graham\'s earnings stability criterion');
+    } else {
+      reasoning.push('EPS unavailable — earnings stability cannot be confirmed');
+    }
+    scores.earnings_stability = Math.min(s, 20);
+  }
+
+  // 4. Dividend record (0-15 pts) — proxy: positive free cash flow
+  {
+    let s = 0;
+    if (data.free_cash_flow != null && data.free_cash_flow > 0) {
+      s = 15; reasoning.push('Positive free cash flow supports capacity for uninterrupted dividends');
+    } else if (data.free_cash_flow != null && data.free_cash_flow <= 0) {
+      s = 0; reasoning.push('Negative free cash flow — dividend capacity in question');
+    } else {
+      reasoning.push('Free cash flow unavailable — dividend record cannot be assessed');
+    }
+    scores.dividend_record = Math.min(s, 15);
+  }
+
+  // 5. Earnings growth (0-15 pts)
+  {
+    let s = 0;
+    const rg = data.revenue_growth;
+    if (rg != null) {
+      if (rg > 0.10) {
+        s = 15; reasoning.push(`Revenue growth of ${(rg * 100).toFixed(1)}% exceeds Graham's 10% growth threshold`);
+      } else if (rg > 0.03) {
+        s = 8; reasoning.push(`Moderate revenue growth of ${(rg * 100).toFixed(1)}% — partially meets Graham's standard`);
+      } else {
+        s = 0; reasoning.push(`Revenue growth of ${(rg * 100).toFixed(1)}% is below Graham's preferred minimum`);
+      }
+    } else {
+      reasoning.push('Revenue growth data unavailable — earnings growth unscored');
+    }
+    scores.earnings_growth = Math.min(s, 15);
+  }
+
+  // 6. Moderate P/E (0-10 pts)
+  {
+    let s = 0;
+    const pe = data.pe_ratio;
+    if (pe != null && pe > 0) {
+      if (pe <= 15) {
+        s = 10; reasoning.push(`P/E of ${pe.toFixed(1)}x meets Graham's ≤ 15 standard`);
+      } else if (pe <= 20) {
+        s = 6; reasoning.push(`P/E of ${pe.toFixed(1)}x is slightly above Graham's ideal — moderate`);
+      } else if (pe <= 25) {
+        s = 3; reasoning.push(`P/E of ${pe.toFixed(1)}x exceeds Graham's guideline — premium priced`);
+      } else {
+        s = 0; reasoning.push(`P/E of ${pe.toFixed(1)}x significantly exceeds Graham's ≤ 15 criterion`);
+      }
+    } else if (pe != null) {
+      reasoning.push('Negative or zero P/E — company may not be profitable');
+    } else {
+      reasoning.push('P/E ratio unavailable — cannot score moderate P/E criterion');
+    }
+    scores.moderate_pe = Math.min(s, 10);
+  }
+
+  // 7. Moderate P/B (0-10 pts)
+  {
+    let s = 0;
+    const pe = data.pe_ratio;
+    const pb = data.pb_ratio;
+    if (pe != null && pe > 0 && pb != null && pb > 0) {
+      const product = pe * pb;
+      if (product <= 22.5) {
+        s = 10; reasoning.push(`P/E × P/B = ${product.toFixed(1)} meets Graham's ≤ 22.5 combined test`);
+      } else {
+        s = 0; reasoning.push(`P/E × P/B = ${product.toFixed(1)} exceeds Graham's 22.5 combined ceiling`);
+        // Fall back to P/B alone for partial credit
+        if (pb <= 1.5) { s = 7; reasoning.push(`P/B of ${pb.toFixed(2)} alone is below 1.5 — partial credit awarded`); }
+        else if (pb <= 2.5) { s = 4; reasoning.push(`P/B of ${pb.toFixed(2)} is below 2.5 — modest partial credit`); }
+      }
+    } else if (pb != null && pb > 0) {
+      if (pb <= 1.5) {
+        s = 10; reasoning.push(`P/B of ${pb.toFixed(2)} meets Graham's ≤ 1.5 standalone standard`);
+      } else if (pb <= 2.5) {
+        s = 5; reasoning.push(`P/B of ${pb.toFixed(2)} is moderate — partially meets Graham's guideline`);
+      } else {
+        s = 0; reasoning.push(`P/B of ${pb.toFixed(2)} exceeds Graham's preferred level`);
+      }
+    } else {
+      reasoning.push('P/B ratio unavailable — cannot score moderate P/B criterion');
+    }
+    scores.moderate_pb = Math.min(s, 10);
+  }
+
+  const total = Object.values(scores).reduce((a, b) => a + b, 0);
+
+  let verdict;
+  if (missing.length > 3) {
+    verdict = 'insufficient data';
+  } else if (total >= 75) {
+    verdict = 'strong buy';
+  } else if (total >= 55) {
+    verdict = 'buy';
+  } else if (total >= 35) {
+    verdict = 'hold';
+  } else {
+    verdict = 'pass';
+  }
+
+  return {
+    ticker,
+    timestamp: Date.now(),
+    data: {
+      revenue: data.revenue || null,
+      market_cap: data.market_cap || null,
+      current_ratio: data.current_ratio || null,
+      eps: data.eps || null,
+      free_cash_flow: data.free_cash_flow || null,
+      revenue_growth: data.revenue_growth || null,
+      pe_ratio: data.pe_ratio || null,
+      pb_ratio: data.pb_ratio || null,
+      debt_to_equity: data.debt_to_equity || null,
+    },
+    scores,
+    total,
+    verdict,
+    reasoning,
+    missing,
+    questions,
+    disclaimer: 'This is an educational analysis using Benjamin Graham\'s criteria. Not financial advice.',
+  };
+}
+
+// _extractGrahamExtras — pull pb_ratio and current_ratio from Yahoo quoteSummary
+function _extractGrahamExtras(json) {
+  const result = {};
+  try {
+    const ks = _safeGet(json, 'quoteSummary', 'result', 0, 'defaultKeyStatistics');
+    const fd = _safeGet(json, 'quoteSummary', 'result', 0, 'financialData');
+
+    if (ks) {
+      if (_safeGet(ks, 'priceToBook', 'raw') != null) result.pb_ratio = ks.priceToBook.raw;
+    }
+    if (fd) {
+      if (_safeGet(fd, 'currentRatio', 'raw') != null) result.current_ratio = fd.currentRatio.raw;
+      if (_safeGet(fd, 'totalRevenue', 'raw') != null) result.revenue = fd.totalRevenue.raw;
+    }
+  } catch (_e) {}
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// generateGrahamScorecard(ticker, analysis) — SYNC
+// Formats a grahamAnalysis result as a printable ASCII scorecard
+// ---------------------------------------------------------------------------
+
+function generateGrahamScorecard(ticker, analysis) {
+  const s = analysis.scores || {};
+  const total = analysis.total || 0;
+  const verdict = (analysis.verdict || 'unknown').toUpperCase();
+  const BAR_W = 8;
+
+  const criteria = [
+    { key: 'adequate_size',      label: 'Adequate Size',      max: 10 },
+    { key: 'financial_condition', label: 'Financial Cond.',   max: 20 },
+    { key: 'earnings_stability', label: 'Earns. Stability',   max: 20 },
+    { key: 'dividend_record',    label: 'Dividend Record',    max: 15 },
+    { key: 'earnings_growth',    label: 'Earnings Growth',    max: 15 },
+    { key: 'moderate_pe',        label: 'Moderate P/E',       max: 10 },
+    { key: 'moderate_pb',        label: 'Moderate P/B',       max: 10 },
+  ];
+
+  const label = (str, width) => str.padEnd(width);
+
+  const lines = [
+    `═══ Graham Scorecard: ${ticker} ════════════════`,
+  ];
+
+  for (const c of criteria) {
+    const score = s[c.key] || 0;
+    const bar = _bar(score, c.max, BAR_W);
+    lines.push(`${label(c.label, 16)}${bar}  ${String(score).padStart(2)}/${c.max}`);
+  }
+
+  lines.push('─────────────────────────────────────────────');
+  lines.push(`${label('Total', 16)}${String(total).padStart(2)}/100    ${verdict}`);
+  lines.push('─────────────────────────────────────────────');
+  lines.push('Reasoning:');
+
+  const reasoning = analysis.reasoning || [];
+  for (const r of reasoning) {
+    lines.push(`• ${r}`);
+  }
+
+  lines.push('═════════════════════════════════════════════');
+  lines.push('⚠  Not financial advice. Based on "The Intelligent Investor" by Benjamin Graham.');
+
+  return lines.join('\n');
+}
+
+module.exports = { buffettAnalysis, assessMoat, generateScorecard, grahamNumber, grahamAnalysis, generateGrahamScorecard };

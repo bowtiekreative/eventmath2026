@@ -459,6 +459,57 @@ async function serialClose(portRef) {
 }
 
 // ---------------------------------------------------------------------------
+// serialScan() → async { ports, count, platform, protocol_info }
+// serialScan — discover available serial port devices by platform
+// ---------------------------------------------------------------------------
+
+async function serialScan() {
+  const os = require('node:os');
+  const platform = os.platform();
+
+  return new Promise((resolve) => {
+    let command;
+    if (platform === 'darwin') {
+      command = 'ls /dev/cu.* /dev/tty.* 2>/dev/null';
+    } else if (platform === 'linux') {
+      command = 'ls /dev/ttyUSB* /dev/ttyACM* /dev/ttyS* 2>/dev/null';
+    } else if (platform === 'win32') {
+      command = 'mode 2>nul | findstr /R "COM[0-9]"';
+    } else {
+      resolve({ ports: [], protocol_info: piUART() });
+      return;
+    }
+
+    exec(command, { timeout: 5000 }, (err, stdout) => {
+      const lines = (stdout || '').trim().split('\n').filter(Boolean);
+      const ports = lines.map(line => {
+        const path = line.trim();
+        return {
+          path,
+          name: path.split('/').pop(),
+          likely_device: _guessSerialDevice(path),
+        };
+      });
+      resolve({
+        ports,
+        count: ports.length,
+        platform,
+        protocol_info: piUART(),
+      });
+    });
+  });
+}
+
+function _guessSerialDevice(path) {
+  const p = path.toLowerCase();
+  if (p.includes('arduino') || p.includes('acm')) return 'Arduino / AVR';
+  if (p.includes('usbserial') || p.includes('ch340') || p.includes('cp210')) return 'USB-Serial adapter';
+  if (p.includes('bluetooth')) return 'Bluetooth serial';
+  if (p.includes('gps') || p.includes('gnss')) return 'GPS receiver';
+  return 'Unknown device';
+}
+
+// ---------------------------------------------------------------------------
 // spawnProcess(command) → async { stdout, stderr, exitCode, protocol_info }
 // ---------------------------------------------------------------------------
 
@@ -519,6 +570,7 @@ module.exports = {
   serialSend,
   serialRead,
   serialClose,
+  serialScan,
   spawnProcess,
   parseBytes,
 };

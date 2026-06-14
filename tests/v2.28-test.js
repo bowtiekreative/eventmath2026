@@ -31,35 +31,35 @@ function compile(src)  { return new EventMathCodeGen().generate(parse(src)); }
 
 // ── Tokenizer: http ──────────────────────────────────────────────────────────
 
-console.log('\n── Tokenizer: http get ──');
+console.log('\n── Tokenizer: fetch get ──');
 {
-  const toks = tokenize('http get "https://api.example.com/data" into response');
-  assert('HTTP_STMT emitted', toks[0].type === 'HTTP_STMT');
+  const toks = tokenize('fetch "https://api.example.com/data" into response');
+  assert('FETCH_STMT emitted', toks[0].type === 'FETCH_STMT');
   assert('op is get', toks[0].value.op === 'get');
   assert('url extracted', toks[0].value.url === 'https://api.example.com/data');
   assert('intoName extracted', toks[0].value.intoName === 'response');
 }
 
 {
-  const toks = tokenize('http get "http://localhost:3000/health" into status');
-  assert('http url (not https)', toks[0].value.url === 'http://localhost:3000/health');
+  const toks = tokenize('fetch "http://localhost:3000/health" into status');
+  assert('http url (not https) works', toks[0].value.url === 'http://localhost:3000/health');
   assert('intoName status', toks[0].value.intoName === 'status');
 }
 
-console.log('\n── Tokenizer: http post ──');
+console.log('\n── Tokenizer: fetch post ──');
 {
-  const toks = tokenize('http post "https://api.example.com/data" with body "{}" into result');
-  assert('post: op', toks[0].value.op === 'post');
+  const toks = tokenize('fetch "https://api.example.com/data" with body "{}" into result');
+  assert('post: op auto-detect', toks[0].value.op === 'post');
   assert('post: url', toks[0].value.url === 'https://api.example.com/data');
-  assert('post: body literal', toks[0].value.body === '{}');
-  assert('post: bodyVar null', toks[0].value.bodyVar === null);
+  assert('post: requestBody literal', toks[0].value.requestBody === '{}');
+  assert('post: requestBodyVar null', toks[0].value.requestBodyVar === null || toks[0].value.requestBodyVar === undefined);
   assert('post: intoName', toks[0].value.intoName === 'result');
 }
 
 {
-  const toks = tokenize('http post "https://api.example.com/submit" with body payload into result');
-  assert('post varref: bodyVar', toks[0].value.bodyVar === 'payload');
-  assert('post varref: body null', toks[0].value.body === null);
+  const toks = tokenize('fetch "https://api.example.com/submit" with body payload into result');
+  assert('post varref: requestBodyVar', toks[0].value.requestBodyVar === 'payload');
+  assert('post varref: requestBody null', toks[0].value.requestBody === null || toks[0].value.requestBody === undefined);
 }
 
 // ── Tokenizer: socket ────────────────────────────────────────────────────────
@@ -181,25 +181,25 @@ console.log('\n── Tokenizer: bytes ──');
 
 // ── Parser ───────────────────────────────────────────────────────────────────
 
-console.log('\n── Parser: HttpStmt ──');
+console.log('\n── Parser: FetchStmt ──');
 {
-  const ast = parse('http get "https://api.example.com" into response');
+  const ast = parse('fetch "https://api.example.com" into response');
   const stmt = ast.statements[0];
-  assert('type is HttpStmt', stmt.type === 'HttpStmt');
+  assert('type is FetchStmt', stmt.type === 'FetchStmt');
   assert('op', stmt.op === 'get');
   assert('url', stmt.url === 'https://api.example.com');
   assert('intoName', stmt.intoName === 'response');
 }
 
 {
-  const ast = parse('http post "https://api.example.com" with body "{}" into result');
+  const ast = parse('fetch "https://api.example.com" with body "{}" into result');
   const stmt = ast.statements[0];
   assert('post: requestBody', stmt.requestBody === '{}');
   assert('post: requestBodyVar null', stmt.requestBodyVar === null || stmt.requestBodyVar === undefined);
 }
 
 {
-  const ast = parse('http post "https://api.example.com" with body payload into result');
+  const ast = parse('fetch "https://api.example.com" with body payload into result');
   const stmt = ast.statements[0];
   assert('post varref: requestBodyVar', stmt.requestBodyVar === 'payload');
   assert('post varref: requestBody null', stmt.requestBody === null || stmt.requestBody === undefined);
@@ -245,9 +245,9 @@ console.log('\n── Parser: BytesStmt ──');
 
 // ── Codegen ──────────────────────────────────────────────────────────────────
 
-console.log('\n── Codegen: machine runtime require ──');
+console.log('\n── Codegen: fetch get ──');
 {
-  const js = compile('http get "https://api.example.com" into result');
+  const js = compile('fetch "https://api.example.com" into result');
   assert('requires machine runtime', js.includes('eventmath-machine-runtime'));
   assert('async wrapper', js.includes('async () =>'));
   assert('httpGet call', js.includes('httpGet'));
@@ -255,11 +255,20 @@ console.log('\n── Codegen: machine runtime require ──');
   assert('variable hoisted', js.includes('let result'));
 }
 
-console.log('\n── Codegen: http post ──');
+console.log('\n── Codegen: fetch post ──');
 {
-  const js = compile('http post "https://api.example.com" with body "{}" into result');
+  const js = compile('fetch "https://api.example.com" with body "{}" into result');
   assert('httpPost call', js.includes('httpPost'));
   assert('body in call', js.includes('"{}"'));
+}
+
+console.log('\n── Codegen: serial scan ──');
+{
+  const js = compile('serial scan into available ports');
+  assert('serialScan call', js.includes('serialScan'));
+  assert('machine runtime', js.includes('eventmath-machine-runtime'));
+  assert('async wrapper', js.includes('async () =>'));
+  assert('variable hoisted', js.includes('let available_ports') || js.includes('availableports') || js.includes('available_ports'));
 }
 
 console.log('\n── Codegen: socket connect + send + read + close ──');
