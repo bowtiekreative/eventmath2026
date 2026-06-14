@@ -65,6 +65,8 @@ const KEYWORDS = new Set([
   'manifest', 'store', 'summarize', 'accept',
   // v2.17 — named patterns (human-readable regex)
   'pattern', 'scan', 'seek',
+  // v2.18 — replace, zoom out from, zoom expand
+  'replace',
 ]);
 
 class Token {
@@ -266,6 +268,7 @@ class EventMathTokenizer {
     if (lead === 'pattern')    return this._tokenizePatternStmt(words, lineNum);
     if (lead === 'scan')       return this._tokenizeScanStmt(words, lineNum);
     if (lead === 'seek')       return this._tokenizeSeekStmt(words, lineNum);
+    if (lead === 'replace')    return this._tokenizeReplaceStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -466,12 +469,16 @@ class EventMathTokenizer {
       return this._countInLayer(words, lineNum);
     }
 
-    // zoom → zoom in ... | zoom out ... | zoom opposite ... | zoom meta ...
+    // zoom → zoom in ... | zoom out ... | zoom opposite ... | zoom meta ... | zoom expand ...
     if (lead === 'zoom') {
       if (words[1] === 'in') return this._tokenizeZoomIn(words, lineNum);
-      if (words[1] === 'out') return this._tokenizeZoomOut(words, lineNum);
+      if (words[1] === 'out') {
+        if (words[2] === 'from') return this._tokenizeZoomOutFrom(words, lineNum);
+        return this._tokenizeZoomOut(words, lineNum);
+      }
       if (words[1] === 'opposite') return this._tokenizeZoomOpposite(words, lineNum);
       if (words[1] === 'meta') return this._tokenizeZoomMeta(words, lineNum);
+      if (words[1] === 'expand') return this._tokenizeZoomExpand(words, lineNum);
       return [new Token('KEYWORD', 'zoom', lineNum)];
     }
 
@@ -1608,6 +1615,66 @@ class EventMathTokenizer {
     if (current.length > 0) subjects.push(current.join(' '));
 
     return [new Token('ZOOM_META', { subjects, intoName }, lineNum)];
+  }
+
+  /**
+   * zoom out from SOURCE into CONTEXT
+   * New form: reconstructs parent context of a zoom result.
+   */
+  _tokenizeZoomOutFrom(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const intoIdx = this._indexOf(words, 'into');
+    if (fromIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'zoom', lineNum)];
+    }
+    const sourceName = words.slice(fromIdx + 1, intoIdx).join(' ');
+    const intoName   = words.slice(intoIdx + 1).join(' ');
+    return [new Token('ZOOM_OUT_FROM', { sourceName, intoName }, lineNum)];
+  }
+
+  /**
+   * zoom expand on SOURCE into NETWORK
+   * Panoramic expansion from one node in all directions.
+   */
+  _tokenizeZoomExpand(words, lineNum) {
+    const onIdx   = this._indexOf(words, 'on');
+    const intoIdx = this._indexOf(words, 'into');
+    if (onIdx < 0 || intoIdx < 0) {
+      return [new Token('KEYWORD', 'zoom', lineNum)];
+    }
+    // Source may optionally start with 'layer' or 'timeline'
+    const srcWords = words.slice(onIdx + 1, intoIdx);
+    let sourceType = 'event', sourceName;
+    if (srcWords[0] === 'layer') {
+      sourceType = 'layer';
+      sourceName = srcWords.slice(1).join(' ');
+    } else if (srcWords[0] === 'timeline') {
+      sourceType = 'timeline';
+      sourceName = srcWords.slice(1).join(' ');
+    } else {
+      sourceName = srcWords.join(' ');
+    }
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('ZOOM_EXPAND', { sourceType, sourceName, intoName }, lineNum)];
+  }
+
+  /**
+   * replace in TEXT with PATTERN using "TEMPLATE" into RESULT
+   */
+  _tokenizeReplaceStmt(words, lineNum) {
+    const inIdx    = this._indexOf(words, 'in');
+    const withIdx  = this._indexOf(words, 'with');
+    const usingIdx = this._indexOf(words, 'using');
+    const intoIdx  = this._lastIndexOf(words, 'into');
+    if (inIdx < 0 || withIdx < 0 || usingIdx < 0 || intoIdx < 0) {
+      return [new Token('ERROR', { message: 'replace needs: replace in <text> with <pattern> using "<template>" into <result>' }, lineNum)];
+    }
+    const text     = words.slice(inIdx + 1, withIdx).join(' ');
+    const pattern  = words.slice(withIdx + 1, usingIdx).join(' ');
+    const rawTmpl  = words.slice(usingIdx + 1, intoIdx).join(' ');
+    const template = rawTmpl.replace(/^["']|["']$/g, '');
+    const into     = words.slice(intoIdx + 1).join(' ');
+    return [new Token('REPLACE_STMT', { text, pattern, template, into }, lineNum)];
   }
 
   /**

@@ -173,6 +173,10 @@ class EventMathFormatter {
       case 'PatternStmt':       return this._formatPatternStmt(stmt);
       case 'ScanStmt':          return this._formatScanStmt(stmt);
       case 'SeekStmt':          return this._formatSeekStmt(stmt);
+      // v2.18 — replace, zoom out from, zoom expand
+      case 'ReplaceStmt':       return this._formatReplaceStmt(stmt);
+      case 'ZoomOutFrom':       return this._formatZoomOutFrom(stmt);
+      case 'ZoomExpand':        return this._formatZoomExpand(stmt);
     }
   }
 
@@ -1062,6 +1066,19 @@ class EventMathFormatter {
 
   _formatSeekStmt(stmt) {
     this._line(`seek ${stmt.text} with ${stmt.pattern} into ${stmt.into}`);
+  }
+
+  _formatReplaceStmt(stmt) {
+    this._line(`replace in ${stmt.text} with ${stmt.pattern} using "${stmt.template}" into ${stmt.into}`);
+  }
+
+  _formatZoomOutFrom(stmt) {
+    this._line(`zoom out from ${stmt.sourceName} into ${stmt.intoName}`);
+  }
+
+  _formatZoomExpand(stmt) {
+    const typePrefix = stmt.sourceType !== 'event' ? `${stmt.sourceType} ` : '';
+    this._line(`zoom expand on ${typePrefix}${stmt.sourceName} into ${stmt.intoName}`);
   }
 
   _formatAskStmt(stmt) {

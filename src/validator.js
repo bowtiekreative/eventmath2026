@@ -266,6 +266,16 @@ class EventMathValidator {
         case 'SeekStmt':
           if (stmt.into) this.marks.set(stmt.into, true);
           break;
+        // v2.18 — replace, zoom out from, zoom expand
+        case 'ReplaceStmt':
+          if (stmt.into) this.marks.set(stmt.into, true);
+          break;
+        case 'ZoomOutFrom':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
+        case 'ZoomExpand':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
       }
     }
   }

@@ -334,6 +334,47 @@ zoom meta on state a and state b and bridge and anti bridge into full field
 - `zoom opposite` — the inverse/resistance path.
 - `zoom meta` — the full relational field across all four poles.
 
+### `zoom out from` — reconstruct the parent context of a zoom result (v2.18)
+
+```eventmath
+zoom in on no income and consistent income into revenue bridge
+zoom out from revenue bridge into bridge context
+show bridge context
+```
+
+Reads the control matter of a zoom result and reconstructs its parent context.
+Returns an object with: `source`, `zoom_level`, `parent_level`, `from`, `to`,
+`gap_description`, `constituents`, and a `render()` method.
+
+**Syntax:** `zoom out from SOURCE into CONTEXT`
+
+### `zoom expand` — panoramic expansion from one node (v2.18)
+
+```eventmath
+event market suppression
+category state
+matter
+  energy is against
+  signal is suppressed
+end
+end
+
+zoom expand on market suppression into suppression field
+show suppression field
+```
+
+Expands outward from a single event/layer — inventories all matter keys, determines
+polarity, and records connections. Source can optionally start with `layer` or
+`timeline`.
+
+Returns an object with: `source`, `source_type`, `zoom_level`, `matter`,
+`surface_area`, `connections`, `polarity`, `expansion_axis`, and a `render()` method.
+
+**Syntax:** `zoom expand on SOURCE into NETWORK`
+- `zoom expand on EVENT into FIELD` — expand from an event
+- `zoom expand on layer LAYER into FIELD` — expand from a layer (aggregates all event matter)
+- `zoom expand on timeline TIMELINE into FIELD` — expand from a timeline
+
 ### `spin` / `fractal` — torus and fractal axis construction
 
 ```eventmath
@@ -957,20 +998,32 @@ const email_address = new RegExp(
 
 **Atoms (what to match)**
 
-| EventMath           | Regex      | Notes                        |
-|---------------------|------------|------------------------------|
-| `letters`           | `[a-zA-Z]` | Single letter (add quantifier) |
-| `digits`            | `[0-9]`    | Single digit                 |
-| `digit`             | `[0-9]`    | Same as `digits`             |
-| `word`              | `\w`       | Word character (letter/digit/_) |
-| `whitespace`        | `\s`       | Any whitespace character     |
-| `any text`          | `[\s\S]`   | Any character including newlines |
-| `any character`     | `[\s\S]`   | Same as `any text`           |
-| `boundary`          | `\b`       | Word boundary (zero-width)   |
-| `optional whitespace` | `\s*`    | Zero or more whitespace      |
-| `optional attributes` | `[^>]*`  | Anything that isn't `>`      |
-| `"literal"`         | escaped    | Exact literal text           |
-| `digit N through M` | `[N-M]`   | Digit in range N-M (e.g. `digit 1 through 6` → `[1-6]`) |
+| EventMath           | Regex          | Notes                        |
+|---------------------|----------------|------------------------------|
+| `letters`           | `[a-zA-Z]`     | Single letter (add quantifier) |
+| `digits`            | `[0-9]`        | Single digit                 |
+| `digit`             | `[0-9]`        | Same as `digits`             |
+| `uppercase`         | `[A-Z]`        | Single uppercase letter      |
+| `uppercase letters` | `[A-Z]`        | Same as `uppercase`          |
+| `lowercase`         | `[a-z]`        | Single lowercase letter      |
+| `lowercase letters` | `[a-z]`        | Same as `lowercase`          |
+| `hex digit`         | `[0-9a-fA-F]`  | Single hexadecimal digit     |
+| `hex digits`        | `[0-9a-fA-F]`  | Same as `hex digit`          |
+| `word`              | `\w`           | Word character (letter/digit/_) |
+| `whitespace`        | `\s`           | Any whitespace character     |
+| `tab`               | `\t`           | Tab character                |
+| `newline`           | `\n`           | Newline character            |
+| `start of line`     | `^`            | Start of line anchor         |
+| `end of line`       | `$`            | End of line anchor           |
+| `start of text`     | `^`            | Start of text anchor         |
+| `end of text`       | `$`            | End of text anchor           |
+| `any text`          | `[\s\S]`       | Any character including newlines |
+| `any character`     | `[\s\S]`       | Same as `any text`           |
+| `boundary`          | `\b`           | Word boundary (zero-width)   |
+| `optional whitespace` | `\s*`        | Zero or more whitespace      |
+| `optional attributes` | `[^>]*`      | Anything that isn't `>`      |
+| `"literal"`         | escaped        | Exact literal text           |
+| `digit N through M` | `[N-M]`       | Digit in range N-M (e.g. `digit 1 through 6` → `[1-6]`) |
 
 **Quantifiers (how many)**
 
@@ -1033,6 +1086,22 @@ seek text with email address into first email
 
 Compiles to a non-global `.exec()` — no `lastIndex` side effects.
 `first_email` is either `{ user, at, domain, extension }` or `null`.
+
+### `replace in` — replace all pattern matches using a template
+
+```eventmath
+replace in text with email address using "$<user> at $<domain>" into cleaned
+```
+
+Compiles to:
+```js
+const cleaned = text.replace(email_address, "$<user> at $<domain>");
+```
+
+Named groups in the template use `$<name>` syntax (JS native named group replacement).
+The pattern already has `gm` flags so all matches are replaced.
+
+**Syntax:** `replace in TEXT with PATTERN using "TEMPLATE" into RESULT`
 
 ### Full pattern example
 

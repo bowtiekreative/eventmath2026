@@ -401,6 +401,24 @@ class EventMathCodeGen {
         case 'Overlap':
           for (const track of (stmt.tracks || [])) this._firstPass(track);
           break;
+        case 'ReplaceStmt':
+          if (stmt.into && !this._vars.has(stmt.into)) {
+            this._vars.add(stmt.into);
+            this._varDecls.push({ name: this._safeName(stmt.into), value: 'null' });
+          }
+          break;
+        case 'ZoomOutFrom':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'ZoomExpand':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
       }
     }
   }
@@ -528,6 +546,10 @@ class EventMathCodeGen {
       case 'PatternStmt':       return this._genPatternStmt(stmt);
       case 'ScanStmt':          return this._genScanStmt(stmt);
       case 'SeekStmt':          return this._genSeekStmt(stmt);
+      case 'ReplaceStmt':       return this._genReplaceStmt(stmt);
+      // v2.18 — zoom extensions
+      case 'ZoomOutFrom':       return this._genZoomOutFrom(stmt);
+      case 'ZoomExpand':        return this._genZoomExpand(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -1146,6 +1168,88 @@ class EventMathCodeGen {
     this._line(`};`);
     this._line(`__meta.append(new EM.TimelineEntry('control', new EM.EventMathEvent('meta_ctrl_' + Date.now(), 'meta control', __metaMatter)));`);
     this._line(`return __meta;`);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  _genZoomOutFrom(stmt) {
+    const srcVar   = this._safeName(stmt.sourceName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const srcEsc   = this._escape(stmt.sourceName);
+    const intoEsc  = this._escape(stmt.intoName);
+
+    this._line(`// zoom out from ${srcEsc} into ${intoEsc} — reverse a zoom, reconstruct parent context`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    this._line(`const __src = ${srcVar};`);
+    this._line(`const __srcLevel = (__src && __src.zoomLevel) || 1;`);
+    // Read the first control entry to find from/to
+    this._line(`const __ctrl = (__src && (__src.log || __src.events) && (__src.log || __src.events)[0]);`);
+    this._line(`const __ctrlMatter = __ctrl ? (__ctrl.matter || __ctrl.event && __ctrl.event.matter || {}) : {};`);
+    this._line(`const __ctx = {`);
+    this.indent++;
+    this._line(`source: '${srcEsc}',`);
+    this._line(`zoom_level: Math.max(1, __srcLevel - 1),`);
+    this._line(`parent_level: Math.max(0, __srcLevel - 2),`);
+    this._line(`from: __ctrlMatter.from || null,`);
+    this._line(`to: __ctrlMatter.to || null,`);
+    this._line(`gap_description: __ctrlMatter.gap_description || null,`);
+    this._line(`constituents: Object.fromEntries(`);
+    this.indent++;
+    this._line(`Object.entries(__ctrlMatter).filter(([k]) => k.startsWith('from_') || k.startsWith('to_'))`);
+    this.indent--;
+    this._line(`),`);
+    this._line(`render: function() {`);
+    this.indent++;
+    this._line(`return 'context of ' + '${srcEsc}' + ': from=' + this.from + ', to=' + this.to + ', level=' + this.zoom_level;`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`};`);
+    this._line(`return __ctx;`);
+    this.indent--;
+    this._line(`})();`);
+    this._line('');
+  }
+
+  _genZoomExpand(stmt) {
+    const srcVar   = this._safeName(stmt.sourceName);
+    const intoVar  = this._safeName(stmt.intoName);
+    const srcEsc   = this._escape(stmt.sourceName);
+    const intoEsc  = this._escape(stmt.intoName);
+
+    this._line(`// zoom expand on ${srcEsc} into ${intoEsc} — panoramic expansion from one node`);
+    this._line(`const ${intoVar} = (() => {`);
+    this.indent++;
+    this._line(`const __src = ${srcVar};`);
+    this._line(`const __srcLevel = (__src && __src.zoomLevel) || 1;`);
+    this._line(`const __matter = (__src && __src.matter) || {};`);
+    // For layers, collect matter from all events
+    if (stmt.sourceType === 'layer') {
+      this._line(`const __allMatter = {};`);
+      this._line(`if (__src.events) __src.events.forEach(function(ev) { Object.assign(__allMatter, ev.matter || {}); });`);
+      this._line(`Object.assign(__allMatter, __matter);`);
+    }
+    const matterRef = stmt.sourceType === 'layer' ? '__allMatter' : '__matter';
+    this._line(`const __field = {`);
+    this.indent++;
+    this._line(`source: '${srcEsc}',`);
+    this._line(`source_type: '${stmt.sourceType}',`);
+    this._line(`zoom_level: __srcLevel + 1,`);
+    this._line(`matter: ${matterRef},`);
+    this._line(`surface_area: Object.keys(${matterRef}).length,`);
+    this._line(`connections: Object.entries(${matterRef}).map(function(e) { return { key: e[0], value: e[1] }; }),`);
+    this._line(`polarity: (__matter.energy === 'against' || __matter.energy === 'low' || __matter.signal === 'suppressed') ? 'negative' : 'positive',`);
+    this._line(`expansion_axis: '${srcEsc} ↔ field',`);
+    this._line(`render: function() {`);
+    this.indent++;
+    this._line(`return 'expanded field of ' + '${srcEsc}' + ' (' + this.surface_area + ' connections, level ' + this.zoom_level + ')';`);
+    this.indent--;
+    this._line(`}`);
+    this.indent--;
+    this._line(`};`);
+    this._line(`return __field;`);
     this.indent--;
     this._line(`})();`);
     this._line('');
@@ -2865,6 +2969,14 @@ class EventMathCodeGen {
     this._line(`const ${into} = (function() { var _r = new RegExp(${pattern}.source, 'm'); var _m = _r.exec(${text}); return _m ? _m.groups : null; }());`);
   }
 
+  _genReplaceStmt(stmt) {
+    const text    = this._safeName(stmt.text);
+    const pattern = this._safeName(stmt.pattern);
+    const into    = this._safeName(stmt.into);
+    const tmpl    = stmt.template;
+    this._line(`const ${into} = ${text}.replace(${pattern}, ${JSON.stringify(tmpl)});`);
+  }
+
   // ── Pattern expression compiler ──────────────────────────────────
 
   _compilePatternExpr(expr, knownParts) {
@@ -2958,6 +3070,18 @@ class EventMathCodeGen {
       case 'boundary':            return '\\b';
       case 'optional whitespace': return '\\s*';
       case 'optional attributes': return '[^>]*';
+      case 'uppercase':
+      case 'uppercase letters':   return '[A-Z]';
+      case 'lowercase':
+      case 'lowercase letters':   return '[a-z]';
+      case 'hex digit':
+      case 'hex digits':          return '[0-9a-fA-F]';
+      case 'tab':                 return '\\t';
+      case 'newline':             return '\\n';
+      case 'start of line':       return '^';
+      case 'end of line':         return '$';
+      case 'start of text':       return '^';
+      case 'end of text':         return '$';
     }
 
     // digit N through M → character range [N-M]
@@ -2976,7 +3100,12 @@ class EventMathCodeGen {
         const chars = inner.slice(1, -1).replace(/[\]\\^-]/g, '\\$&');
         return `[^${chars}]`;
       }
-      const negMap = { letters: '[^a-zA-Z]', digits: '[^0-9]', digit: '[^0-9]', word: '[^\\w]', whitespace: '[^\\s]' };
+      const negMap = {
+        letters: '[^a-zA-Z]', digits: '[^0-9]', digit: '[^0-9]',
+        word: '[^\\w]', whitespace: '[^\\s]',
+        uppercase: '[^A-Z]', lowercase: '[^a-z]',
+        'hex digit': '[^0-9a-fA-F]',
+      };
       if (negMap[inner]) return negMap[inner];
     }
 
@@ -3001,11 +3130,14 @@ class EventMathCodeGen {
     let inner = '';
     for (const p of parts) {
       const t = p.trim();
-      if (t === 'letters')                  inner += 'a-zA-Z';
-      else if (t === 'digits' || t === 'digit') inner += '0-9';
-      else if (t === 'word')                inner += '\\w';
-      else if (t === 'whitespace')          inner += '\\s';
-      else if (/^"[^"]*"$/.test(t))        inner += t.slice(1, -1).replace(/[\]\\^]/g, '\\$&');
+      if (t === 'letters')                                      inner += 'a-zA-Z';
+      else if (t === 'digits' || t === 'digit')                 inner += '0-9';
+      else if (t === 'word')                                    inner += '\\w';
+      else if (t === 'whitespace')                              inner += '\\s';
+      else if (t === 'uppercase' || t === 'uppercase letters')  inner += 'A-Z';
+      else if (t === 'lowercase' || t === 'lowercase letters')  inner += 'a-z';
+      else if (t === 'hex digit' || t === 'hex digits')         inner += '0-9a-fA-F';
+      else if (/^"[^"]*"$/.test(t))                            inner += t.slice(1, -1).replace(/[\]\\^]/g, '\\$&');
     }
     return `[${inner}]`;
   }

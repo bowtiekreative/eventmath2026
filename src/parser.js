@@ -168,6 +168,9 @@ class EventMathParser {
     if (t.type === 'PATTERN_STMT')       return this._parsePatternStmt();
     if (t.type === 'SCAN_STMT')          return this._parseScanStmt();
     if (t.type === 'SEEK_STMT')          return this._parseSeekStmt();
+    if (t.type === 'REPLACE_STMT')       return this._parseReplaceStmt();
+    if (t.type === 'ZOOM_OUT_FROM')      return this._parseZoomOutFrom();
+    if (t.type === 'ZOOM_EXPAND')        return this._parseZoomExpand();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -1888,6 +1891,21 @@ class EventMathParser {
   _parseSeekStmt() {
     const t = this.advance();
     return ast('SeekStmt', { text: t.value.text, pattern: t.value.pattern, into: t.value.into });
+  }
+
+  _parseReplaceStmt() {
+    const t = this.advance();
+    return ast('ReplaceStmt', { text: t.value.text, pattern: t.value.pattern, template: t.value.template, into: t.value.into });
+  }
+
+  _parseZoomOutFrom() {
+    const t = this.advance();
+    return ast('ZoomOutFrom', { sourceName: t.value.sourceName, intoName: t.value.intoName });
+  }
+
+  _parseZoomExpand() {
+    const t = this.advance();
+    return ast('ZoomExpand', { sourceType: t.value.sourceType, sourceName: t.value.sourceName, intoName: t.value.intoName });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
