@@ -1,0 +1,318 @@
+{
+  "event block": {
+    "prefix": "event",
+    "body": [
+      "event ${1:name}",
+      "category ${2:state}",
+      "matter",
+      "  ${3:key} is ${4:value}",
+      "end",
+      "end"
+    ],
+    "description": "Declare an event with category and matter"
+  },
+
+  "layer block": {
+    "prefix": "layer",
+    "body": [
+      "layer ${1:name}",
+      "  ${2:event name}",
+      "end"
+    ],
+    "description": "Declare a layer grouping events"
+  },
+
+  "timeline block": {
+    "prefix": "timeline",
+    "body": [
+      "timeline ${1:name}",
+      "",
+      "present",
+      "  ${2:layer or event name}",
+      "end",
+      "",
+      "end"
+    ],
+    "description": "Declare a timeline with present state"
+  },
+
+  "action block": {
+    "prefix": "action",
+    "body": [
+      "action ${1:name}",
+      "  ${2:statement}",
+      "end"
+    ],
+    "description": "Declare a reusable action"
+  },
+
+  "door block": {
+    "prefix": "door",
+    "body": [
+      "door ${1:name}",
+      "open",
+      "  ${2:statement}",
+      "end",
+      "closed",
+      "  ${3:statement}",
+      "end",
+      "end"
+    ],
+    "description": "Declare a two-state door (open/closed)"
+  },
+
+  "pattern block": {
+    "prefix": "pattern",
+    "body": [
+      "pattern ${1:name}",
+      "  ${2:part}  is ${3:letters repeated}",
+      "end"
+    ],
+    "description": "Declare a named regex pattern"
+  },
+
+  "pattern with multiple parts": {
+    "prefix": "patternfull",
+    "body": [
+      "pattern ${1:name}",
+      "  ${2:first}   is ${3:letters repeated}",
+      "  ${4:second}  is \"${5:literal}\"",
+      "  ${6:third}   is ${7:digits at least 1}",
+      "end"
+    ],
+    "description": "Named pattern with multiple labeled parts"
+  },
+
+  "manifest block": {
+    "prefix": "manifest",
+    "body": [
+      "manifest ${1:app name}",
+      "  store ${2:things} in \"${3:data.db}\" with ${4:field} and ${5:field}",
+      "  serve on ${6:3000}",
+      "  show all ${2} at \"/api/${2}\"",
+      "  accept ${2} at \"/api/${2}\"",
+      "end"
+    ],
+    "description": "Self-generating CRUD API (6 lines)"
+  },
+
+  "chain block": {
+    "prefix": "chain",
+    "body": [
+      "chain ${1:name}",
+      "  ${2:step one} leads to ${3:step two}",
+      "  ${3:step two} leads to ${4:step three}",
+      "end"
+    ],
+    "description": "Declare a causal chain"
+  },
+
+  "when / otherwise": {
+    "prefix": "when",
+    "body": [
+      "when ${1:condition}",
+      "  ${2:statement}",
+      "end"
+    ],
+    "description": "Conditional block"
+  },
+
+  "when otherwise": {
+    "prefix": "whenelse",
+    "body": [
+      "when ${1:condition}",
+      "  ${2:statement}",
+      "otherwise",
+      "  ${3:statement}",
+      "end"
+    ],
+    "description": "Conditional with otherwise branch"
+  },
+
+  "split / path": {
+    "prefix": "split",
+    "body": [
+      "split ${1:value} into",
+      "path ${2:first case}",
+      "  ${3:statement}",
+      "end",
+      "path ${4:second case}",
+      "  ${5:statement}",
+      "end",
+      "end"
+    ],
+    "description": "Multi-path branch on a value"
+  },
+
+  "walk block": {
+    "prefix": "walk",
+    "body": [
+      "walk ${1:collection} as ${2:item}",
+      "  ${3:statement}",
+      "end"
+    ],
+    "description": "Iterate over a collection"
+  },
+
+  "mark statement": {
+    "prefix": "mark",
+    "body": "mark ${1:name} as ${2:value}",
+    "description": "Assign a value to a name"
+  },
+
+  "set statement": {
+    "prefix": "set",
+    "body": "set ${1:name} to ${2:value}",
+    "description": "Set a computed or referenced value"
+  },
+
+  "show statement": {
+    "prefix": "show",
+    "body": "show ${1:name}",
+    "description": "Output a value"
+  },
+
+  "scan statement": {
+    "prefix": "scan",
+    "body": "scan ${1:text} with ${2:pattern} into ${3:results}",
+    "description": "Find all pattern matches (array of groups objects)"
+  },
+
+  "seek statement": {
+    "prefix": "seek",
+    "body": "seek ${1:text} with ${2:pattern} into ${3:first match}",
+    "description": "Find first pattern match (groups object or null)"
+  },
+
+  "replace statement": {
+    "prefix": "replace",
+    "body": "replace in ${1:text} with ${2:pattern} using \"${3:template}\" into ${4:result}",
+    "description": "Replace all pattern matches using a named-group template"
+  },
+
+  "zoom in": {
+    "prefix": "zoomin",
+    "body": "zoom in on ${1:source} into ${2:result}",
+    "description": "Zoom in on events/layers to create a focused view"
+  },
+
+  "zoom out from": {
+    "prefix": "zoomout",
+    "body": "zoom out from ${1:zoomed} into ${2:context}",
+    "description": "Reconstruct parent context from a zoomed result"
+  },
+
+  "zoom expand": {
+    "prefix": "zoomexpand",
+    "body": "zoom expand on ${1:source} into ${2:field}",
+    "description": "Panoramic expansion showing all connections from a node"
+  },
+
+  "predict statement": {
+    "prefix": "predict",
+    "body": "predict ${1:target} from ${2:source} into ${3:result}",
+    "description": "Probabilistic prediction"
+  },
+
+  "weight statement": {
+    "prefix": "weight",
+    "body": "weight ${1:factor} by ${2:value}",
+    "description": "Assign a weight to a factor"
+  },
+
+  "live rain (reactive signal)": {
+    "prefix": "live",
+    "body": "live rain ${1:name} is ${2:initial value}",
+    "description": "Declare a reactive signal"
+  },
+
+  "lens (derived value)": {
+    "prefix": "lens",
+    "body": "lens ${1:name} is ${2:expression}",
+    "description": "Derive a value from one or more signals"
+  },
+
+  "cloud component": {
+    "prefix": "cloud",
+    "body": [
+      "cloud ${1:name}",
+      "  node ${2:div} ${3:content}",
+      "end"
+    ],
+    "description": "Declare a UI component"
+  },
+
+  "ground (SQLite db)": {
+    "prefix": "ground",
+    "body": "ground ${1:name} at \"${2:data.db}\"",
+    "description": "Open a SQLite database"
+  },
+
+  "serve block": {
+    "prefix": "serve",
+    "body": [
+      "serve port ${1:3000}",
+      "  route get \"${2:/api/items}\"",
+      "    reply ${3:items}",
+      "  end",
+      "end"
+    ],
+    "description": "HTTP server with a route"
+  },
+
+  "email address pattern": {
+    "prefix": "patternemail",
+    "body": [
+      "pattern email address",
+      "  user      is letters and digits and \"._%-+\" repeated",
+      "  at        is \"@\"",
+      "  domain    is letters and digits and \".\" and \"-\" repeated",
+      "  extension is \".\" then letters at least 2",
+      "end"
+    ],
+    "description": "Named pattern for email addresses"
+  },
+
+  "hex color pattern": {
+    "prefix": "patternhex",
+    "body": [
+      "pattern hex color",
+      "  hash  is \"#\"",
+      "  red   is hex digit 2 through 2",
+      "  green is hex digit 2 through 2",
+      "  blue  is hex digit 2 through 2",
+      "end"
+    ],
+    "description": "Named pattern for CSS hex colors"
+  },
+
+  "actor block": {
+    "prefix": "actor",
+    "body": [
+      "actor ${1:name}",
+      "  ${2:key} is ${3:value}",
+      "end"
+    ],
+    "description": "Declare an actor in the innovation framework"
+  },
+
+  "desire block": {
+    "prefix": "desire",
+    "body": [
+      "desire ${1:name}",
+      "  ${2:key} is ${3:value}",
+      "end"
+    ],
+    "description": "Declare a desire"
+  },
+
+  "outcome block": {
+    "prefix": "outcome",
+    "body": [
+      "outcome ${1:name}",
+      "  ${2:key} is ${3:value}",
+      "end"
+    ],
+    "description": "Declare an outcome"
+  }
+}

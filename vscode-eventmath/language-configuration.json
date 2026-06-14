@@ -1,0 +1,21 @@
+{
+  "comments": {
+    "lineComment": "note "
+  },
+  "autoClosingPairs": [
+    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "'", "close": "'", "notIn": ["string"] }
+  ],
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(event|layer|timeline|action|door|pattern|when|split|walk|manifest|chain|actor|desire|outcome|scenario|dilemma|match|cloud|earth|sky|universe|zone|star|matter|arm|path|again|overlap)\\b",
+    "decreaseIndentPattern": "^\\s*end\\b"
+  },
+  "wordPattern": "[a-zA-Z_][a-zA-Z0-9_ ]*"
+}

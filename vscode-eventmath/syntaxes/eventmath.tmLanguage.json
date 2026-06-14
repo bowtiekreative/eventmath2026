@@ -1,0 +1,111 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "EventMath",
+  "scopeName": "source.eventmath",
+  "fileTypes": ["em"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#block-opener" },
+    { "include": "#end-keyword" },
+    { "include": "#matter-block" },
+    { "include": "#statement-lead" },
+    { "include": "#zoom-verb" },
+    { "include": "#connector" },
+    { "include": "#pattern-atom" },
+    { "include": "#state-constant" },
+    { "include": "#number" }
+  ],
+  "repository": {
+
+    "comment": {
+      "name": "comment.line.eventmath",
+      "match": "^\\s*(note)\\b.*$",
+      "captures": {
+        "1": { "name": "keyword.other.note.eventmath" }
+      }
+    },
+
+    "string": {
+      "name": "string.quoted.double.eventmath",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.eventmath" } },
+      "endCaptures":   { "0": { "name": "punctuation.definition.string.end.eventmath" } },
+      "patterns": [
+        {
+          "name": "variable.other.template.eventmath",
+          "match": "\\$<[\\w_]+>"
+        }
+      ]
+    },
+
+    "block-opener": {
+      "comment": "Keywords that open a block ended by 'end'. The rest of the line is the name.",
+      "match": "^(\\s*)(event|layer|timeline|action|door|pattern|manifest|chain|actor|desire|outcome|scenario|dilemma|cloud|earth|star|sky|universe|zone)\\b(.*)$",
+      "captures": {
+        "2": { "name": "keyword.control.block.eventmath" },
+        "3": { "name": "entity.name.type.eventmath" }
+      }
+    },
+
+    "end-keyword": {
+      "name": "keyword.control.end.eventmath",
+      "match": "^\\s*\\bend\\b"
+    },
+
+    "matter-block": {
+      "comment": "matter, category, cat, path, arm, again — block structure helpers",
+      "match": "^\\s*\\b(matter|category|cat|path|arm|again|overlap|broken|when|otherwise|split|walk|door)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.block.eventmath" }
+      }
+    },
+
+    "statement-lead": {
+      "comment": "Keywords that start a statement line (not block openers)",
+      "match": "^\\s*\\b(mark|set|run|show|scan|seek|replace|predict|weight|explain|analogy|spin|vibrate|cycle|resonate|deepen|trace|conflict|weigh|satisfy|evaluate|check|use|sort|filter|find|count|pipe|cast|log|draw|serve|reply|ask|store|summarize|accept|compare|challenge|fractal|invert|assume|detect|asymmetry|root|live|rain|guard|void|emit|trigger|clear|pull|slot|burst|ground|grade|anchor|spine|extend|scrub|merge|break|add|remove|before|after|rewind|forward|stop|landscape|forecast|dimension|raindrop|node|field|style|route|travel|map|reflect|orbit|lens|atmosphere|collapse|attempt|always|observe|every|new|await|burst|why|conflict)\\b",
+      "captures": {
+        "1": { "name": "keyword.other.statement.eventmath" }
+      }
+    },
+
+    "zoom-verb": {
+      "comment": "zoom in / zoom out / zoom expand / zoom out from",
+      "match": "\\b(zoom)\\s+(in|out|expand)\\b",
+      "captures": {
+        "1": { "name": "keyword.other.statement.eventmath" },
+        "2": { "name": "keyword.other.statement.eventmath" }
+      }
+    },
+
+    "connector": {
+      "comment": "Relational and structural keywords that connect parts of a statement",
+      "match": "\\b(is|from|as|to|by|with|into|and|not|then|through|across|for|where|against|until|or|at|in|of|on|off|leads|times|past|present|future|stop|resolved|satisfied|descending)\\b",
+      "captures": {
+        "1": { "name": "keyword.operator.connector.eventmath" }
+      }
+    },
+
+    "pattern-atom": {
+      "comment": "Atoms and quantifiers used inside pattern blocks",
+      "match": "\\b(letters|digits|digit|uppercase|lowercase|word|whitespace|tab|newline|boundary|repeated|optional|lazily|any|text|character|start|end|hex)\\b",
+      "captures": {
+        "1": { "name": "support.constant.atom.eventmath" }
+      }
+    },
+
+    "state-constant": {
+      "comment": "Semantic state values and boolean literals",
+      "match": "\\b(true|false|high|low|absent|present|active|passive|open|closed|suppressed|external|internal|against|low|medium|high|urgent|complete|pending|blocked)\\b",
+      "captures": {
+        "1": { "name": "constant.language.state.eventmath" }
+      }
+    },
+
+    "number": {
+      "name": "constant.numeric.eventmath",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    }
+  }
+}

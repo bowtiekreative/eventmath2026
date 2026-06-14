@@ -1,0 +1,94 @@
+{
+  "name": "vscode-eventmath",
+  "displayName": "EventMath",
+  "description": "EventMath language support — syntax highlighting, snippets, format on save, run and check commands",
+  "version": "0.1.0",
+  "publisher": "bowtiekreative",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages", "Snippets", "Formatters"],
+  "activationEvents": ["onLanguage:eventmath"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "eventmath",
+        "aliases": ["EventMath", "em"],
+        "extensions": [".em"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/eventmath-light.svg",
+          "dark": "./icons/eventmath-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "eventmath",
+        "scopeName": "source.eventmath",
+        "path": "./syntaxes/eventmath.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "eventmath",
+        "path": "./snippets/eventmath.code-snippets"
+      }
+    ],
+    "configuration": {
+      "title": "EventMath",
+      "properties": {
+        "eventmath.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "Path to the Node.js executable used when running EventMath files."
+        },
+        "eventmath.target": {
+          "type": "string",
+          "default": "node",
+          "enum": ["node", "bun"],
+          "description": "Compile target for EventMath files."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "eventmath.run",
+        "title": "EventMath: Run File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "eventmath.compile",
+        "title": "EventMath: Compile File",
+        "icon": "$(package)"
+      },
+      {
+        "command": "eventmath.check",
+        "title": "EventMath: Check File",
+        "icon": "$(check)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "eventmath.run",
+          "when": "resourceExtname == .em",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "eventmath.run",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorLangId == eventmath"
+      },
+      {
+        "command": "eventmath.check",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "editorLangId == eventmath"
+      }
+    ]
+  }
+}
