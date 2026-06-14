@@ -220,6 +220,12 @@ class EventMathParser {
     // v2.27 — network + offline
     if (t.type === 'NETWORK_STMT')     return this._parseNetworkStmt();
     if (t.type === 'OFFLINE_STMT')     return this._parseOfflineStmt();
+    // v2.28 — machine layer
+    if (t.type === 'HTTP_STMT')        return this._parseHttpStmt();
+    if (t.type === 'SOCKET_STMT')      return this._parseSocketStmt();
+    if (t.type === 'SERIAL_STMT')      return this._parseSerialStmt();
+    if (t.type === 'SPAWN_STMT')       return this._parseSpawnStmt();
+    if (t.type === 'BYTES_STMT')       return this._parseBytesStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -2765,6 +2771,38 @@ class EventMathParser {
     const t = this.advance();
     if (!t || !t.value) return null;
     return ast('OfflineStmt', { op: t.value.op, key: t.value.key, ttlHours: t.value.ttlHours, intoName: t.value.intoName });
+  }
+
+  // ── v2.28 machine layer ───────────────────────────────────────────────────
+
+  _parseHttpStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('HttpStmt', { op: t.value.op, url: t.value.url, requestBody: t.value.body, requestBodyVar: t.value.bodyVar, intoName: t.value.intoName });
+  }
+
+  _parseSocketStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SocketStmt', { op: t.value.op, protocol: t.value.protocol, host: t.value.host, port: t.value.port, data: t.value.data, dataVar: t.value.dataVar, connRef: t.value.connRef, intoName: t.value.intoName });
+  }
+
+  _parseSerialStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SerialStmt', { op: t.value.op, path: t.value.path, baud: t.value.baud, data: t.value.data, dataVar: t.value.dataVar, portRef: t.value.portRef, intoName: t.value.intoName });
+  }
+
+  _parseSpawnStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SpawnStmt', { command: t.value.command, intoName: t.value.intoName });
+  }
+
+  _parseBytesStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('BytesStmt', { hex: t.value.hex, intoName: t.value.intoName });
   }
 }
 

@@ -153,7 +153,8 @@ class EventMathCodeGen {
     this._hasTaskRuntime   = this._detectTaskRuntime(ast.statements);
     this._hasFundamental   = this._detectFundamental(ast.statements);
     this._hasNetwork       = this._detectNetwork(ast.statements);
-    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia || this._hasDefense || this._hasTaskRuntime || this._hasFundamental || this._hasNetwork;
+    this._hasMachine       = this._detectMachine(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia || this._hasDefense || this._hasTaskRuntime || this._hasFundamental || this._hasNetwork || this._hasMachine;
 
     // Emit security runtime require only when needed
     if (this._hasSecurityAny) {
@@ -217,6 +218,10 @@ class EventMathCodeGen {
     }
     if (this._hasNetwork) {
       this._line(`const __emNetwork = require('../runtime/eventmath-network-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasMachine) {
+      this._line(`const __emMachine = require('../runtime/eventmath-machine-runtime.js');`);
       this._line('');
     }
     if (_needsAsync) {
@@ -608,6 +613,17 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        // v2.28 — machine layer
+        case 'HttpStmt':
+        case 'SocketStmt':
+        case 'SerialStmt':
+        case 'SpawnStmt':
+        case 'BytesStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
       }
     }
   }
@@ -780,6 +796,12 @@ class EventMathCodeGen {
       case 'InoculateStmt':  return this._genInoculateStmt(stmt);
       // v2.25 — agent commands
       case 'InstructStmt':   return this._genInstructStmt(stmt);
+      // v2.28 — machine layer
+      case 'HttpStmt':       return this._genHttpStmt(stmt);
+      case 'SocketStmt':     return this._genSocketStmt(stmt);
+      case 'SerialStmt':     return this._genSerialStmt(stmt);
+      case 'SpawnStmt':      return this._genSpawnStmt(stmt);
+      case 'BytesStmt':      return this._genBytesStmt(stmt);
       // v2.26 — fundamental analysis
       case 'FundamentalStmt': return this._genFundamentalStmt(stmt);
       // v2.27 — network + offline
@@ -4001,6 +4023,12 @@ class EventMathCodeGen {
     return walk(statements);
   }
 
+  _detectMachine(statements) {
+    const types = new Set(['HttpStmt', 'SocketStmt', 'SerialStmt', 'SpawnStmt', 'BytesStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
   // ── v2.23 organizational intelligence codegen ─────────────────────────────
 
   _genRoleStmt(stmt) {
@@ -4178,6 +4206,122 @@ class EventMathCodeGen {
         this._line(`${call};`);
       }
     }
+    this._line('');
+  }
+
+  // ── v2.28 machine layer codegen ───────────────────────────────────────────
+
+  _genHttpStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const op = stmt.op || 'get';
+    const url = JSON.stringify(stmt.url || '');
+    this._line(`// http ${op}: ${this._escape(stmt.url || '')}`);
+    if (op === 'get') {
+      const call = `await __emMachine.httpGet(${url})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'post') {
+      let bodyArg;
+      if (stmt.requestBody !== null && stmt.requestBody !== undefined) {
+        bodyArg = JSON.stringify(stmt.requestBody);
+      } else if (stmt.requestBodyVar) {
+        bodyArg = this._safeName(stmt.requestBodyVar);
+      } else {
+        bodyArg = '""';
+      }
+      const call = `await __emMachine.httpPost(${url}, ${bodyArg})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    }
+    this._line('');
+  }
+
+  _genSocketStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const op = stmt.op || 'connect';
+    this._line(`// socket ${op}`);
+    if (op === 'connect') {
+      const host = JSON.stringify(stmt.host || 'localhost');
+      const port = stmt.port || 80;
+      const call = `await __emMachine.socketConnect(${host}, ${port})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'send') {
+      const connRef = stmt.connRef ? this._safeName(stmt.connRef) : 'null';
+      const dataArg = stmt.data !== null && stmt.data !== undefined
+        ? JSON.stringify(stmt.data)
+        : stmt.dataVar ? this._safeName(stmt.dataVar) : '""';
+      const call = `await __emMachine.socketSend(${connRef}, ${dataArg})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'read') {
+      const connRef = stmt.connRef ? this._safeName(stmt.connRef) : 'null';
+      const call = `await __emMachine.socketRead(${connRef})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'close') {
+      const connRef = stmt.connRef ? this._safeName(stmt.connRef) : 'null';
+      this._line(`await __emMachine.socketClose(${connRef});`);
+    } else if (op === 'udp_send') {
+      const host = JSON.stringify(stmt.host || 'localhost');
+      const port = stmt.port || 9999;
+      const dataArg = stmt.data !== null && stmt.data !== undefined
+        ? JSON.stringify(stmt.data)
+        : stmt.dataVar ? this._safeName(stmt.dataVar) : '""';
+      const call = `await __emMachine.socketUdpSend(${host}, ${port}, ${dataArg})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    }
+    this._line('');
+  }
+
+  _genSerialStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const op = stmt.op || 'connect';
+    this._line(`// serial ${op}`);
+    if (op === 'connect') {
+      const path = JSON.stringify(stmt.path || '/dev/ttyUSB0');
+      const baud = stmt.baud || 9600;
+      const call = `await __emMachine.serialConnect(${path}, ${baud})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'send') {
+      const portRef = stmt.portRef ? this._safeName(stmt.portRef) : 'null';
+      const dataArg = stmt.data !== null && stmt.data !== undefined
+        ? JSON.stringify(stmt.data)
+        : stmt.dataVar ? this._safeName(stmt.dataVar) : '""';
+      const call = `await __emMachine.serialSend(${portRef}, ${dataArg})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'read') {
+      const portRef = stmt.portRef ? this._safeName(stmt.portRef) : 'null';
+      const call = `await __emMachine.serialRead(${portRef})`;
+      if (varName) this._line(`${varName} = ${call};`);
+      else this._line(`${call};`);
+    } else if (op === 'close') {
+      const portRef = stmt.portRef ? this._safeName(stmt.portRef) : 'null';
+      this._line(`await __emMachine.serialClose(${portRef});`);
+    }
+    this._line('');
+  }
+
+  _genSpawnStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const command = JSON.stringify(stmt.command || '');
+    this._line(`// spawn: ${this._escape(stmt.command || '')}`);
+    const call = `await __emMachine.spawnProcess(${command})`;
+    if (varName) this._line(`${varName} = ${call};`);
+    else this._line(`${call};`);
+    this._line('');
+  }
+
+  _genBytesStmt(stmt) {
+    const varName = stmt.intoName ? this._safeName(stmt.intoName) : null;
+    const hex = JSON.stringify(stmt.hex || '');
+    this._line(`// bytes: ${this._escape(stmt.hex || '')}`);
+    const call = `__emMachine.parseBytes(${hex})`;
+    if (varName) this._line(`${varName} = ${call};`);
+    else this._line(`${call};`);
     this._line('');
   }
 }

@@ -294,7 +294,8 @@ class EventMathValidator {
       'agent', 'remember', 'recall', 'alert', 'control', 'send', 'play', 'pause', 'next', 'previous', 'media', 'via', 'computer', 'mute', 'loop',
       'role', 'hierarchy', 'incentive', 'align', 'credibility',
       'watchdog', 'sweep', 'quarantine', 'inoculate',
-      'instruct', 'fundamental', 'buffett', 'network', 'connect', 'offline']);
+      'instruct', 'fundamental', 'buffett', 'network', 'connect', 'offline',
+      'http', 'socket', 'serial', 'spawn', 'bytes', 'port', 'baud', 'udp', 'body', 'get', 'post']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

@@ -90,6 +90,8 @@ const KEYWORDS = new Set([
   'fundamental', 'buffett',
   // v2.27 — network + offline
   'network', 'connect', 'offline',
+  // v2.28 — machine layer
+  'http', 'socket', 'serial', 'spawn', 'bytes',
 ]);
 
 class Token {
@@ -349,6 +351,12 @@ class EventMathTokenizer {
     // v2.27 — network + offline
     if (lead === 'network')     return this._tokenizeNetworkStmt(words, lineNum);
     if (lead === 'offline')     return this._tokenizeOfflineStmt(words, lineNum);
+    // v2.28 — machine layer
+    if (lead === 'http')        return this._tokenizeHttpStmt(words, lineNum);
+    if (lead === 'socket')      return this._tokenizeSocketStmt(words, lineNum);
+    if (lead === 'serial')      return this._tokenizeSerialStmt(words, lineNum);
+    if (lead === 'spawn')       return this._tokenizeSpawnStmt(words, lineNum);
+    if (lead === 'bytes')       return this._tokenizeBytesStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -3677,6 +3685,157 @@ class EventMathTokenizer {
     const intoIdx = this._lastIndexOf(words, 'into');
     const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'cache result';
     return [new Token('OFFLINE_STMT', { op, key, ttlHours, intoName }, lineNum)];
+  }
+
+  // ── v2.28 Machine Layer ────────────────────────────────────────────────────
+
+  _tokenizeHttpStmt(words, lineNum) {
+    // http get "URL" into RESULT
+    // http post "URL" with body "DATA" into RESULT
+    // http post "URL" with body VARNAME into RESULT
+    const op = words[1] ? words[1].toLowerCase() : 'get';
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'response';
+    const mUrl = line.match(/"([^"]*)"/);
+    const url = mUrl ? mUrl[1] : (words[2] || '');
+
+    let body = null;
+    let bodyVar = null;
+    if (op === 'post') {
+      const bodyIdx = this._indexOf(words, 'body');
+      if (bodyIdx > 0) {
+        // Check if there's a quoted string after 'body'
+        const afterBody = words.slice(bodyIdx + 1).join(' ');
+        const mBody = afterBody.match(/^"([^"]*)"/);
+        if (mBody) {
+          body = mBody[1];
+        } else {
+          // bare name reference — take word(s) before 'into'
+          const endIdx = intoIdx > bodyIdx ? intoIdx : words.length;
+          bodyVar = words.slice(bodyIdx + 1, endIdx).join(' ') || null;
+        }
+      }
+    }
+
+    return [new Token('HTTP_STMT', { op, url, body, bodyVar, intoName }, lineNum)];
+  }
+
+  _tokenizeSocketStmt(words, lineNum) {
+    // socket connect to "HOST" port N into CONN
+    // socket send "DATA" to CONN
+    // socket read from CONN into RESULT
+    // socket close CONN
+    // socket udp send "DATA" to "HOST" port N
+    const second = words[1] ? words[1].toLowerCase() : '';
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : null;
+
+    // UDP one-shot
+    if (second === 'udp') {
+      const mData = line.match(/"([^"]*)"/);
+      const data = mData ? mData[1] : '';
+      const mHost = line.match(/to\s+"([^"]*)"/);
+      const host = mHost ? mHost[1] : null;
+      const mPort = line.match(/port\s+(\d+)/i);
+      const port = mPort ? parseInt(mPort[1], 10) : null;
+      return [new Token('SOCKET_STMT', { op: 'udp_send', protocol: 'udp', host, port, data, dataVar: null, connRef: null, intoName }, lineNum)];
+    }
+
+    // op is the second word (connect, send, read, close)
+    const op = second;
+
+    if (op === 'connect') {
+      const mHost = line.match(/to\s+"([^"]*)"/);
+      const host = mHost ? mHost[1] : (words[3] || null);
+      const mPort = line.match(/port\s+(\d+)/i);
+      const port = mPort ? parseInt(mPort[1], 10) : null;
+      return [new Token('SOCKET_STMT', { op: 'connect', protocol: 'tcp', host, port, data: null, dataVar: null, connRef: null, intoName }, lineNum)];
+    }
+
+    if (op === 'send') {
+      const mData = line.match(/"([^"]*)"/);
+      const data = mData ? mData[1] : null;
+      const toIdx = this._indexOf(words, 'to');
+      const dataVar = !mData && toIdx > 1 ? words.slice(2, toIdx).join(' ') : null;
+      const connRef = toIdx > 0 ? words.slice(toIdx + 1, intoIdx > 0 ? intoIdx : words.length).join(' ') : null;
+      return [new Token('SOCKET_STMT', { op: 'send', protocol: 'tcp', host: null, port: null, data, dataVar, connRef, intoName }, lineNum)];
+    }
+
+    if (op === 'read') {
+      const fromIdx = this._indexOf(words, 'from');
+      const connRef = fromIdx > 0 ? words.slice(fromIdx + 1, intoIdx > 0 ? intoIdx : words.length).join(' ') : null;
+      return [new Token('SOCKET_STMT', { op: 'read', protocol: 'tcp', host: null, port: null, data: null, dataVar: null, connRef, intoName }, lineNum)];
+    }
+
+    if (op === 'close') {
+      const connRef = words.slice(2).join(' ') || null;
+      return [new Token('SOCKET_STMT', { op: 'close', protocol: 'tcp', host: null, port: null, data: null, dataVar: null, connRef, intoName: null }, lineNum)];
+    }
+
+    return [new Token('SOCKET_STMT', { op, protocol: 'tcp', host: null, port: null, data: null, dataVar: null, connRef: null, intoName }, lineNum)];
+  }
+
+  _tokenizeSerialStmt(words, lineNum) {
+    // serial connect to "/dev/ttyUSB0" at 9600 baud into port
+    // serial send "CMD\n" to port
+    // serial read from port into data
+    // serial close port
+    const op = words[1] ? words[1].toLowerCase() : 'connect';
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : null;
+
+    if (op === 'connect') {
+      const mPath = line.match(/to\s+"([^"]*)"/);
+      const path = mPath ? mPath[1] : (words[3] || '/dev/ttyUSB0');
+      const mBaud = line.match(/at\s+(\d+)\s+baud/i);
+      const baud = mBaud ? parseInt(mBaud[1], 10) : 9600;
+      return [new Token('SERIAL_STMT', { op: 'connect', path, baud, data: null, dataVar: null, portRef: null, intoName }, lineNum)];
+    }
+
+    if (op === 'send') {
+      const mData = line.match(/"((?:[^"\\]|\\.)*)"/);
+      const data = mData ? mData[1] : null;
+      const toIdx = this._indexOf(words, 'to');
+      const dataVar = !mData && toIdx > 1 ? words.slice(2, toIdx).join(' ') : null;
+      const portRef = toIdx > 0 ? words.slice(toIdx + 1).join(' ') : null;
+      return [new Token('SERIAL_STMT', { op: 'send', path: null, baud: null, data, dataVar, portRef, intoName }, lineNum)];
+    }
+
+    if (op === 'read') {
+      const fromIdx = this._indexOf(words, 'from');
+      const portRef = fromIdx > 0 ? words.slice(fromIdx + 1, intoIdx > 0 ? intoIdx : words.length).join(' ') : null;
+      return [new Token('SERIAL_STMT', { op: 'read', path: null, baud: null, data: null, dataVar: null, portRef, intoName }, lineNum)];
+    }
+
+    if (op === 'close') {
+      const portRef = words.slice(2).join(' ') || null;
+      return [new Token('SERIAL_STMT', { op: 'close', path: null, baud: null, data: null, dataVar: null, portRef, intoName: null }, lineNum)];
+    }
+
+    return [new Token('SERIAL_STMT', { op, path: null, baud: 9600, data: null, dataVar: null, portRef: null, intoName }, lineNum)];
+  }
+
+  _tokenizeSpawnStmt(words, lineNum) {
+    // spawn "command args" into output
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'output';
+    const mCmd = line.match(/"([^"]*)"/);
+    const command = mCmd ? mCmd[1] : words.slice(1, intoIdx > 0 ? intoIdx : words.length).join(' ');
+    return [new Token('SPAWN_STMT', { command, intoName }, lineNum)];
+  }
+
+  _tokenizeBytesStmt(words, lineNum) {
+    // bytes "FF A0 B3" into raw data
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'raw bytes';
+    const mHex = line.match(/"([^"]*)"/);
+    const hex = mHex ? mHex[1] : words.slice(1, intoIdx > 0 ? intoIdx : words.length).join(' ');
+    return [new Token('BYTES_STMT', { hex, intoName }, lineNum)];
   }
 }
 
