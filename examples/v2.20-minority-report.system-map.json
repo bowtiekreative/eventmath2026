@@ -1,0 +1,218 @@
+{
+  "program": "EventMath System Map",
+  "version": "0.1",
+  "generatedAt": "2026-06-14T02:36:40.764Z",
+  "totalNodes": 19,
+  "totalEdges": 0,
+  "nodes": [
+    {
+      "id": "story:climate_debate",
+      "type": "story_source",
+      "kind": "story",
+      "name": "climate_debate",
+      "source": "twitter",
+      "query": "\"climate change\"",
+      "intoLayer": "climate_events",
+      "description": "Story — scans \"twitter\" for \"\"climate change\"\""
+    },
+    {
+      "id": "story:news_coverage",
+      "type": "story_source",
+      "kind": "story",
+      "name": "news_coverage",
+      "source": "news",
+      "query": "\"climate policy\"",
+      "intoLayer": "news_events",
+      "description": "Story — scans \"news\" for \"\"climate policy\"\""
+    },
+    {
+      "id": "story:tech_industry",
+      "type": "story_source",
+      "kind": "story",
+      "name": "tech_industry",
+      "source": "rss",
+      "query": "\"AI regulation\"",
+      "intoLayer": "tech_events",
+      "description": "Story — scans \"rss\" for \"\"AI regulation\"\""
+    },
+    {
+      "id": "narrative:scientific_view",
+      "type": "perspective",
+      "kind": "narrative",
+      "name": "scientific_view",
+      "storyName": "climate_debate",
+      "perspective": "scientific",
+      "bodyStatementCount": 1,
+      "description": "Narrative — \"scientific\" view of \"climate_debate\""
+    },
+    {
+      "id": "narrative:conservative_view",
+      "type": "perspective",
+      "kind": "narrative",
+      "name": "conservative_view",
+      "storyName": "climate_debate",
+      "perspective": "conservative",
+      "bodyStatementCount": 1,
+      "description": "Narrative — \"conservative\" view of \"climate_debate\""
+    },
+    {
+      "id": "narrative:skeptical_view",
+      "type": "perspective",
+      "kind": "narrative",
+      "name": "skeptical_view",
+      "storyName": "news_coverage",
+      "perspective": "skeptical",
+      "bodyStatementCount": 1,
+      "description": "Narrative — \"skeptical\" view of \"news_coverage\""
+    },
+    {
+      "id": "narrative:optimistic_view",
+      "type": "perspective",
+      "kind": "narrative",
+      "name": "optimistic_view",
+      "storyName": "tech_industry",
+      "perspective": "optimistic",
+      "bodyStatementCount": 1,
+      "description": "Narrative — \"optimistic\" view of \"tech_industry\""
+    },
+    {
+      "id": "scope:climate_alternatives",
+      "type": "analysis",
+      "kind": "scope",
+      "name": "climate_alternatives",
+      "subject": "climate_risk",
+      "dimensions": [
+        "economic",
+        "environmental",
+        "political"
+      ],
+      "description": "Scope — multi-dimensional analysis of \"climate_risk\""
+    },
+    {
+      "id": "scope:growth_scenarios",
+      "type": "analysis",
+      "kind": "scope",
+      "name": "growth_scenarios",
+      "subject": "tech_growth",
+      "dimensions": [
+        "regulation",
+        "innovation",
+        "market"
+      ],
+      "description": "Scope — multi-dimensional analysis of \"tech_growth\""
+    },
+    {
+      "id": "scope:political_outcomes",
+      "type": "analysis",
+      "kind": "scope",
+      "name": "political_outcomes",
+      "subject": "political_landscape",
+      "dimensions": [
+        "domestic",
+        "foreign",
+        "economic"
+      ],
+      "description": "Scope — multi-dimensional analysis of \"political_landscape\""
+    },
+    {
+      "id": "scenario:green_revolution",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "green_revolution",
+      "condition": "carbon tax passes",
+      "probability": "high",
+      "bodyStatementCount": 2,
+      "description": "Scenario — \"green_revolution\" when carbon tax passes, likely high"
+    },
+    {
+      "id": "scenario:policy_stalemate",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "policy_stalemate",
+      "condition": "no agreement reached",
+      "probability": "medium",
+      "bodyStatementCount": 2,
+      "description": "Scenario — \"policy_stalemate\" when no agreement reached, likely medium"
+    },
+    {
+      "id": "scenario:tech_bubble",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "tech_bubble",
+      "condition": "AI investment overheats",
+      "probability": "low",
+      "bodyStatementCount": 2,
+      "description": "Scenario — \"tech_bubble\" when AI investment overheats, likely low"
+    },
+    {
+      "id": "scenario:global_cooperation",
+      "type": "prediction",
+      "kind": "scenario",
+      "name": "global_cooperation",
+      "condition": "major powers agree",
+      "probability": "low",
+      "bodyStatementCount": 2,
+      "description": "Scenario — \"global_cooperation\" when major powers agree, likely low"
+    },
+    {
+      "id": "mark:total_scenarios",
+      "type": "variable",
+      "kind": "mark",
+      "name": "total_scenarios",
+      "value": "4",
+      "description": "Mark — stores \"4\""
+    },
+    {
+      "id": "mark:primary_perspective",
+      "type": "variable",
+      "kind": "mark",
+      "name": "primary_perspective",
+      "value": "scientific_view",
+      "description": "Mark — stores \"scientific_view\""
+    },
+    {
+      "id": "mark:most_likely",
+      "type": "variable",
+      "kind": "mark",
+      "name": "most_likely",
+      "value": "green_revolution",
+      "description": "Mark — stores \"green_revolution\""
+    },
+    {
+      "id": "mark:risk_factors",
+      "type": "variable",
+      "kind": "mark",
+      "name": "risk_factors",
+      "value": "economic uncertainty and political division",
+      "description": "Mark — stores \"economic uncertainty and political division\""
+    },
+    {
+      "id": "set:climate_awareness",
+      "type": "assignment",
+      "kind": "set",
+      "name": "climate_awareness",
+      "description": "Set — assigns a new value to \"climate_awareness\""
+    }
+  ],
+  "edges": [],
+  "summary": {
+    "sources": 0,
+    "derivedValues": 0,
+    "gates": 0,
+    "components": 0,
+    "functions": 0,
+    "schemas": 0,
+    "collections": 0,
+    "sequences": 0,
+    "variables": 5,
+    "constants": 0,
+    "byType": {
+      "story_source": 3,
+      "perspective": 4,
+      "analysis": 3,
+      "prediction": 4,
+      "variable": 4,
+      "assignment": 1
+    }
+  }
+}

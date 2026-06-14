@@ -178,6 +178,11 @@ class EventMathParser {
     if (t.type === 'KEYWORD' && t.value === 'harden')    return this._parseHardenStmt();
     if (t.type === 'KEYWORD' && t.value === 'discover')  return this._parseDiscoverStmt();
     if (t.type === 'KEYWORD' && t.value === 'intercept') return this._parseInterceptStmt();
+    // v2.20 — story layer
+    if (t.type === 'STORY_STMT')      return this._parseStoryStmt();
+    if (t.type === 'NARRATIVE_STMT')  return this._parseNarrativeStmt();
+    if (t.type === 'SCOPE_STMT')      return this._parseScopeStmt();
+    if (t.type === 'SCENARIO_STMT')   return this._parseScenarioStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -2135,6 +2140,61 @@ class EventMathParser {
   _parseZoomExpand() {
     const t = this.advance();
     return ast('ZoomExpand', { sourceType: t.value.sourceType, sourceName: t.value.sourceName, intoName: t.value.intoName });
+  }
+
+  // ── v2.20 story layer parsers ─────────────────────────────────────────
+
+  _parseStoryStmt() {
+    const t = this.advance();
+    return ast('StoryStmt', {
+      name: t.value.name,
+      source: t.value.source,
+      query: t.value.query,
+      into: t.value.into,
+    });
+  }
+
+  _parseNarrativeStmt() {
+    const t = this.advance();
+    const stmt = ast('NarrativeStmt', {
+      name: t.value.name,
+      storyName: t.value.storyName,
+      perspective: t.value.perspective,
+      body: [],
+    });
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const s = this._parseStatement();
+      if (s) stmt.body.push(s);
+    }
+    this.expect('KEYWORD', 'end');
+    return stmt;
+  }
+
+  _parseScopeStmt() {
+    const t = this.advance();
+    return ast('ScopeStmt', {
+      subject: t.value.subject,
+      dimensions: t.value.dimensions,
+      into: t.value.into,
+    });
+  }
+
+  _parseScenarioStmt() {
+    const t = this.advance();
+    const stmt = ast('ScenarioStmt', {
+      name: t.value.name,
+      condition: t.value.condition,
+      probability: t.value.probability,
+      body: [],
+    });
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const s = this._parseStatement();
+      if (s) stmt.body.push(s);
+    }
+    this.expect('KEYWORD', 'end');
+    return stmt;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

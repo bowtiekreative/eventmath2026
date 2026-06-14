@@ -230,6 +230,15 @@ class EventMathWhy {
         return `"${node.name}" fires an event that handlers are listening for.`;
       case 'use':
         return `"${node.name}" imports from "${node.source}". It brings code from another file into this program.`;
+      // v2.20 — story layer
+      case 'story':
+        return `"${node.name}" is a story that scans "${node.source}" for "${node.query}". Its events flow into "${node.intoLayer || 'a layer'}".`;
+      case 'narrative':
+        return `"${node.name}" is a "${node.perspective}" narrative of "${node.storyName}". It sees events through a specific lens.`;
+      case 'scope':
+        return `"${node.name}" is a multi-dimensional analysis of "${node.subject}"${node.dimensions ? ' across [' + node.dimensions.join(', ') + ']' : ''}. It maps alternative scenarios.`;
+      case 'scenario':
+        return `"${node.name}" is a future scenario. When ${node.condition}, it is ${node.probability} likely. It describes a possible state of the system.`;
       default:
         return null;
     }

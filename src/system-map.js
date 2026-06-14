@@ -133,6 +133,15 @@ class EventMathSystemMap {
         case 'OnEventStmt':
           this._firstPass(stmt.body || []);
           break;
+        // v2.20 — story layer
+        case 'NarrativeStmt':
+        case 'ScenarioStmt':
+          this._firstPass(stmt.body || []);
+          break;
+        case 'StoryStmt':
+        case 'ScopeStmt':
+          // No body recursion needed for these
+          break;
       }
     }
   }
@@ -668,6 +677,67 @@ class EventMathSystemMap {
       // ── DOOR CLOSED — inline return ──
       case 'DoorClosed': {
         // No separate node — it's a return from an action
+        break;
+      }
+
+      // ── v2.20 story layer ──────────────────────────────────────────────
+
+      case 'StoryStmt': {
+        const id = nodeId('story', stmt.name);
+        this._addNode({
+          id,
+          type: 'story_source',
+          kind: 'story',
+          name: stmt.name,
+          source: stmt.source,
+          query: stmt.query,
+          intoLayer: stmt.into,
+          description: `Story — scans "${stmt.source}" for "${stmt.query}"`,
+        });
+        break;
+      }
+
+      case 'NarrativeStmt': {
+        const id = nodeId('narrative', stmt.name);
+        this._addNode({
+          id,
+          type: 'perspective',
+          kind: 'narrative',
+          name: stmt.name,
+          storyName: stmt.storyName,
+          perspective: stmt.perspective,
+          bodyStatementCount: (stmt.body || []).length,
+          description: `Narrative — "${stmt.perspective}" view of "${stmt.storyName}"`,
+        });
+        break;
+      }
+
+      case 'ScopeStmt': {
+        const id = nodeId('scope', stmt.into || stmt.subject);
+        this._addNode({
+          id,
+          type: 'analysis',
+          kind: 'scope',
+          name: stmt.into || stmt.subject,
+          subject: stmt.subject,
+          dimensions: stmt.dimensions,
+          description: `Scope — multi-dimensional analysis of "${stmt.subject}"`,
+        });
+        break;
+      }
+
+      case 'ScenarioStmt': {
+        const id = nodeId('scenario', stmt.name);
+        this._addNode({
+          id,
+          type: 'prediction',
+          kind: 'scenario',
+          name: stmt.name,
+          condition: stmt.condition,
+          probability: stmt.probability,
+          bodyStatementCount: (stmt.body || []).length,
+          description: `Scenario — "${stmt.name}" when ${stmt.condition}, likely ${stmt.probability}`,
+        });
         break;
       }
 

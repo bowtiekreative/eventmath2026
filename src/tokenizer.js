@@ -69,6 +69,8 @@ const KEYWORDS = new Set([
   'replace',
   // v2.19 — security layer
   'probe', 'authorize', 'threat', 'harden', 'discover', 'intercept',
+  // v2.20 — story layer
+  'story', 'narrative', 'scope',
 ]);
 
 class Token {
@@ -139,8 +141,11 @@ class EventMathTokenizer {
       return this._keywordName(lead, words.slice(1), lineNum);
     }
 
+    // v2.20 — scenario (before v2.0 scenario for dispatch priority)
+    if (lead === 'scenario')   return this._tokenizeScenarioStmt(words, lineNum);
+
     // v2.0 block-opener keywords that work exactly like 'event'
-    if (['actor', 'desire', 'outcome', 'scenario', 'fallacy', 'dilemma'].includes(lead)) {
+    if (['actor', 'desire', 'outcome', 'fallacy', 'dilemma'].includes(lead)) {
       return this._keywordName(lead, words.slice(1), lineNum);
     }
 
@@ -284,6 +289,10 @@ class EventMathTokenizer {
     if (lead === 'harden')     return this._tokenizeHardenStmt(words, lineNum);
     if (lead === 'discover')   return this._tokenizeDiscoverStmt(words, lineNum);
     if (lead === 'intercept')  return this._tokenizeInterceptStmt(words, lineNum);
+    // v2.20 — story layer
+    if (lead === 'story')      return this._tokenizeStoryStmt(words, lineNum);
+    if (lead === 'narrative')  return this._tokenizeNarrativeStmt(words, lineNum);
+    if (lead === 'scope')      return this._tokenizeScopeStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -2937,6 +2946,84 @@ class EventMathTokenizer {
       }
     }
     return result;
+  }
+
+  // ── v2.20 story layer tokenizers ──────────────────────────────────────
+
+  /**
+   * story <name> from <source> about <query> into <layer>
+   */
+  _tokenizeStoryStmt(words, lineNum) {
+    const line = words.join(' ');
+    const m = line.match(/^story\s+(.+?)\s+from\s+(twitter|news|rss|scan|web)\s+about\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (!m) {
+      return [new Token('ERROR', { message: 'story needs: story <name> from <source> about <query> into <layer>' }, lineNum)];
+    }
+    return [new Token('STORY_STMT', {
+      name: m[1].trim(),
+      source: m[2].toLowerCase(),
+      query: m[3].trim(),
+      into: m[4].trim(),
+    }, lineNum)];
+  }
+
+  /**
+   * narrative <name> of <story> from <perspective>
+   */
+  _tokenizeNarrativeStmt(words, lineNum) {
+    const line = words.join(' ');
+    const m = line.match(/^narrative\s+(.+?)\s+of\s+(.+?)\s+from\s+(.+?)\s*$/i);
+    if (!m) {
+      return [new Token('ERROR', { message: 'narrative needs: narrative <name> of <story> from <perspective>' }, lineNum)];
+    }
+    return [new Token('NARRATIVE_STMT', {
+      name: m[1].trim(),
+      storyName: m[2].trim(),
+      perspective: m[3].trim(),
+    }, lineNum)];
+  }
+
+  /**
+   * scope <subject> through <dim1> and <dim2> into <result>
+   */
+  _tokenizeScopeStmt(words, lineNum) {
+    const line = words.join(' ');
+    const m = line.match(/^scope\s+(.+?)\s+through\s+(.+?)\s+and\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (!m) {
+      return [new Token('ERROR', { message: 'scope needs: scope <subject> through <dim1> and <dim2> [and <dimN>...] into <result>' }, lineNum)];
+    }
+    const dim1 = m[2].trim();
+    const rest = m[3].trim();
+    // Parse potentially more dimensions: "dim2 and dim3 and dim4..."
+    const dimensions = [dim1];
+    const remaining = rest.split(/\s+and\s+/i);
+    for (const d of remaining) {
+      const trimmed = d.trim();
+      if (trimmed) dimensions.push(trimmed);
+    }
+    return [new Token('SCOPE_STMT', {
+      subject: m[1].trim(),
+      dimensions: dimensions.filter(Boolean),
+      into: m[4].trim(),
+    }, lineNum)];
+  }
+
+  /**
+   * scenario <name> when <condition> likely <probability>
+   * If the line doesn't match the new syntax, fall through to the v2.0 keywordName behavior.
+   */
+  _tokenizeScenarioStmt(words, lineNum) {
+    const line = words.join(' ');
+    const m = line.match(/^scenario\s+(.+?)\s+when\s+(.+?)\s+likely\s+(.+?)\s*$/i);
+    if (m) {
+      return [new Token('SCENARIO_STMT', {
+        name: m[1].trim(),
+        condition: m[2].trim(),
+        probability: m[3].trim(),
+      }, lineNum)];
+    }
+    // v2.0 fallback: scenario <name> (block opener)
+    return this._keywordName('scenario', words.slice(1), lineNum);
   }
 }
 

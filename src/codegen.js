@@ -415,6 +415,18 @@ class EventMathCodeGen {
         // (ProbeStmt, HardenStmt, DiscoverStmt, InterceptStmt) declare their
         // result inline with `const` — do NOT hoist them here (same pattern as
         // ScanStmt/SeekStmt). AuthorizeStmt and ThreatStmt produce no variable.
+        // v2.20 — story layer
+        case 'StoryStmt':
+          if (stmt.name) { this._vars.add(stmt.name); this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' }); }
+          break;
+        case 'NarrativeStmt':
+        case 'ScenarioStmt':
+          if (stmt.name) { this._vars.add(stmt.name); this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' }); }
+          this._firstPass(stmt.body || []);
+          break;
+        case 'ScopeStmt':
+          if (stmt.into) { this._vars.add(stmt.into); this._varDecls.push({ name: this._safeName(stmt.into), value: 'null' }); }
+          break;
       }
     }
   }
@@ -553,6 +565,11 @@ class EventMathCodeGen {
       case 'HardenStmt':        return this._genHardenStmt(stmt);
       case 'DiscoverStmt':      return this._genDiscoverStmt(stmt);
       case 'InterceptStmt':     return this._genInterceptStmt(stmt);
+      // v2.20 — story layer
+      case 'StoryStmt':         return this._genStoryStmt(stmt);
+      case 'NarrativeStmt':     return this._genNarrativeStmt(stmt);
+      case 'ScopeStmt':         return this._genScopeStmt(stmt);
+      case 'ScenarioStmt':      return this._genScenarioStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -3463,6 +3480,51 @@ class EventMathCodeGen {
     } else {
       this._line('return;');
     }
+  }
+
+  // ── v2.20 story layer codegen ─────────────────────────────────────────
+
+  _genStoryStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    const source = stmt.source;
+    const query = JSON.stringify(stmt.query);
+    const into = this._safeName(stmt.into);
+    this._line(`// story: ${this._escape(stmt.name)}`);
+    this._line(`${v} = new EM.EventMathStory('${this._escape(stmt.name)}', '${source}', ${query});`);
+    this._line(`${v}.scan().then(function(events) { ${into} = events; }).catch(function(err) { console.error('Story scan failed:', err); });`);
+    this._line('');
+  }
+
+  _genNarrativeStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    const story = this._safeName(stmt.storyName);
+    this._line(`// narrative: ${this._escape(stmt.name)}`);
+    this._line(`(function() {`);
+    this.indent++;
+    this._line(`const _narrative = new EM.EventMathNarrative('${this._escape(stmt.perspective)}');`);
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this._line(`${v} = ${story} ? _narrative.view(${story}) : [];`);
+    this.indent--;
+    this._line(`})();`);
+    this._line(`${v}._type = 'narrative';`);
+    this._line('');
+  }
+
+  _genScopeStmt(stmt) {
+    const v = this._safeName(stmt.into);
+    const dims = (stmt.dimensions || []).map(d => JSON.stringify(d)).join(', ');
+    this._line(`// scope: ${this._escape(stmt.subject)}`);
+    this._line(`${v} = EM.EventMathScope.analyze('${this._escape(stmt.subject)}', [${dims}]);`);
+    this._line('');
+  }
+
+  _genScenarioStmt(stmt) {
+    const v = this._safeName(stmt.name);
+    const prob = stmt.probability || 'medium';
+    this._line(`// scenario: ${this._escape(stmt.name)} when ${this._escape(stmt.condition)}`);
+    for (const s of (stmt.body || [])) this._genStatement(s);
+    this._line(`${v} = { name: '${this._escape(stmt.name)}', condition: '${this._escape(stmt.condition)}', probability: '${prob}', _type: 'scenario' };`);
+    this._line('');
   }
 }
 module.exports = { EventMathCodeGen };
