@@ -71,6 +71,8 @@ const KEYWORDS = new Set([
   'probe', 'authorize', 'threat', 'harden', 'discover', 'intercept',
   // v2.20 — story layer
   'story', 'narrative', 'scope',
+  // v2.21 — intelligence layer
+  'emerge', 'wifi', 'lookup', 'watch',
 ]);
 
 class Token {
@@ -293,6 +295,11 @@ class EventMathTokenizer {
     if (lead === 'story')      return this._tokenizeStoryStmt(words, lineNum);
     if (lead === 'narrative')  return this._tokenizeNarrativeStmt(words, lineNum);
     if (lead === 'scope')      return this._tokenizeScopeStmt(words, lineNum);
+    // v2.21 — intelligence layer
+    if (lead === 'emerge')     return this._tokenizeEmergeStmt(words, lineNum);
+    if (lead === 'wifi')       return this._tokenizeWifiStmt(words, lineNum);
+    if (lead === 'lookup')     return this._tokenizeLookupStmt(words, lineNum);
+    if (lead === 'watch')      return this._tokenizeWatchStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -3024,6 +3031,167 @@ class EventMathTokenizer {
     }
     // v2.0 fallback: scenario <name> (block opener)
     return this._keywordName('scenario', words.slice(1), lineNum);
+  }
+
+  // ── v2.21 intelligence layer tokenizers ─────────────────────────────────
+
+  /**
+   * emerge NAME
+   * Block statement — just emit KEYWORD:emerge and NAME:name.
+   * Body lines (from/subject/preference/trigger/reaction/threshold/into) are
+   * parsed line-by-line in the parser.
+   */
+  _tokenizeEmergeStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'emerge', lineNum)];
+    if (words.length > 1) {
+      tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * wifi map network into devices
+   *   → KEYWORD:wifi KEYWORD:map KEYWORD:network KEYWORD:into NAME:devices
+   * wifi locate "device name" into position
+   *   → KEYWORD:wifi KEYWORD:locate LITERAL:device name KEYWORD:into NAME:position
+   */
+  _tokenizeWifiStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'wifi', lineNum)];
+    if (words.length < 2) return tokens;
+
+    const sub = words[1].toLowerCase();
+
+    if (sub === 'map') {
+      tokens.push(new Token('KEYWORD', 'map', lineNum));
+      // optional 'network'
+      if (words[2] && words[2].toLowerCase() === 'network') {
+        tokens.push(new Token('KEYWORD', 'network', lineNum));
+      }
+      const intoIdx = this._indexOf(words, 'into');
+      if (intoIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'into', lineNum));
+        tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    if (sub === 'locate') {
+      tokens.push(new Token('KEYWORD', 'locate', lineNum));
+      const intoIdx = this._indexOf(words, 'into');
+      // Find quoted literal between 'locate' and 'into'
+      const midWords = intoIdx >= 0 ? words.slice(2, intoIdx) : words.slice(2);
+      const midRaw = midWords.join(' ');
+      const mQuote = midRaw.match(/^"([^"]*)"$/);
+      if (mQuote) {
+        tokens.push(new Token('LITERAL', mQuote[1], lineNum));
+      } else {
+        tokens.push(new Token('LITERAL', midRaw.replace(/^"|"$/g, ''), lineNum));
+      }
+      if (intoIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'into', lineNum));
+        tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    return tokens;
+  }
+
+  /**
+   * lookup phone "555-1234" into contact info
+   *   → KEYWORD:lookup KEYWORD:phone LITERAL:555-1234 KEYWORD:into NAME:contact info
+   * lookup email "user@example.com" into account info
+   *   → KEYWORD:lookup KEYWORD:email LITERAL:user@example.com KEYWORD:into NAME:account info
+   */
+  _tokenizeLookupStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'lookup', lineNum)];
+    if (words.length < 2) return tokens;
+
+    const lookupType = words[1].toLowerCase();
+    tokens.push(new Token('KEYWORD', lookupType, lineNum));
+
+    const intoIdx = this._indexOf(words, 'into');
+    // Literal is between words[2] and 'into'
+    const midWords = intoIdx >= 0 ? words.slice(2, intoIdx) : words.slice(2);
+    const midRaw = midWords.join(' ');
+    const mQuote = midRaw.match(/^"([^"]*)"$/);
+    const lit = mQuote ? mQuote[1] : midRaw.replace(/^"|"$/g, '');
+    tokens.push(new Token('LITERAL', lit, lineNum));
+
+    if (intoIdx >= 0) {
+      tokens.push(new Token('KEYWORD', 'into', lineNum));
+      tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+    }
+    return tokens;
+  }
+
+  /**
+   * watch feed at "URL" for 30 seconds into frames
+   *   → KEYWORD:watch KEYWORD:feed KEYWORD:at LITERAL:URL KEYWORD:for NUMBER:30 KEYWORD:into NAME:frames
+   * watch cameras near "Washington DC" into live feeds
+   *   → KEYWORD:watch KEYWORD:cameras KEYWORD:near LITERAL:Washington DC KEYWORD:into NAME:live feeds
+   */
+  _tokenizeWatchStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'watch', lineNum)];
+    if (words.length < 2) return tokens;
+
+    const sub = words[1].toLowerCase();
+
+    if (sub === 'feed') {
+      tokens.push(new Token('KEYWORD', 'feed', lineNum));
+      // optional 'at'
+      const atIdx = this._indexOf(words, 'at');
+      const forIdx = this._indexOf(words, 'for');
+      const intoIdx = this._indexOf(words, 'into');
+
+      if (atIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'at', lineNum));
+        // URL is between 'at' and 'for' (or 'into' if no 'for')
+        const urlEnd = forIdx >= 0 ? forIdx : (intoIdx >= 0 ? intoIdx : words.length);
+        const urlWords = words.slice(atIdx + 1, urlEnd);
+        const urlRaw = urlWords.join(' ');
+        const mQuote = urlRaw.match(/^"([^"]*)"$/);
+        tokens.push(new Token('LITERAL', mQuote ? mQuote[1] : urlRaw.replace(/^"|"$/g, ''), lineNum));
+      }
+
+      if (forIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'for', lineNum));
+        // Number after 'for'
+        const numWord = words[forIdx + 1];
+        if (numWord && /^\d+$/.test(numWord)) {
+          tokens.push(new Token('NUMBER', numWord, lineNum));
+        }
+      }
+
+      if (intoIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'into', lineNum));
+        tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    if (sub === 'cameras') {
+      tokens.push(new Token('KEYWORD', 'cameras', lineNum));
+      const nearIdx = this._indexOf(words, 'near');
+      const intoIdx = this._indexOf(words, 'into');
+
+      if (nearIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'near', lineNum));
+        const locEnd = intoIdx >= 0 ? intoIdx : words.length;
+        const locWords = words.slice(nearIdx + 1, locEnd);
+        const locRaw = locWords.join(' ');
+        const mQuote = locRaw.match(/^"([^"]*)"$/);
+        tokens.push(new Token('LITERAL', mQuote ? mQuote[1] : locRaw.replace(/^"|"$/g, ''), lineNum));
+      }
+
+      if (intoIdx >= 0) {
+        tokens.push(new Token('KEYWORD', 'into', lineNum));
+        tokens.push(new Token('NAME', words.slice(intoIdx + 1).join(' '), lineNum));
+      }
+      return tokens;
+    }
+
+    return tokens;
   }
 }
 

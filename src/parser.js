@@ -183,6 +183,11 @@ class EventMathParser {
     if (t.type === 'NARRATIVE_STMT')  return this._parseNarrativeStmt();
     if (t.type === 'SCOPE_STMT')      return this._parseScopeStmt();
     if (t.type === 'SCENARIO_STMT')   return this._parseScenarioStmt();
+    // v2.21 — intelligence layer
+    if (t.type === 'KEYWORD' && t.value === 'emerge')  return this._parseEmergeStmt();
+    if (t.type === 'KEYWORD' && t.value === 'wifi')    return this._parseWifiStmt();
+    if (t.type === 'KEYWORD' && t.value === 'lookup')  return this._parseLookupStmt();
+    if (t.type === 'KEYWORD' && t.value === 'watch')   return this._parseWatchStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -2195,6 +2200,188 @@ class EventMathParser {
     }
     this.expect('KEYWORD', 'end');
     return stmt;
+  }
+
+  // ── v2.21 intelligence layer parsers ─────────────────────────────────────
+
+  /**
+   * emerge NAME
+   *   from STORY_NAME
+   *   subject "SUBJECT LABEL"
+   *   preference "ITEM1" and "PREFERENCE2"
+   *   trigger "TRIGGER1" and "TRIGGER2"
+   *   reaction "REACTION1"
+   *   threshold unusual
+   *   into RESULT
+   * end
+   *
+   * Body lines are tokenized as bare NAME tokens (multi-word lines).
+   * We parse them by examining the raw token value string since the tokenizer
+   * collapses each body line into one NAME token or a KEYWORD token.
+   */
+  _parseEmergeStmt() {
+    this.expect('KEYWORD', 'emerge');
+    const nameTok = this.match('NAME');
+    const name = nameTok ? nameTok.value : 'correlations';
+    let story = null, subject = null, preferences = [], triggers = [], reactions = [], threshold = 'unusual', intoName = 'findings';
+
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 200) {
+      const t = this.peek();
+      if (!t) break;
+
+      // Handle 'from STORY_NAME' — emitted as KEYWORD:from NAME
+      if (t.type === 'KEYWORD' && t.value === 'from') {
+        this.advance();
+        const tok = this.match('NAME');
+        if (tok) story = tok.value;
+        continue;
+      }
+
+      // Handle 'into RESULT' — emitted as KEYWORD:into NAME
+      if (t.type === 'KEYWORD' && t.value === 'into') {
+        this.advance();
+        const tok = this.match('NAME');
+        if (tok) intoName = tok.value;
+        continue;
+      }
+
+      // Handle body lines that the tokenizer collapses into NAME tokens.
+      // Each body line becomes one NAME token whose value is the full line text
+      // (e.g., `subject "Donald Trump"`, `preference "McDonald's" and "golf"`)
+      if (t.type === 'NAME') {
+        const raw = t.value;
+        this.advance();
+
+        // subject "..."
+        const mSubject = raw.match(/^subject\s+"([^"]+)"/i);
+        if (mSubject) { subject = mSubject[1]; continue; }
+
+        // preference "X" and "Y" and ...
+        const mPref = raw.match(/^preference\s+(.+)$/i);
+        if (mPref) {
+          const items = mPref[1].match(/"([^"]+)"/g) || [];
+          for (const it of items) preferences.push(it.replace(/^"|"$/g, ''));
+          continue;
+        }
+
+        // trigger "X" and "Y" and ...  (note: 'trigger' is a keyword but body
+        // lines can also appear as TRIGGER_STMT tokens — handle both here)
+        const mTrig = raw.match(/^trigger\s+(.+)$/i);
+        if (mTrig) {
+          const items = mTrig[1].match(/"([^"]+)"/g) || [];
+          for (const it of items) triggers.push(it.replace(/^"|"$/g, ''));
+          continue;
+        }
+
+        // reaction "X" and "Y" and ...
+        const mReact = raw.match(/^reaction\s+(.+)$/i);
+        if (mReact) {
+          const items = mReact[1].match(/"([^"]+)"/g) || [];
+          for (const it of items) reactions.push(it.replace(/^"|"$/g, ''));
+          continue;
+        }
+
+        // threshold VALUE (e.g., `threshold unusual`)
+        const mThresh = raw.match(/^threshold\s+(\w+)$/i);
+        if (mThresh) { threshold = mThresh[1].toLowerCase(); continue; }
+
+        // Fallthrough: ignore unknown body line
+        continue;
+      }
+
+      // Handle TRIGGER_STMT tokens — these happen because 'trigger' is a keyword
+      // and the tokenizer dispatches it to _tokenizeTriggerStmt. We extract the
+      // quoted literal from the event field.
+      if (t.type === 'TRIGGER_STMT') {
+        const raw = t.value.event || '';
+        const items = raw.match(/"([^"]+)"/g) || [];
+        for (const it of items) triggers.push(it.replace(/^"|"$/g, ''));
+        this.advance();
+        continue;
+      }
+
+      // Skip other tokens (keywords we don't recognize in this context)
+      this.advance();
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('EmergeStmt', { name, story, subject, preferences, triggers, reactions, threshold, intoName });
+  }
+
+  /**
+   * wifi map network into devices
+   * wifi locate "device name" into position
+   */
+  _parseWifiStmt() {
+    this.expect('KEYWORD', 'wifi');
+    const opTok = this.peek();
+    if (opTok && opTok.type === 'KEYWORD' && opTok.value === 'map') {
+      this.advance(); // consume 'map'
+      this.match('KEYWORD', 'network'); // optional 'network'
+      this.expect('KEYWORD', 'into');
+      const intoTok = this.match('NAME');
+      return ast('WifiMapStmt', { op: 'map', target: null, intoName: intoTok ? intoTok.value : 'devices' });
+    }
+    if (opTok && opTok.type === 'KEYWORD' && opTok.value === 'locate') {
+      this.advance(); // consume 'locate'
+      const targetTok = this.match('LITERAL');
+      this.expect('KEYWORD', 'into');
+      const intoTok = this.match('NAME');
+      return ast('WifiMapStmt', { op: 'locate', target: targetTok ? targetTok.value : null, intoName: intoTok ? intoTok.value : 'position' });
+    }
+    this.advance();
+    return null;
+  }
+
+  /**
+   * lookup phone "555-1234" into contact info
+   * lookup email "user@example.com" into account info
+   */
+  _parseLookupStmt() {
+    this.expect('KEYWORD', 'lookup');
+    const typeTok = this.peek();
+    const lookupType = (typeTok && typeTok.type === 'KEYWORD') ? this.advance().value : 'phone';
+    const targetTok = this.match('LITERAL');
+    this.expect('KEYWORD', 'into');
+    const intoTok = this.match('NAME');
+    return ast('LookupStmt', {
+      lookupType,
+      target: targetTok ? targetTok.value : '',
+      intoName: intoTok ? intoTok.value : 'result',
+    });
+  }
+
+  /**
+   * watch feed at "URL" for 30 seconds into frames
+   * watch cameras near "Washington DC" into live feeds
+   */
+  _parseWatchStmt() {
+    this.expect('KEYWORD', 'watch');
+    const subTypeTok = this.peek();
+    const watchType = (subTypeTok && subTypeTok.type === 'KEYWORD') ? this.advance().value : 'feed';
+
+    if (watchType === 'feed') {
+      this.match('KEYWORD', 'at');
+      const urlTok = this.match('LITERAL');
+      this.match('KEYWORD', 'for');
+      const secTok = this.match('NUMBER');
+      const seconds = secTok ? parseInt(secTok.value, 10) : 30;
+      const nextTok = this.peek();
+      if (nextTok && nextTok.type === 'NAME' && nextTok.value === 'seconds') this.advance();
+      this.expect('KEYWORD', 'into');
+      const intoTok = this.match('NAME');
+      return ast('WatchStmt', { watchType: 'feed', target: urlTok ? urlTok.value : '', seconds, location: null, intoName: intoTok ? intoTok.value : 'frames' });
+    }
+
+    if (watchType === 'cameras') {
+      this.match('KEYWORD', 'near');
+      const locTok = this.match('LITERAL');
+      this.expect('KEYWORD', 'into');
+      const intoTok = this.match('NAME');
+      return ast('WatchStmt', { watchType: 'cameras', target: null, seconds: 0, location: locTok ? locTok.value : '', intoName: intoTok ? intoTok.value : 'live feeds' });
+    }
+
+    return null;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────

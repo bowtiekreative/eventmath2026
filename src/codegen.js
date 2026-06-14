@@ -140,7 +140,8 @@ class EventMathCodeGen {
     this._hasSecurityAsync = this._detectSecurity(ast.statements);
     this._hasSecurityAny   = this._hasSecurityAsync || this._detectSecurityAny(ast.statements);
     this._hasStory         = this._detectStory(ast.statements);
-    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync;
+    this._hasIntelligence  = this._detectIntelligence(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence;
 
     // Emit security runtime require only when needed
     if (this._hasSecurityAny) {
@@ -151,6 +152,11 @@ class EventMathCodeGen {
     if (this._hasStory) {
       this._line(`const __emStory = require('${this._storyRuntimePath}');`);
       this._line(`Object.assign(EM, __emStory);`);
+      this._line('');
+    }
+    // Emit intelligence runtime require only when needed
+    if (this._hasIntelligence) {
+      this._line(`const __emIntel = require('../runtime/eventmath-intelligence-runtime.js');`);
       this._line('');
     }
     if (_needsAsync) {
@@ -436,6 +442,13 @@ class EventMathCodeGen {
         case 'ScopeStmt':
           if (stmt.into) { this._vars.add(stmt.into); this._varDecls.push({ name: this._safeName(stmt.into), value: 'null' }); }
           break;
+        // v2.21 — intelligence layer (all use inline const — do NOT hoist)
+        case 'EmergeStmt':
+        case 'WifiMapStmt':
+        case 'LookupStmt':
+        case 'WatchStmt':
+          // Result variables are declared inline with const inside _genXxxStmt
+          break;
       }
     }
   }
@@ -579,6 +592,11 @@ class EventMathCodeGen {
       case 'NarrativeStmt':     return this._genNarrativeStmt(stmt);
       case 'ScopeStmt':         return this._genScopeStmt(stmt);
       case 'ScenarioStmt':      return this._genScenarioStmt(stmt);
+      // v2.21 — intelligence layer
+      case 'EmergeStmt':        return this._genEmergeStmt(stmt);
+      case 'WifiMapStmt':       return this._genWifiStmt(stmt);
+      case 'LookupStmt':        return this._genLookupStmt(stmt);
+      case 'WatchStmt':         return this._genWatchStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -2050,6 +2068,12 @@ class EventMathCodeGen {
       if (stmt.otherwise && this._detectStory(stmt.otherwise)) return true;
     }
     return false;
+  }
+
+  _detectIntelligence(statements) {
+    const types = new Set(['EmergeStmt', 'WifiMapStmt', 'LookupStmt', 'WatchStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
   }
 
   // ── v2.19 Security Layer ─────────────────────────────────────────────────
@@ -3545,6 +3569,53 @@ class EventMathCodeGen {
     this._line(`// scenario: ${this._escape(stmt.name)} when ${this._escape(stmt.condition)}`);
     for (const s of (stmt.body || [])) this._genStatement(s);
     this._line(`${v} = { name: '${this._escape(stmt.name)}', condition: '${this._escape(stmt.condition)}', probability: '${prob}', _type: 'scenario' };`);
+    this._line('');
+  }
+
+  // ── v2.21 Intelligence Layer ─────────────────────────────────────────────
+
+  _genEmergeStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const storyRef = stmt.story ? this._safeName(stmt.story) : 'null';
+    const profile = JSON.stringify({ subject: stmt.subject, preferences: stmt.preferences, triggers: stmt.triggers, reactions: stmt.reactions });
+    this._line(`// emerge: ${this._escape(stmt.name)}`);
+    this._line(`const ${varName} = await __emIntel.emergeCorrelation(${storyRef}, ${JSON.stringify(stmt.subject)}, ${profile}, ${JSON.stringify(stmt.threshold)});`);
+    this._line('');
+  }
+
+  _genWifiStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    if (stmt.op === 'map') {
+      this._line(`// wifi map network`);
+      this._line(`const ${varName} = await __emIntel.wifiMapNetwork();`);
+    } else {
+      this._line(`// wifi locate ${this._escape(stmt.target || '')}`);
+      this._line(`const ${varName} = await __emIntel.wifiLocate(${JSON.stringify(stmt.target)});`);
+    }
+    this._line('');
+  }
+
+  _genLookupStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    if (stmt.lookupType === 'phone') {
+      this._line(`// lookup phone`);
+      this._line(`const ${varName} = await __emIntel.lookupPhone(${JSON.stringify(stmt.target)});`);
+    } else {
+      this._line(`// lookup email`);
+      this._line(`const ${varName} = await __emIntel.lookupEmail(${JSON.stringify(stmt.target)});`);
+    }
+    this._line('');
+  }
+
+  _genWatchStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    if (stmt.watchType === 'feed') {
+      this._line(`// watch feed`);
+      this._line(`const ${varName} = await __emIntel.watchFeed(${JSON.stringify(stmt.target)}, ${stmt.seconds});`);
+    } else {
+      this._line(`// watch cameras`);
+      this._line(`const ${varName} = await __emIntel.watchCameras(${JSON.stringify(stmt.location)});`);
+    }
     this._line('');
   }
 }
