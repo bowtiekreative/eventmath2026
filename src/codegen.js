@@ -401,24 +401,8 @@ class EventMathCodeGen {
         case 'Overlap':
           for (const track of (stmt.tracks || [])) this._firstPass(track);
           break;
-        case 'ReplaceStmt':
-          if (stmt.into && !this._vars.has(stmt.into)) {
-            this._vars.add(stmt.into);
-            this._varDecls.push({ name: this._safeName(stmt.into), value: 'null' });
-          }
-          break;
-        case 'ZoomOutFrom':
-          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
-            this._vars.add(stmt.intoName);
-            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
-          }
-          break;
-        case 'ZoomExpand':
-          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
-            this._vars.add(stmt.intoName);
-            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
-          }
-          break;
+        // ReplaceStmt, ZoomOutFrom, ZoomExpand declare their result inline with
+        // `const` — do NOT hoist them here (same pattern as ScanStmt/SeekStmt).
       }
     }
   }

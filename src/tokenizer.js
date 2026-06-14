@@ -101,9 +101,15 @@ class EventMathTokenizer {
   }
 
   _stripComment(raw) {
-    // Find '# ' that's preceded by space or at start
+    // Find '#' preceded by space/tab (or at start), but skip quoted sections.
+    let inDouble = false;
+    let inSingle = false;
     for (let i = 0; i < raw.length; i++) {
-      if (raw[i] === '#' && (i === 0 || raw[i - 1] === ' ' || raw[i - 1] === '\t')) {
+      const ch = raw[i];
+      if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+      if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+      if (!inDouble && !inSingle && ch === '#' &&
+          (i === 0 || raw[i - 1] === ' ' || raw[i - 1] === '\t')) {
         return raw.substring(0, i);
       }
     }
@@ -624,6 +630,13 @@ class EventMathTokenizer {
    */
   _tokenizeValue(words, lineNum) {
     if (!words || words.length === 0) return [];
+
+    // If the entire value is a quoted string, return it immediately.
+    // Must check before arithmetic splitting so keywords inside quotes (like
+    // "plus", "is") are not misread as operators.
+    const fullRaw = words.join(' ');
+    if (/^"[^"]*"$/.test(fullRaw)) return [new Token('LITERAL', fullRaw.slice(1, -1), lineNum)];
+    if (/^'[^']*'$/.test(fullRaw)) return [new Token('LITERAL', fullRaw.slice(1, -1), lineNum)];
 
     // Check for string operations first (they don't mix with arithmetic)
     // 'joined with': NAME('left') KEYWORD('joined with') NAME('right')
