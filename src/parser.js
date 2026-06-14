@@ -2011,7 +2011,12 @@ class EventMathParser {
       }
     }
     this.expect('KEYWORD', 'end');
-    return ast('AuthorizeStmt', { name, fields });
+    return ast('AuthorizeStmt', {
+      name,
+      fields,
+      scope:  fields.get('scope')  || null,
+      target: fields.get('target') || null,
+    });
   }
 
   /**
@@ -2059,6 +2064,7 @@ class EventMathParser {
    */
   _parseHardenStmt() {
     this.expect('KEYWORD', 'harden');
+    if (this.isKeyword('from')) this.advance();
     const sources = [];
     let guard = 0;
     while (this.peek() && !this.isKeyword('into') && guard++ < 100) {

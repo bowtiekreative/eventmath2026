@@ -177,6 +177,13 @@ class EventMathFormatter {
       case 'ReplaceStmt':       return this._formatReplaceStmt(stmt);
       case 'ZoomOutFrom':       return this._formatZoomOutFrom(stmt);
       case 'ZoomExpand':        return this._formatZoomExpand(stmt);
+      // v2.19 — security layer
+      case 'AuthorizeStmt':     return this._formatAuthorizeStmt(stmt);
+      case 'ProbeStmt':         return this._formatProbeStmt(stmt);
+      case 'ThreatStmt':        return this._formatThreatStmt(stmt);
+      case 'HardenStmt':        return this._formatHardenStmt(stmt);
+      case 'DiscoverStmt':      return this._formatDiscoverStmt(stmt);
+      case 'InterceptStmt':     return this._formatInterceptStmt(stmt);
     }
   }
 
@@ -1142,6 +1149,54 @@ class EventMathFormatter {
     } else {
       this._line(`log ${stmt.value}`);
     }
+  }
+
+  // ── v2.19 security layer ─────────────────────────────────────────
+
+  _formatAuthorizeStmt(stmt) {
+    const fields = [];
+    if (stmt.scope)  fields.push(`scope is "${stmt.scope}"`);
+    if (stmt.target) fields.push(`target is "${stmt.target}"`);
+    this._line(`authorize ${stmt.name} ${fields.join(' ')} end`);
+  }
+
+  _formatProbeStmt(stmt) {
+    const atTypes = ['ssl', 'headers', 'ports'];
+    const connector = atTypes.includes(stmt.probeType) ? `at "${stmt.target}"` : `"${stmt.target}"`;
+    const range = stmt.probeType === 'ports'
+      ? ` from ${stmt.fromPort} through ${stmt.toPort}` : '';
+    this._line(`probe ${stmt.probeType} ${connector}${range} into ${stmt.intoName}`);
+  }
+
+  _formatThreatStmt(stmt) {
+    this._line(`threat ${stmt.name}`);
+    this.indent++;
+    if (stmt.category) this._line(`category ${stmt.category}`);
+    if (stmt.matter && Object.keys(stmt.matter).length > 0) {
+      this._line('matter');
+      this.indent++;
+      for (const [k, v] of Object.entries(stmt.matter)) {
+        this._line(`${k} is ${v}`);
+      }
+      this.indent--;
+      this._line('end');
+    }
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatHardenStmt(stmt) {
+    const sources = (stmt.sources || []).join(' and ');
+    this._line(`harden from ${sources} into ${stmt.intoName}`);
+  }
+
+  _formatDiscoverStmt(stmt) {
+    this._line(`discover hosts on "${stmt.target}" into ${stmt.intoName}`);
+  }
+
+  _formatInterceptStmt(stmt) {
+    const filter = stmt.filter ? ` matching "${stmt.filter}"` : '';
+    this._line(`intercept traffic on "${stmt.interface}"${filter} for ${stmt.seconds} seconds into ${stmt.intoName}`);
   }
 }
 

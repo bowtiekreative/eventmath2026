@@ -279,7 +279,7 @@ class EventMathTokenizer {
     if (lead === 'replace')    return this._tokenizeReplaceStmt(words, lineNum);
     // v2.19 — security layer
     if (lead === 'probe')      return this._tokenizeProbeStmt(words, lineNum);
-    if (lead === 'authorize')  return this._keywordName('authorize', words.slice(1), lineNum);
+    if (lead === 'authorize')  return this._tokenizeAuthorizeStmt(words, lineNum);
     if (lead === 'threat')     return this._keywordName('threat', words.slice(1), lineNum);
     if (lead === 'harden')     return this._tokenizeHardenStmt(words, lineNum);
     if (lead === 'discover')   return this._tokenizeDiscoverStmt(words, lineNum);
@@ -2800,6 +2800,43 @@ class EventMathTokenizer {
   }
 
   /**
+   * authorize NAME [key is "value" ...] [end]
+   * Handles both single-line and multi-line (block opener) forms.
+   * Single-line: authorize audit scope is "web" target is "1.2.3.4" end
+   * Multi-line:  authorize audit\n  scope is "web"\n  target is "1.2.3.4"\nend
+   */
+  _tokenizeAuthorizeStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'authorize', lineNum)];
+    if (words.length < 2) return tokens;
+    // Name is the first word after 'authorize'
+    tokens.push(new Token('NAME', words[1], lineNum));
+    // Parse remaining words as field key-value pairs
+    let i = 2;
+    while (i < words.length) {
+      const w = words[i];
+      if (w === 'end') {
+        tokens.push(new Token('KEYWORD', 'end', lineNum));
+        i++;
+      } else if (w === 'is' || w === 'by' || w === 'at') {
+        tokens.push(new Token('KEYWORD', w, lineNum));
+        i++;
+      } else if (w.startsWith('"')) {
+        let str = w;
+        while (!str.endsWith('"') && i + 1 < words.length) {
+          i++;
+          str += ' ' + words[i];
+        }
+        tokens.push(new Token('LITERAL', str.slice(1, -1), lineNum));
+        i++;
+      } else {
+        tokens.push(new Token('NAME', w, lineNum));
+        i++;
+      }
+    }
+    return tokens;
+  }
+
+  /**
    * harden from X and Y and Z into RESULT
    */
   _tokenizeHardenStmt(words, lineNum) {
@@ -2810,10 +2847,12 @@ class EventMathTokenizer {
     }
     const intoName = words.slice(intoIdx + 1).join(' ');
     const sourcePart = words.slice(fromIdx + 1, intoIdx);
-    // Split by 'and'
     const sources = sourcePart.join(' ').split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
 
-    const tokens = [new Token('KEYWORD', 'harden', lineNum)];
+    const tokens = [
+      new Token('KEYWORD', 'harden', lineNum),
+      new Token('KEYWORD', 'from',   lineNum),
+    ];
     for (let i = 0; i < sources.length; i++) {
       tokens.push(new Token('NAME', sources[i], lineNum));
       if (i < sources.length - 1) tokens.push(new Token('KEYWORD', 'and', lineNum));

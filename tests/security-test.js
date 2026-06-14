@@ -226,9 +226,9 @@ console.log('\n─ Probe statement — ports with range ─');
 
 test('tokenizer: probe ports at "192.168.1.1" from 1 through 1024 into open ports → NUMBER:1 and NUMBER:1024', () => {
   const tokens = tokenize('probe ports at "192.168.1.1" from 1 through 1024 into open ports');
-  const one = tokens.find(t => t.type === 'NUMBER' && t.value === 1);
+  const one = tokens.find(t => t.type === 'NUMBER' && Number(t.value) === 1);
   assert(one, 'Expected NUMBER:1 token');
-  const tentwentyfour = tokens.find(t => t.type === 'NUMBER' && t.value === 1024);
+  const tentwentyfour = tokens.find(t => t.type === 'NUMBER' && Number(t.value) === 1024);
   assert(tentwentyfour, 'Expected NUMBER:1024 token');
 });
 
@@ -326,7 +326,7 @@ test('tokenizer: intercept → KEYWORD:on and LITERAL:eth0', () => {
 
 test('tokenizer: intercept → NUMBER:10 and KEYWORD:into and NAME:packets', () => {
   const tokens = tokenize('intercept traffic on "eth0" for 10 seconds into packets');
-  const numTok = tokens.find(t => t.type === 'NUMBER' && t.value === 10);
+  const numTok = tokens.find(t => t.type === 'NUMBER' && Number(t.value) === 10);
   assert(numTok, 'Expected NUMBER:10 token');
   const intoTok = tokens.find(t => t.type === 'KEYWORD' && t.value === 'into');
   assert(intoTok, 'Expected KEYWORD:into token');
