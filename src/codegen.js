@@ -146,7 +146,11 @@ class EventMathCodeGen {
     this._hasMessaging     = this._detectMessaging(ast.statements);
     this._hasCommerce      = this._detectCommerce(ast.statements);
     this._hasMedia         = this._detectMedia(ast.statements);
-    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia;
+    this._hasIncentive     = this._detectIncentive(ast.statements);
+    this._hasCredibility   = this._detectCredibility(ast.statements);
+    this._hasWatchdog      = this._detectWatchdog(ast.statements);
+    this._hasDefense       = this._detectDefense(ast.statements);
+    const _needsAsync = this._hasOverlap || this._hasAsk || this._hasSecurityAsync || this._hasIntelligence || this._hasAgent || this._hasOS || this._hasMessaging || this._hasCommerce || this._hasMedia || this._hasDefense;
 
     // Emit security runtime require only when needed
     if (this._hasSecurityAny) {
@@ -182,6 +186,22 @@ class EventMathCodeGen {
     }
     if (this._hasMedia) {
       this._line(`const __emMedia = require('../runtime/eventmath-media-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasIncentive) {
+      this._line(`const __emIncentive = require('../runtime/eventmath-incentive-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasCredibility) {
+      this._line(`const __emCredibility = require('../runtime/eventmath-credibility-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasWatchdog) {
+      this._line(`const __emWatchdog = require('../runtime/eventmath-watchdog-runtime.js');`);
+      this._line('');
+    }
+    if (this._hasDefense) {
+      this._line(`const __emDefense = require('../runtime/eventmath-defense-runtime.js');`);
       this._line('');
     }
     if (_needsAsync) {
@@ -494,6 +514,58 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        // v2.23 — organizational intelligence
+        case 'RoleStmt':
+          if (stmt.name && !this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
+          }
+          break;
+        case 'HierarchyStmt':
+          if (stmt.name && !this._vars.has(stmt.name)) {
+            this._vars.add(stmt.name);
+            this._varDecls.push({ name: this._safeName(stmt.name), value: 'null' });
+          }
+          break;
+        case 'IncentiveStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'AlignStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'CredibilityStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        // v2.24 — defense layer
+        case 'WatchdogStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'SweepStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'QuarantineStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'InoculateStmt':
+          break;
       }
     }
   }
@@ -653,6 +725,17 @@ class EventMathCodeGen {
       case 'RefundStmt':     return this._genRefundStmt(stmt);
       case 'SyncStmt':       return this._genSyncStmt(stmt);
       case 'MediaStmt':      return this._genMediaStmt(stmt);
+      // v2.23 — organizational intelligence
+      case 'RoleStmt':       return this._genRoleStmt(stmt);
+      case 'HierarchyStmt':  return this._genHierarchyStmt(stmt);
+      case 'IncentiveStmt':  return this._genIncentiveStmt(stmt);
+      case 'AlignStmt':      return this._genAlignStmt(stmt);
+      case 'CredibilityStmt': return this._genCredibilityStmt(stmt);
+      // v2.24 — defense layer
+      case 'WatchdogStmt':   return this._genWatchdogStmt(stmt);
+      case 'SweepStmt':      return this._genSweepStmt(stmt);
+      case 'QuarantineStmt': return this._genQuarantineStmt(stmt);
+      case 'InoculateStmt':  return this._genInoculateStmt(stmt);
       case 'NewStmt':           return this._genNewStmt(stmt);
       case 'AwaitStmt':         return this._genAwaitStmt(stmt);
       case 'SlotStmt':          return this._genSlotStmt(stmt);
@@ -3826,6 +3909,128 @@ class EventMathCodeGen {
     } else if (stmt.action === 'previous') {
       this._line(`await __emMedia.previousTrack();`);
     }
+    this._line('');
+  }
+
+  // ── v2.23/v2.24 detect functions ─────────────────────────────────────────
+
+  _detectIncentive(statements) {
+    const types = new Set(['RoleStmt', 'HierarchyStmt', 'IncentiveStmt', 'AlignStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectCredibility(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'CredibilityStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectWatchdog(statements) {
+    const walk = stmts => stmts && stmts.some(s => s && (s.type === 'WatchdogStmt' || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  _detectDefense(statements) {
+    const types = new Set(['SweepStmt', 'QuarantineStmt', 'InoculateStmt']);
+    const walk = stmts => stmts && stmts.some(s => s && (types.has(s.type) || walk(s.body || s.statements)));
+    return walk(statements);
+  }
+
+  // ── v2.23 organizational intelligence codegen ─────────────────────────────
+
+  _genRoleStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const fieldsJson = JSON.stringify(stmt.fields || {});
+    this._line(`// role: ${this._escape(stmt.name)}`);
+    this._line(`${varName} = __emIncentive.defineRole(${JSON.stringify(stmt.name)}, ${fieldsJson});`);
+    this._line('');
+  }
+
+  _genHierarchyStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    const rolesJson = JSON.stringify(stmt.roleNames || []);
+    const registryParts = (stmt.roleNames || []).map(rn => {
+      const rv = this._safeName(rn);
+      return `${JSON.stringify(rn)}: typeof ${rv} !== 'undefined' ? ${rv} : null`;
+    }).join(', ');
+    this._line(`// hierarchy: ${this._escape(stmt.name)}`);
+    this._line(`${varName} = __emIncentive.buildHierarchy(${JSON.stringify(stmt.name)}, ${rolesJson}, { ${registryParts} });`);
+    this._line('');
+  }
+
+  _genIncentiveStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const hierarchy = stmt.hierarchyName ? this._safeName(stmt.hierarchyName) : 'null';
+    this._line(`// incentive map: ${this._escape(stmt.role1 || '')} and ${this._escape(stmt.role2 || '')}`);
+    this._line(`${varName} = __emIncentive.mapIncentives(${JSON.stringify(stmt.role1 || '')}, ${JSON.stringify(stmt.role2 || '')}, ${hierarchy});`);
+    this._line('');
+  }
+
+  _genAlignStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const hierarchy = stmt.hierarchyName ? this._safeName(stmt.hierarchyName) : 'null';
+    const rolesJson = JSON.stringify(stmt.roleNames || []);
+    const topicJson = JSON.stringify(stmt.topic || null);
+    this._line(`// align: ${(stmt.roleNames || []).map(r => this._escape(r)).join(', ')}`);
+    this._line(`${varName} = __emIncentive.alignRoles(${rolesJson}, ${hierarchy}, ${topicJson});`);
+    this._line('');
+  }
+
+  _genCredibilityStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const subjectRef = this._safeName(stmt.subject);
+    const baselineArg = stmt.baseline ? this._safeName(stmt.baseline) : 'null';
+    this._line(`// credibility: ${this._escape(stmt.subject || '')}`);
+    this._line(`${varName} = __emCredibility.analyzeCredibility(typeof ${subjectRef} !== 'undefined' ? String(${subjectRef}) : ${JSON.stringify(stmt.subject || '')}, ${baselineArg});`);
+    this._line('');
+  }
+
+  // ── v2.24 defense layer codegen ───────────────────────────────────────────
+
+  _genWatchdogStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const target = JSON.stringify(stmt.target || '');
+    const intervalVal = stmt.intervalVal || 1;
+    const intervalUnit = stmt.intervalUnit || 'minute';
+    const intervalMs = intervalUnit === 'second' ? intervalVal * 1000 : intervalVal * 60000;
+    this._line(`// watchdog: ${this._escape(stmt.target || '')} every ${intervalVal} ${intervalUnit}(s)`);
+    this._line(`${varName} = __emWatchdog.watchProcess(${target}, ${intervalMs}, function(event) {`);
+    this.indent++;
+    this._line(`console.log('[watchdog]', ${target}, event.status, event.message || '');`);
+    this.indent--;
+    this._line(`});`);
+    this._line('');
+  }
+
+  _genSweepStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const sub = stmt.sub || 'system';
+    this._line(`// sweep: ${sub}${stmt.path ? ' at ' + this._escape(stmt.path) : ''}`);
+    if (sub === 'system') {
+      this._line(`${varName} = await __emDefense.sweepSystem();`);
+    } else if (sub === 'processes') {
+      this._line(`${varName} = await __emDefense.sweepProcesses();`);
+    } else if (sub === 'files') {
+      this._line(`${varName} = await __emDefense.sweepFiles(${JSON.stringify(stmt.path || '/')});`);
+    } else {
+      this._line(`${varName} = await __emDefense.sweepSystem();`);
+    }
+    this._line('');
+  }
+
+  _genQuarantineStmt(stmt) {
+    const varName = this._safeName(stmt.intoName);
+    const sourceRef = stmt.source ? this._safeName(stmt.source) : 'null';
+    this._line(`// quarantine: ${this._escape(stmt.source || '')}`);
+    this._line(`${varName} = await __emDefense.quarantineFile(${sourceRef});`);
+    this._line('');
+  }
+
+  _genInoculateStmt(stmt) {
+    const sourceRef = stmt.source ? this._safeName(stmt.source) : 'null';
+    const pidRef = stmt.pid ? this._safeName(stmt.pid) : 'null';
+    this._line(`// inoculate: ${this._escape(stmt.source || '')}`);
+    this._line(`await __emDefense.inoculateProcess(${pidRef}, ${sourceRef});`);
     this._line('');
   }
 }

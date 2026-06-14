@@ -291,7 +291,9 @@ class EventMathValidator {
       'pipe', 'cast', 'log', 'filter', 'find', 'sort', 'count', 'where',
       'story', 'narrative', 'scope', 'scenario',
       'emerge', 'wifi', 'lookup', 'watch',
-      'agent', 'remember', 'recall', 'alert', 'control', 'send', 'play', 'pause', 'next', 'previous', 'media', 'via', 'computer', 'mute', 'loop']);
+      'agent', 'remember', 'recall', 'alert', 'control', 'send', 'play', 'pause', 'next', 'previous', 'media', 'via', 'computer', 'mute', 'loop',
+      'role', 'hierarchy', 'incentive', 'align', 'credibility',
+      'watchdog', 'sweep', 'quarantine', 'inoculate']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

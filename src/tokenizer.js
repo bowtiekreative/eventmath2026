@@ -80,6 +80,10 @@ const KEYWORDS = new Set([
   'via', 'computer', 'mute', 'unmute',
   'telegram', 'slack', 'webhook', 'email',
   'stripe', 'shopify', 'paypal', 'media',
+  // v2.23 — organizational intelligence
+  'role', 'hierarchy', 'incentive', 'align', 'credibility',
+  // v2.24 — defense layer
+  'watchdog', 'sweep', 'quarantine', 'inoculate',
 ]);
 
 class Token {
@@ -321,6 +325,17 @@ class EventMathTokenizer {
     if (lead === 'pause')    return this._tokenizePauseStmt(words, lineNum);
     if (lead === 'next')     return this._tokenizeNextTrackStmt(words, lineNum);
     if (lead === 'previous') return this._tokenizePreviousTrackStmt(words, lineNum);
+    // v2.23 — organizational intelligence
+    if (lead === 'role')        return this._tokenizeRoleStmt(words, lineNum);
+    if (lead === 'hierarchy')   return this._tokenizeHierarchyStmt(words, lineNum);
+    if (lead === 'incentive')   return this._tokenizeIncentiveStmt(words, lineNum);
+    if (lead === 'align')       return this._tokenizeAlignStmt(words, lineNum);
+    if (lead === 'credibility') return this._tokenizeCredibilityStmt(words, lineNum);
+    // v2.24 — defense layer
+    if (lead === 'watchdog')    return this._tokenizeWatchdogStmt(words, lineNum);
+    if (lead === 'sweep')       return this._tokenizeSweepStmt(words, lineNum);
+    if (lead === 'quarantine')  return this._tokenizeQuarantineStmt(words, lineNum);
+    if (lead === 'inoculate')   return this._tokenizeInoculateStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -3475,6 +3490,104 @@ class EventMathTokenizer {
     const tokens = [new Token('KEYWORD', 'previous', lineNum)];
     if (words[1]) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
     return tokens;
+  }
+
+  // ── v2.23 Organizational Intelligence tokenizers ─────────────────────────
+
+  _tokenizeRoleStmt(words, lineNum) {
+    // role NAME → opens block
+    return this._keywordName('role', words.slice(1), lineNum);
+  }
+
+  _tokenizeHierarchyStmt(words, lineNum) {
+    // hierarchy NAME → opens block listing role names
+    return this._keywordName('hierarchy', words.slice(1), lineNum);
+  }
+
+  _tokenizeIncentiveStmt(words, lineNum) {
+    // incentive ROLE1 and ROLE2 in HIERARCHY into RESULT
+    const line = words.join(' ');
+    return [new Token('INCENTIVE_STMT', { raw: line }, lineNum)];
+  }
+
+  _tokenizeAlignStmt(words, lineNum) {
+    // align ROLE1 and ROLE2 [for TOPIC] [in HIERARCHY] into RESULT
+    const line = words.join(' ');
+    return [new Token('ALIGN_STMT', { raw: line }, lineNum)];
+  }
+
+  _tokenizeCredibilityStmt(words, lineNum) {
+    // credibility MARKNAME [against BASELINE] into RESULT
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const againstIdx = this._indexOf(words, 'against');
+    const subjectEnd = againstIdx > 0 ? againstIdx : (intoIdx > 0 ? intoIdx : words.length);
+    const subject = words.slice(1, subjectEnd).join(' ');
+    const baseline = againstIdx > 0 ? words.slice(againstIdx + 1, intoIdx > 0 ? intoIdx : words.length).join(' ') : null;
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'signals';
+    return [new Token('CREDIBILITY_STMT', { subject, baseline, intoName }, lineNum)];
+  }
+
+  // ── v2.24 Defense Layer tokenizers ───────────────────────────────────────
+
+  _tokenizeWatchdogStmt(words, lineNum) {
+    // watchdog "process-or-url" every N minutes|seconds into RESULT
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const everyIdx = this._indexOf(words, 'every');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'guard';
+    let intervalVal = 1, intervalUnit = 'minutes', target = '';
+    // Extract quoted target
+    const mQuote = line.match(/^watchdog\s+"([^"]*)"/i);
+    if (mQuote) target = mQuote[1];
+    else if (words[1]) target = words[1];
+    if (everyIdx > 0) {
+      intervalVal = parseInt(words[everyIdx + 1], 10) || 1;
+      const unitWord = words[everyIdx + 2] || 'minutes';
+      intervalUnit = unitWord.replace(/s$/, '').toLowerCase(); // normalize: minutes→minute
+    }
+    return [new Token('WATCHDOG_STMT', { target, intervalVal, intervalUnit, intoName }, lineNum)];
+  }
+
+  _tokenizeSweepStmt(words, lineNum) {
+    // sweep system into RESULT
+    // sweep files at PATH into RESULT
+    // sweep processes into RESULT
+    const line = words.join(' ');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'threats';
+    const sub = words[1] ? words[1].toLowerCase() : 'system';
+    let path = null;
+    if (sub === 'files') {
+      const atIdx = this._indexOf(words, 'at');
+      if (atIdx > 0) {
+        const pathEnd = intoIdx > 0 ? intoIdx : words.length;
+        const rawPath = words.slice(atIdx + 1, pathEnd).join(' ').replace(/^["']|["']$/g, '');
+        path = rawPath;
+      }
+    }
+    return [new Token('SWEEP_STMT', { sub, path, intoName }, lineNum)];
+  }
+
+  _tokenizeQuarantineStmt(words, lineNum) {
+    // quarantine from RESULT into LOG
+    // quarantine FILE into LOG
+    const intoIdx = this._lastIndexOf(words, 'into');
+    const fromIdx = this._indexOf(words, 'from');
+    const intoName = intoIdx > 0 ? words.slice(intoIdx + 1).join(' ') : 'quarantine log';
+    let source = null;
+    if (fromIdx > 0) source = words.slice(fromIdx + 1, intoIdx > 0 ? intoIdx : words.length).join(' ');
+    else source = words.slice(1, intoIdx > 0 ? intoIdx : words.length).join(' ');
+    return [new Token('QUARANTINE_STMT', { source, intoName }, lineNum)];
+  }
+
+  _tokenizeInoculateStmt(words, lineNum) {
+    // inoculate PID from THREATS
+    // inoculate from THREATS
+    const fromIdx = this._indexOf(words, 'from');
+    const source = fromIdx > 0 ? words.slice(fromIdx + 1).join(' ') : words.slice(1).join(' ');
+    const pid = fromIdx > 1 ? words.slice(1, fromIdx).join(' ') : null;
+    return [new Token('INOCULATE_STMT', { source, pid }, lineNum)];
   }
 }
 

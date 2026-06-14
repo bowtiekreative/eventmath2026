@@ -202,6 +202,17 @@ class EventMathParser {
     if (t.type === 'KEYWORD' && t.value === 'pause')    return this._parsePauseStmt();
     if (t.type === 'KEYWORD' && t.value === 'next')     return this._parseNextTrackStmt();
     if (t.type === 'KEYWORD' && t.value === 'previous') return this._parsePreviousTrackStmt();
+    // v2.23 — organizational intelligence
+    if (t.type === 'KEYWORD' && t.value === 'role')        return this._parseRoleStmt();
+    if (t.type === 'KEYWORD' && t.value === 'hierarchy')   return this._parseHierarchyStmt();
+    if (t.type === 'INCENTIVE_STMT')   return this._parseIncentiveStmt();
+    if (t.type === 'ALIGN_STMT')       return this._parseAlignStmt();
+    if (t.type === 'CREDIBILITY_STMT') return this._parseCredibilityStmt();
+    // v2.24 — defense layer
+    if (t.type === 'WATCHDOG_STMT')    return this._parseWatchdogStmt();
+    if (t.type === 'SWEEP_STMT')       return this._parseSweepStmt();
+    if (t.type === 'QUARANTINE_STMT')  return this._parseQuarantineStmt();
+    if (t.type === 'INOCULATE_STMT')   return this._parseInoculateStmt();
     if (t.type === 'NEW_STMT')           return this._parseNewStmt();
     if (t.type === 'AWAIT_STMT')         return this._parseAwaitStmt();
     if (t.type === 'SLOT_STMT')          return this._parseSlotStmt();
@@ -2614,6 +2625,109 @@ class EventMathParser {
     this.expect('KEYWORD', 'previous');
     this.match('NAME');
     return ast('MediaStmt', { action: 'previous', target: null, value: null });
+  }
+
+  // ── v2.23 organizational intelligence ────────────────────────────────────
+
+  _parseRoleStmt() {
+    this.expect('KEYWORD', 'role');
+    const nameTok = this.match('NAME');
+    const name = nameTok ? nameTok.value : 'unnamed';
+    const fields = {};
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const t = this.peek();
+      if (t && t.type === 'NAME') {
+        const raw = this.advance().value;
+        const parts = raw.split(/\s+/);
+        if (parts.length > 1) {
+          const key = parts[0];
+          const val = parts.slice(1).join(' ');
+          fields[key] = val;
+        } else {
+          if (!fields.keywords) fields.keywords = raw;
+          else fields.keywords += ' ' + raw;
+        }
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('RoleStmt', { name, fields });
+  }
+
+  _parseHierarchyStmt() {
+    this.expect('KEYWORD', 'hierarchy');
+    const nameTok = this.match('NAME');
+    const name = nameTok ? nameTok.value : 'unnamed';
+    const roleNames = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 1000) {
+      const t = this.peek();
+      if (t && t.type === 'NAME') {
+        roleNames.push(...this.advance().value.split(/\s+/));
+      } else {
+        this.advance();
+      }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('HierarchyStmt', { name, roleNames });
+  }
+
+  _parseIncentiveStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    const raw = t.value.raw || '';
+    const m = raw.match(/^incentive\s+(.+?)\s+and\s+(.+?)\s+in\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (m) return ast('IncentiveStmt', { role1: m[1].trim(), role2: m[2].trim(), hierarchyName: m[3].trim(), intoName: m[4].trim() });
+    const m2 = raw.match(/^incentive\s+(.+?)\s+and\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (m2) return ast('IncentiveStmt', { role1: m2[1].trim(), role2: m2[2].trim(), hierarchyName: null, intoName: m2[3].trim() });
+    return ast('IncentiveStmt', { role1: '', role2: '', hierarchyName: null, intoName: 'incentive map' });
+  }
+
+  _parseAlignStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    const raw = t.value.raw || '';
+    const m = raw.match(/^align\s+(.+?)\s+for\s+(.+?)\s+in\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (m) return ast('AlignStmt', { roleNames: m[1].split(/\s+and\s+/i).map(r => r.trim()), topic: m[2].trim(), hierarchyName: m[3].trim(), intoName: m[4].trim() });
+    const m2 = raw.match(/^align\s+(.+?)\s+in\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (m2) return ast('AlignStmt', { roleNames: m2[1].split(/\s+and\s+/i).map(r => r.trim()), topic: null, hierarchyName: m2[2].trim(), intoName: m2[3].trim() });
+    const m3 = raw.match(/^align\s+(.+?)\s+into\s+(.+?)\s*$/i);
+    if (m3) return ast('AlignStmt', { roleNames: m3[1].split(/\s+and\s+/i).map(r => r.trim()), topic: null, hierarchyName: null, intoName: m3[2].trim() });
+    return ast('AlignStmt', { roleNames: [], topic: null, hierarchyName: null, intoName: 'alignment' });
+  }
+
+  _parseCredibilityStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('CredibilityStmt', { subject: t.value.subject, baseline: t.value.baseline, intoName: t.value.intoName });
+  }
+
+  // ── v2.24 defense layer ───────────────────────────────────────────────────
+
+  _parseWatchdogStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('WatchdogStmt', { target: t.value.target, intervalVal: t.value.intervalVal, intervalUnit: t.value.intervalUnit, intoName: t.value.intoName });
+  }
+
+  _parseSweepStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SweepStmt', { sub: t.value.sub, path: t.value.path, intoName: t.value.intoName });
+  }
+
+  _parseQuarantineStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('QuarantineStmt', { source: t.value.source, intoName: t.value.intoName });
+  }
+
+  _parseInoculateStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('InoculateStmt', { source: t.value.source, pid: t.value.pid });
   }
 }
 
