@@ -67,6 +67,8 @@ const KEYWORDS = new Set([
   'pattern', 'scan', 'seek',
   // v2.18 — replace, zoom out from, zoom expand
   'replace',
+  // v2.19 — security layer
+  'probe', 'authorize', 'threat', 'harden', 'discover', 'intercept',
 ]);
 
 class Token {
@@ -275,6 +277,13 @@ class EventMathTokenizer {
     if (lead === 'scan')       return this._tokenizeScanStmt(words, lineNum);
     if (lead === 'seek')       return this._tokenizeSeekStmt(words, lineNum);
     if (lead === 'replace')    return this._tokenizeReplaceStmt(words, lineNum);
+    // v2.19 — security layer
+    if (lead === 'probe')      return this._tokenizeProbeStmt(words, lineNum);
+    if (lead === 'authorize')  return this._keywordName('authorize', words.slice(1), lineNum);
+    if (lead === 'threat')     return this._keywordName('threat', words.slice(1), lineNum);
+    if (lead === 'harden')     return this._tokenizeHardenStmt(words, lineNum);
+    if (lead === 'discover')   return this._tokenizeDiscoverStmt(words, lineNum);
+    if (lead === 'intercept')  return this._tokenizeInterceptStmt(words, lineNum);
     if (lead === 'store')      return this._tokenizeManifestStore(words, lineNum);
     if (lead === 'summarize')  return this._tokenizeManifestSummarize(words, lineNum);
     if (lead === 'accept')     return this._tokenizeManifestAccept(words, lineNum);
@@ -2709,6 +2718,167 @@ class EventMathTokenizer {
     }
     // Unsupported live sub-statement — treat as no-op comment token
     return [new Token('KEYWORD', 'live', lineNum)];
+  }
+
+  // ── v2.19 security layer tokenizers ─────────────────────────────────────────
+
+  /**
+   * probe dns|mx|whois "HOST" into RESULT
+   * probe headers|ssl at "URL" into RESULT
+   * probe ports at "HOST" [from N through M] into RESULT
+   */
+  _tokenizeProbeStmt(words, lineNum) {
+    if (words.length < 2) {
+      return [new Token('ERROR', { message: 'probe needs a subcommand: dns, mx, whois, headers, ssl, or ports' }, lineNum)];
+    }
+
+    const subCmd  = words[1].toLowerCase();
+    const intoIdx = this._lastIndexOf(words, 'into');
+    if (intoIdx < 0) {
+      return [new Token('ERROR', { message: 'probe needs: ... into <result>' }, lineNum)];
+    }
+    const intoName = words.slice(intoIdx + 1).join(' ');
+
+    // probe dns|mx|whois "HOST" into RESULT
+    if (['dns', 'mx', 'whois'].includes(subCmd)) {
+      // words: probe dns "host" into result
+      // Find the quoted host — should be words[2]
+      const hostRaw = words[2] ? words[2].replace(/^["']|["']$/g, '') : '';
+      return [
+        new Token('KEYWORD', 'probe', lineNum),
+        new Token('NAME',    subCmd, lineNum),
+        new Token('LITERAL', hostRaw, lineNum),
+        new Token('KEYWORD', 'into', lineNum),
+        new Token('NAME',    intoName, lineNum),
+      ];
+    }
+
+    // probe headers|ssl|ports at "HOST/URL" [...] into RESULT
+    if (['headers', 'ssl', 'ports'].includes(subCmd)) {
+      const atIdx = this._indexOf(words, 'at');
+      if (atIdx < 0) {
+        return [new Token('ERROR', { message: `probe ${subCmd} needs: probe ${subCmd} at "<host>" into <result>` }, lineNum)];
+      }
+      // Find the quoted value immediately after "at"
+      const hostRaw = words[atIdx + 1] ? words[atIdx + 1].replace(/^["']|["']$/g, '') : '';
+
+      if (subCmd === 'ports') {
+        // probe ports at "HOST" [from N through M] into RESULT
+        const fromIdx    = this._indexOfFrom(words, 'from', atIdx + 2);
+        const throughIdx = fromIdx >= 0 ? this._indexOfFrom(words, 'through', fromIdx) : -1;
+        const tokens = [
+          new Token('KEYWORD', 'probe',   lineNum),
+          new Token('NAME',    'ports',   lineNum),
+          new Token('KEYWORD', 'at',      lineNum),
+          new Token('LITERAL', hostRaw,   lineNum),
+        ];
+        if (fromIdx >= 0 && throughIdx > fromIdx) {
+          const startPort = parseInt(words[fromIdx + 1], 10) || 1;
+          const endPort   = parseInt(words[throughIdx + 1], 10) || 1024;
+          tokens.push(new Token('KEYWORD', 'from',    lineNum));
+          tokens.push(new Token('NUMBER',  String(startPort), lineNum));
+          tokens.push(new Token('KEYWORD', 'through', lineNum));
+          tokens.push(new Token('NUMBER',  String(endPort),   lineNum));
+        }
+        tokens.push(new Token('KEYWORD', 'into',   lineNum));
+        tokens.push(new Token('NAME',    intoName, lineNum));
+        return tokens;
+      }
+
+      // headers or ssl
+      return [
+        new Token('KEYWORD', 'probe',   lineNum),
+        new Token('NAME',    subCmd,    lineNum),
+        new Token('KEYWORD', 'at',      lineNum),
+        new Token('LITERAL', hostRaw,   lineNum),
+        new Token('KEYWORD', 'into',    lineNum),
+        new Token('NAME',    intoName,  lineNum),
+      ];
+    }
+
+    return [new Token('ERROR', { message: `Unknown probe subcommand: ${subCmd}` }, lineNum)];
+  }
+
+  /**
+   * harden from X and Y and Z into RESULT
+   */
+  _tokenizeHardenStmt(words, lineNum) {
+    const fromIdx = this._indexOf(words, 'from');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    if (fromIdx < 0 || intoIdx < 0) {
+      return [new Token('ERROR', { message: 'harden needs: harden from <source> [and <source>...] into <result>' }, lineNum)];
+    }
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    const sourcePart = words.slice(fromIdx + 1, intoIdx);
+    // Split by 'and'
+    const sources = sourcePart.join(' ').split(/\s+and\s+/).map(s => s.trim()).filter(Boolean);
+
+    const tokens = [new Token('KEYWORD', 'harden', lineNum)];
+    for (let i = 0; i < sources.length; i++) {
+      tokens.push(new Token('NAME', sources[i], lineNum));
+      if (i < sources.length - 1) tokens.push(new Token('KEYWORD', 'and', lineNum));
+    }
+    tokens.push(new Token('KEYWORD', 'into',   lineNum));
+    tokens.push(new Token('NAME',    intoName, lineNum));
+    return tokens;
+  }
+
+  /**
+   * discover hosts on "CIDR" into RESULT
+   */
+  _tokenizeDiscoverStmt(words, lineNum) {
+    const onIdx   = this._indexOf(words, 'on');
+    const intoIdx = this._lastIndexOf(words, 'into');
+    if (onIdx < 0 || intoIdx < 0) {
+      return [new Token('ERROR', { message: 'discover needs: discover hosts on "<cidr>" into <result>' }, lineNum)];
+    }
+    const cidrRaw  = words[onIdx + 1] ? words[onIdx + 1].replace(/^["']|["']$/g, '') : '';
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [
+      new Token('KEYWORD', 'discover', lineNum),
+      new Token('NAME',    'hosts',    lineNum),
+      new Token('KEYWORD', 'on',       lineNum),
+      new Token('LITERAL', cidrRaw,    lineNum),
+      new Token('KEYWORD', 'into',     lineNum),
+      new Token('NAME',    intoName,   lineNum),
+    ];
+  }
+
+  /**
+   * intercept traffic on "IFACE" [matching "FILTER"] for N seconds into RESULT
+   */
+  _tokenizeInterceptStmt(words, lineNum) {
+    const onIdx      = this._indexOf(words, 'on');
+    const forIdx     = this._indexOf(words, 'for');
+    const intoIdx    = this._lastIndexOf(words, 'into');
+    const matchIdx   = this._indexOf(words, 'matching');
+
+    if (onIdx < 0 || forIdx < 0 || intoIdx < 0) {
+      return [new Token('ERROR', { message: 'intercept needs: intercept traffic on "<iface>" [matching "<filter>"] for <N> seconds into <result>' }, lineNum)];
+    }
+
+    const ifaceRaw  = words[onIdx + 1] ? words[onIdx + 1].replace(/^["']|["']$/g, '') : '';
+    const seconds   = parseInt(words[forIdx + 1], 10) || 10;
+    const intoName  = words.slice(intoIdx + 1).join(' ');
+
+    const tokens = [
+      new Token('KEYWORD', 'intercept', lineNum),
+      new Token('KEYWORD', 'on',        lineNum),
+      new Token('LITERAL', ifaceRaw,    lineNum),
+    ];
+
+    if (matchIdx >= 0 && matchIdx < forIdx) {
+      // Find the quoted filter string
+      const filterRaw = words[matchIdx + 1] ? words[matchIdx + 1].replace(/^["']|["']$/g, '') : '';
+      tokens.push(new Token('KEYWORD', 'matching',  lineNum));
+      tokens.push(new Token('LITERAL', filterRaw,   lineNum));
+    }
+
+    tokens.push(new Token('KEYWORD', 'for',     lineNum));
+    tokens.push(new Token('NUMBER',  String(seconds), lineNum));
+    tokens.push(new Token('KEYWORD', 'into',    lineNum));
+    tokens.push(new Token('NAME',    intoName,  lineNum));
+    return tokens;
   }
 
   /**
