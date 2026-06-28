@@ -391,11 +391,24 @@ eventmath2026/
 │   ├── v2.5-ndim-predict.em
 │   └── v2.6-diagnosis.em
 │
+├── docs/                       ← layer & audience guides
+│   ├── guide-technical.md      ← formal language reference
+│   └── guide-stigmergy.md      ← the Stigmergy Layer (v2.29–2.32), consolidated
+│
 ├── tools/
 │   └── eventmath-schema-gen.js ← Claude API schema generator
 │
 └── bin/em                      ← CLI entry point
 ```
+
+## Layer guides
+
+Some arcs of the language are documented as standalone guides in `docs/`. If you
+are extending the **Stigmergy Layer** (`world` / `animal` / `trail` / `sense` /
+`fade` / `forage` / `step` / `why … in …` / `colony` / `march`), read
+**[docs/guide-stigmergy.md](docs/guide-stigmergy.md)** first — it consolidates
+v2.29–2.32 (the philosophy, the model, every keyword, the runtime classes, the
+enforced statelessness guarantee, and the design notes for that layer).
 
 ---
 

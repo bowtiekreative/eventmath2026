@@ -161,14 +161,15 @@ runtime/eventmath-runtime.js   <10KB UMD runtime. All EventMath classes. Zero de
 
 ---
 
-## Two layers, one language
+## Layers, one language
 
-EventMath grew in two arcs that share a compiler:
+EventMath grew in arcs that share a compiler:
 
 - **The reasoning layer** (`event`, `layer`, `timeline`, `action`, `door`, `walk`, `predict`, `chain`, `desire`, `satisfy`, `why`, `trace`…) — models data as **events with matter**, organizes them on **timelines**, and reasons about cause, prediction, and satisfaction. This is where "time as a first-class construct" lives.
 - **The web layer** (`rain`, `star`, `lens`, `live rain`, `cloud`, `node`, `ground`, `earth`, `guard`, `match`, `orbit`, `filter`, `find`, `sort`, `pipe`, `cast`…) — reactive state, components, storage, routing, and collection operations, all under the same readable metaphor.
+- **The stigmergy layer** (`world`, `animal`, `trail`, `sense`, `fade`, `forage`, `step`, `colony`, `march`, `why … in …`) — stateless agents whose memory lives in a shared world, not in themselves. The memory never disappears, it relocates; a colony computes a decision no single agent makes. See **[docs/guide-stigmergy.md](docs/guide-stigmergy.md)**.
 
-Both compile through the same pipeline to the same runtime.
+All compile through the same pipeline to the same runtime.
 
 ---
 
