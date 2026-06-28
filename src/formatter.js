@@ -71,6 +71,11 @@ class EventMathFormatter {
       case 'NameRef':      return this._formatNameRef(stmt);
       case 'Overlap':      return this._formatOverlap(stmt);
       case 'Note':         return this._formatNote(stmt);
+      case 'WorldStmt':    return this._formatWorldStmt(stmt);
+      case 'AnimalStmt':   return this._formatAnimalStmt(stmt);
+      case 'TrailStmt':    return this._formatTrailStmt(stmt);
+      case 'SenseStmt':    return this._formatSenseStmt(stmt);
+      case 'FadeStmt':     return this._formatFadeStmt(stmt);
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
       case 'Check':        return this._formatCheck(stmt);
       case 'Use':          return this._formatUse(stmt);
@@ -558,6 +563,28 @@ class EventMathFormatter {
 
   _formatNote(stmt) {
     this._line(`note ${stmt.text}`);
+  }
+
+  // ── v2.29 stigmergy layer ─────────────────────────────────
+
+  _formatWorldStmt(stmt) {
+    this._line(`world ${stmt.name}`);
+  }
+
+  _formatAnimalStmt(stmt) {
+    this._line(`animal ${stmt.name}`);
+  }
+
+  _formatTrailStmt(stmt) {
+    this._line(`trail ${stmt.name} in ${stmt.world} by ${stmt.amount}`);
+  }
+
+  _formatSenseStmt(stmt) {
+    this._line(`sense ${stmt.name} in ${stmt.world} into ${stmt.intoName}`);
+  }
+
+  _formatFadeStmt(stmt) {
+    this._line(`fade ${stmt.world} by ${stmt.amount}`);
   }
 
   // ── Check ─────────────────────────────────────────────────

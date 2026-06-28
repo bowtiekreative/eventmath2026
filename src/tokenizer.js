@@ -92,6 +92,8 @@ const KEYWORDS = new Set([
   'network', 'connect', 'offline',
   // v2.28 — machine layer (fetch replaces http — http conflicts with URLs)
   'fetch', 'socket', 'serial', 'spawn', 'bytes',
+  // v2.29 — stigmergy layer (relocating memory)
+  'world', 'animal', 'trail', 'sense', 'fade',
 ]);
 
 class Token {
@@ -319,6 +321,12 @@ class EventMathTokenizer {
     if (lead === 'wifi')       return this._tokenizeWifiStmt(words, lineNum);
     if (lead === 'lookup')     return this._tokenizeLookupStmt(words, lineNum);
     if (lead === 'watch')      return this._tokenizeWatchStmt(words, lineNum);
+    // v2.29 — stigmergy layer (relocating memory)
+    if (lead === 'world')    return this._tokenizeWorldStmt(words, lineNum);
+    if (lead === 'animal')   return this._tokenizeAnimalStmt(words, lineNum);
+    if (lead === 'trail')    return this._tokenizeTrailStmt(words, lineNum);
+    if (lead === 'sense')    return this._tokenizeSenseStmt(words, lineNum);
+    if (lead === 'fade')     return this._tokenizeFadeStmt(words, lineNum);
     // v2.22 — agent layer, OS control, messaging, commerce, media
     if (lead === 'agent')    return this._tokenizeAgentStmt(words, lineNum);
     if (lead === 'remember') return this._tokenizeRememberStmt(words, lineNum);
@@ -3250,6 +3258,69 @@ class EventMathTokenizer {
 
     return tokens;
   }
+  // ── v2.29 stigmergy layer tokenizers ─────────────────────────────────────
+
+  /**
+   * world NAME — declare a shared analog memory (the physical world)
+   */
+  _tokenizeWorldStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'world', lineNum)];
+    if (words.length > 1) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    return tokens;
+  }
+
+  /**
+   * animal NAME — declare a stateless agent
+   */
+  _tokenizeAnimalStmt(words, lineNum) {
+    const tokens = [new Token('KEYWORD', 'animal', lineNum)];
+    if (words.length > 1) tokens.push(new Token('NAME', words.slice(1).join(' '), lineNum));
+    return tokens;
+  }
+
+  /**
+   * trail NAME in WORLD by N — lay (deposit) onto a trail in the world
+   */
+  _tokenizeTrailStmt(words, lineNum) {
+    const inIdx = this._indexOf(words, 'in');
+    const byIdx = this._indexOf(words, 'by');
+    if (inIdx < 0 || byIdx < 0 || byIdx < inIdx) {
+      return [new Token('KEYWORD', 'trail', lineNum)];
+    }
+    const name   = words.slice(1, inIdx).join(' ');
+    const world  = words.slice(inIdx + 1, byIdx).join(' ');
+    const amount = words.slice(byIdx + 1).join(' ');
+    return [new Token('TRAIL_STMT', { name, world, amount }, lineNum)];
+  }
+
+  /**
+   * sense NAME in WORLD into LOCAL — stateless read of a trail
+   */
+  _tokenizeSenseStmt(words, lineNum) {
+    const inIdx   = this._indexOf(words, 'in');
+    const intoIdx = this._indexOf(words, 'into');
+    if (inIdx < 0 || intoIdx < 0 || intoIdx < inIdx) {
+      return [new Token('KEYWORD', 'sense', lineNum)];
+    }
+    const name     = words.slice(1, inIdx).join(' ');
+    const world    = words.slice(inIdx + 1, intoIdx).join(' ');
+    const intoName = words.slice(intoIdx + 1).join(' ');
+    return [new Token('SENSE_STMT', { name, world, intoName }, lineNum)];
+  }
+
+  /**
+   * fade WORLD by N — analog decay across all trails in the world
+   */
+  _tokenizeFadeStmt(words, lineNum) {
+    const byIdx = this._indexOf(words, 'by');
+    if (byIdx < 0) {
+      return [new Token('FADE_STMT', { world: words.slice(1).join(' '), amount: '1' }, lineNum)];
+    }
+    const world  = words.slice(1, byIdx).join(' ');
+    const amount = words.slice(byIdx + 1).join(' ');
+    return [new Token('FADE_STMT', { world, amount }, lineNum)];
+  }
+
   // ── v2.22 agent layer tokenizers ─────────────────────────────────────────
 
   /**

@@ -188,6 +188,12 @@ class EventMathParser {
     if (t.type === 'KEYWORD' && t.value === 'wifi')    return this._parseWifiStmt();
     if (t.type === 'KEYWORD' && t.value === 'lookup')  return this._parseLookupStmt();
     if (t.type === 'KEYWORD' && t.value === 'watch')   return this._parseWatchStmt();
+    // v2.29 — stigmergy layer (relocating memory)
+    if (t.type === 'KEYWORD' && t.value === 'world')    return this._parseWorldStmt();
+    if (t.type === 'KEYWORD' && t.value === 'animal')   return this._parseAnimalStmt();
+    if (t.type === 'TRAIL_STMT')  return this._parseTrailStmt();
+    if (t.type === 'SENSE_STMT')  return this._parseSenseStmt();
+    if (t.type === 'FADE_STMT')   return this._parseFadeStmt();
     // v2.22 — agent layer, OS control, messaging, commerce, media
     if (t.type === 'KEYWORD' && t.value === 'agent')    return this._parseAgentStmt();
     if (t.type === 'KEYWORD' && t.value === 'remember') return this._parseRememberStmt();
@@ -2430,6 +2436,49 @@ class EventMathParser {
     while (this.peek() && !this.isKeyword('end') && guard++ < 10000) this.advance();
     if (this.isKeyword('end')) this.advance();
     return null;
+  }
+
+  // ── v2.29 stigmergy layer ─────────────────────────────────────────────────
+
+  _parseWorldStmt() {
+    this.expect('KEYWORD', 'world');
+    const nameTok = this.match('NAME');
+    return ast('WorldStmt', { name: nameTok ? nameTok.value : 'world' });
+  }
+
+  _parseAnimalStmt() {
+    this.expect('KEYWORD', 'animal');
+    const nameTok = this.match('NAME');
+    return ast('AnimalStmt', { name: nameTok ? nameTok.value : 'animal' });
+  }
+
+  _parseTrailStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('TrailStmt', {
+      name:   t.value.name,
+      world:  t.value.world,
+      amount: t.value.amount,
+    });
+  }
+
+  _parseSenseStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('SenseStmt', {
+      name:     t.value.name,
+      world:    t.value.world,
+      intoName: t.value.intoName,
+    });
+  }
+
+  _parseFadeStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('FadeStmt', {
+      world:  t.value.world,
+      amount: t.value.amount,
+    });
   }
 
   // ── v2.22 agent layer ─────────────────────────────────────────────────────

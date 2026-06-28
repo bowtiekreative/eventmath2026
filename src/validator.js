@@ -57,6 +57,16 @@ class EventMathValidator {
           // Recurse into action body
           if (stmt.body) this._collectDeclarations(stmt.body);
           break;
+        // v2.29 — stigmergy layer
+        case 'WorldStmt':
+          if (stmt.name) this.marks.set(stmt.name, true);
+          break;
+        case 'AnimalStmt':
+          if (stmt.name) this.marks.set(stmt.name, true);
+          break;
+        case 'SenseStmt':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
         case 'Mark':
           this._registerSymbol('mark', stmt.name, this.marks);
           break;
@@ -295,7 +305,8 @@ class EventMathValidator {
       'role', 'hierarchy', 'incentive', 'align', 'credibility',
       'watchdog', 'sweep', 'quarantine', 'inoculate',
       'instruct', 'fundamental', 'buffett', 'graham', 'network', 'connect', 'offline',
-      'fetch', 'socket', 'serial', 'spawn', 'bytes', 'port', 'baud', 'udp', 'body', 'get', 'post']);
+      'fetch', 'socket', 'serial', 'spawn', 'bytes', 'port', 'baud', 'udp', 'body', 'get', 'post',
+      'world', 'animal', 'trail', 'sense', 'fade']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

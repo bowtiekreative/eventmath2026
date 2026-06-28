@@ -534,6 +534,19 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        // v2.29 — stigmergy layer
+        case 'SenseStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
+        case 'WorldStmt':
+        case 'AnimalStmt':
+        case 'TrailStmt':
+        case 'FadeStmt':
+          // no hoist needed — world/animal emit const at point of creation
+          break;
         // v2.23 — organizational intelligence
         case 'RoleStmt':
           if (stmt.name && !this._vars.has(stmt.name)) {
@@ -772,6 +785,12 @@ class EventMathCodeGen {
       case 'WifiMapStmt':       return this._genWifiStmt(stmt);
       case 'LookupStmt':        return this._genLookupStmt(stmt);
       case 'WatchStmt':         return this._genWatchStmt(stmt);
+      // v2.29 — stigmergy layer
+      case 'WorldStmt':      return this._genWorldStmt(stmt);
+      case 'AnimalStmt':     return this._genAnimalStmt(stmt);
+      case 'TrailStmt':      return this._genTrailStmt(stmt);
+      case 'SenseStmt':      return this._genSenseStmt(stmt);
+      case 'FadeStmt':       return this._genFadeStmt(stmt);
       // v2.22
       case 'AgentStmt':      return this._genAgentStmt(stmt);
       case 'RememberStmt':   return this._genRememberStmt(stmt);
@@ -3856,6 +3875,54 @@ class EventMathCodeGen {
   _detectMedia(statements) {
     const walk = stmts => stmts && stmts.some(s => s && (s.type === 'MediaStmt' || walk(s.body || s.statements)));
     return walk(statements);
+  }
+
+  // ── v2.29 stigmergy layer codegen methods ─────────────────────────────────
+
+  // Resolve a deposit/fade amount: a number literal, a known variable, or text.
+  _genAmount(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (/^-?\d+(\.\d+)?$/.test(s)) return s;
+    if (s && this._vars.has(s)) return this._safeName(s);
+    return this._typedValueFromString(s);
+  }
+
+  _genWorldStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    this._line(`// world: ${this._escape(stmt.name)} — a shared analog memory (the physical world)`);
+    this._line(`const ${varName} = new EM.EventMathWorld('${this._escape(stmt.name)}');`);
+    this._line('');
+  }
+
+  _genAnimalStmt(stmt) {
+    const varName = this._safeName(stmt.name);
+    this._line(`// animal: ${this._escape(stmt.name)} — a stateless agent (holds no memory of its own)`);
+    this._line(`const ${varName} = new EM.EventMathAnimal('${this._escape(stmt.name)}');`);
+    this._line('');
+  }
+
+  _genTrailStmt(stmt) {
+    const worldVar = this._safeName(stmt.world);
+    const amount = this._genAmount(stmt.amount);
+    this._line(`// trail: lay "${this._escape(stmt.name)}" in ${this._escape(stmt.world)} by ${this._escape(String(stmt.amount))}`);
+    this._line(`${worldVar}.lay('${this._escape(stmt.name)}', ${amount});`);
+    this._line('');
+  }
+
+  _genSenseStmt(stmt) {
+    const worldVar = this._safeName(stmt.world);
+    const intoVar = this._safeName(stmt.intoName);
+    this._line(`// sense: "${this._escape(stmt.name)}" in ${this._escape(stmt.world)} into ${this._escape(stmt.intoName)}`);
+    this._line(`${intoVar} = ${worldVar}.sense('${this._escape(stmt.name)}');`);
+    this._line('');
+  }
+
+  _genFadeStmt(stmt) {
+    const worldVar = this._safeName(stmt.world);
+    const amount = this._genAmount(stmt.amount);
+    this._line(`// fade: ${this._escape(stmt.world)} by ${this._escape(String(stmt.amount))} (analog decay — never disappears)`);
+    this._line(`${worldVar}.fade(${amount});`);
+    this._line('');
   }
 
   // ── v2.22 codegen methods ─────────────────────────────────────────────────

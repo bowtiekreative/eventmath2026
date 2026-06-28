@@ -2500,6 +2500,82 @@
     return lines.join('\n');
   };
 
+  // ── v2.29 Stigmergy Layer (relocating memory) ────────────
+  //
+  // The thesis: an animal is a near-stateless agent. It holds no memory of
+  // its own. Its memory lives in a shared analog medium — the physical world —
+  // as trails. When the animal is gone, the trail remains: the memory never
+  // disappears, it relocates. Computation = a stateless rule + a persistent
+  // shared world. That is how a colony "computes" a path no single animal holds.
+  // It is why animals can code: the program is the loop between sense and trail;
+  // the state is the ground beneath them.
+
+  // EventMathWorld — the shared analog memory. Holds trails by name. Persists
+  // independent of any animal. Created by:  world NAME
+  function EventMathWorld(name) {
+    if (!(this instanceof EventMathWorld)) return new EventMathWorld(name);
+    this.name   = name || 'world';
+    this.trails = {}; // trail name -> strength (analog scent)
+  }
+
+  // lay (deposit) onto a trail. Deposits accumulate — re-laying reinforces.
+  // This is memory relocating out of the agent and into the world.
+  EventMathWorld.prototype.lay = function (trail, amount) {
+    var n = (typeof amount === 'number') ? amount : (parseFloat(amount) || 0);
+    this.trails[trail] = (this.trails[trail] || 0) + n;
+    return this.trails[trail];
+  };
+
+  // sense a trail — a stateless read. The animal reconstructs a working value
+  // from the world; it keeps nothing once the step ends.
+  EventMathWorld.prototype.sense = function (trail) {
+    return this.trails[trail] || 0;
+  };
+
+  // fade — analog decay. Every trail weakens, but never disappears: strength
+  // floors at 0 and the trail stays on the world's ledger. What was strong
+  // stays dominant — the memory relocates onto the strongest paths.
+  EventMathWorld.prototype.fade = function (amount) {
+    var n = (typeof amount === 'number') ? amount : (parseFloat(amount) || 0);
+    for (var k in this.trails) {
+      if (this.trails.hasOwnProperty(k)) {
+        this.trails[k] = Math.max(0, this.trails[k] - n);
+      }
+    }
+    return this;
+  };
+
+  EventMathWorld.prototype.render = function () {
+    var lines = ['── world: ' + this.name + ' ──'];
+    var keys = Object.keys(this.trails);
+    if (keys.length === 0) {
+      lines.push('  (no trails — the world holds no memory yet)');
+    } else {
+      for (var i = 0; i < keys.length; i++) {
+        lines.push('  ' + keys[i] + ': ' + this.trails[keys[i]]);
+      }
+    }
+    return lines.join('\n');
+  };
+
+  // EventMathAnimal — a stateless agent. The invariant: it holds no memory of
+  // its own. It only senses the world and lays trails. Created by:  animal NAME
+  function EventMathAnimal(name) {
+    if (!(this instanceof EventMathAnimal)) return new EventMathAnimal(name);
+    this.name  = name || 'animal';
+    this.state = Object.freeze({}); // the invariant — an animal carries nothing
+  }
+
+  EventMathAnimal.prototype.isStateless = function () {
+    return Object.keys(this.state).length === 0;
+  };
+
+  EventMathAnimal.prototype.render = function () {
+    return '── animal: ' + this.name + ' ──\n' +
+      '  holds no memory of its own — it senses the world and lays trails.\n' +
+      '  its memory lives in the world; when it is gone, the trail remains.';
+  };
+
   // ── Default Timeline ─────────────────────────────────────
 
   var defaultTimeline = new EventMathTimeline('default');
@@ -3096,6 +3172,8 @@
     EventMathAsker:         EventMathAsker,
     EventMathRaindrop:      EventMathRaindrop,
     EventMathSignal:        EventMathSignal,
+    EventMathWorld:         EventMathWorld,
+    EventMathAnimal:        EventMathAnimal,
   };
 
 });
