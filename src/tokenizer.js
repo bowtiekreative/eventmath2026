@@ -96,6 +96,8 @@ const KEYWORDS = new Set([
   'world', 'animal', 'trail', 'sense', 'fade',
   // v2.30 — forage block (stateless rule) + step
   'forage', 'step',
+  // v2.32 — colony (population of foragers) + march (rounds with evaporation)
+  'colony', 'march',
 ]);
 
 class Token {
@@ -332,6 +334,9 @@ class EventMathTokenizer {
     // v2.30 — forage block + step
     if (lead === 'forage')   return this._tokenizeForageStmt(words, lineNum);
     if (lead === 'step')     return this._tokenizeStepStmt(words, lineNum);
+    // v2.32 — colony + march
+    if (lead === 'colony')   return this._tokenizeColonyStmt(words, lineNum);
+    if (lead === 'march')    return this._tokenizeMarchStmt(words, lineNum);
     // v2.22 — agent layer, OS control, messaging, commerce, media
     if (lead === 'agent')    return this._tokenizeAgentStmt(words, lineNum);
     if (lead === 'remember') return this._tokenizeRememberStmt(words, lineNum);
@@ -3347,6 +3352,39 @@ class EventMathTokenizer {
     const name  = words.slice(1, onIdx).join(' ');
     const world = words.slice(onIdx + 1).join(' ');
     return [new Token('FORAGE_HEADER', { name, world }, lineNum)];
+  }
+
+  /**
+   * colony NAME of COUNT on WORLD [fade F] — header of a population block
+   */
+  _tokenizeColonyStmt(words, lineNum) {
+    const ofIdx   = this._indexOf(words, 'of');
+    const onIdx   = this._indexOf(words, 'on');
+    const fadeIdx = this._indexOf(words, 'fade');
+    if (ofIdx < 1 || onIdx < ofIdx) {
+      return [new Token('COLONY_HEADER', { name: words.slice(1).join(' '), count: '1', world: '', fade: '0' }, lineNum)];
+    }
+    const name      = words.slice(1, ofIdx).join(' ');
+    const count     = words.slice(ofIdx + 1, onIdx).join(' ');
+    const worldEnd  = (fadeIdx > onIdx) ? fadeIdx : words.length;
+    const world     = words.slice(onIdx + 1, worldEnd).join(' ');
+    const fade      = (fadeIdx > onIdx) ? words.slice(fadeIdx + 1).join(' ') : '0';
+    return [new Token('COLONY_HEADER', { name, count, world, fade }, lineNum)];
+  }
+
+  /**
+   * march NAME              — advance a colony one round
+   * march NAME R rounds     — advance a colony R rounds
+   */
+  _tokenizeMarchStmt(words, lineNum) {
+    let rounds = 1;
+    let nameWords = words.slice(1);
+    const roundsIdx = this._indexOf(words, 'rounds');
+    if (roundsIdx > 1 && /^-?\d+$/.test(words[roundsIdx - 1])) {
+      rounds = parseInt(words[roundsIdx - 1], 10);
+      nameWords = words.slice(1, roundsIdx - 1);
+    }
+    return [new Token('MARCH_STMT', { name: nameWords.join(' '), rounds }, lineNum)];
   }
 
   /**

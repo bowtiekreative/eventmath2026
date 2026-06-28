@@ -36,6 +36,7 @@ class EventMathCodeGen {
     this._inAction = false; // Are we inside an action body?
     this._forageWorld = null; // World of the enclosing forage block (v2.30)
     this._forageName = null;  // Name of the enclosing forager — trail attribution
+    this._colonies = {};      // Colony metadata (v2.32): name -> {world, count, fade}
     this._eventNames = new Set(); // Top-level event declarations
     this._layerNames = new Set();
     this._timelineNames = new Set();
@@ -562,6 +563,13 @@ class EventMathCodeGen {
             this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
           }
           break;
+        // v2.32 — colony: register metadata so march can find it, hoist body
+        case 'ColonyStmt':
+          this._colonies[stmt.name] = { world: stmt.world, count: stmt.count, fade: stmt.fade };
+          this._firstPass(stmt.body || []);
+          break;
+        case 'MarchStmt':
+          break;
         // v2.23 — organizational intelligence
         case 'RoleStmt':
           if (stmt.name && !this._vars.has(stmt.name)) {
@@ -811,6 +819,9 @@ class EventMathCodeGen {
       case 'StepStmt':       return this._genStepStmt(stmt);
       // v2.31 — why over trails
       case 'WhyTrailStmt':   return this._genWhyTrailStmt(stmt);
+      // v2.32 — colony + march
+      case 'ColonyStmt':     return this._genColonyStmt(stmt);
+      case 'MarchStmt':      return this._genMarchStmt(stmt);
       // v2.22
       case 'AgentStmt':      return this._genAgentStmt(stmt);
       case 'RememberStmt':   return this._genRememberStmt(stmt);
@@ -3986,6 +3997,47 @@ class EventMathCodeGen {
       this._line(`// why: "${trailEsc}" in ${this._escape(stmt.world)}`);
       this._line(`console.log(${worldVar}.why('${trailEsc}').render());`);
     }
+    this._line('');
+  }
+
+  _genColonyStmt(stmt) {
+    const fnName = '__forage_' + this._safeName(stmt.name);
+    const count = parseInt(stmt.count, 10) || 1;
+    this._line(`// colony: "${this._escape(stmt.name)}" — ${count} stateless foragers on ${this._escape(stmt.world)}` +
+      (parseFloat(stmt.fade) ? `, evaporation ${this._escape(String(stmt.fade))}/round` : ''));
+    this._line(`// No forager holds the outcome; the colony computes it in the world.`);
+    this._line(`function ${fnName}() {`);
+    this.indent++;
+    const prevWorld = this._forageWorld;
+    const prevName = this._forageName;
+    this._forageWorld = stmt.world;
+    this._forageName = stmt.name;
+    for (const bodyStmt of (stmt.body || [])) {
+      this._genStatement(bodyStmt, true);
+    }
+    this._forageWorld = prevWorld;
+    this._forageName = prevName;
+    this.indent--;
+    this._line(`}`);
+    this._line('');
+  }
+
+  _genMarchStmt(stmt) {
+    const meta = this._colonies[stmt.name] || { world: '', count: '1', fade: '0' };
+    const fnName = '__forage_' + this._safeName(stmt.name);
+    const rounds = parseInt(stmt.rounds, 10) || 1;
+    const count = parseInt(meta.count, 10) || 1;
+    const fade = this._genAmount(meta.fade);
+    const worldVar = this._safeName(meta.world);
+    const hasFade = parseFloat(meta.fade) > 0;
+    this._line(`// march: ${this._escape(stmt.name)} — ${rounds} round(s) of ${count} forager(s)` +
+      (hasFade ? `, then evaporation` : ''));
+    this._line(`for (let __r = 0; __r < ${rounds}; __r++) {`);
+    this.indent++;
+    this._line(`for (let __a = 0; __a < ${count}; __a++) { ${fnName}(); }`);
+    if (hasFade) this._line(`${worldVar}.fade(${fade});`);
+    this.indent--;
+    this._line(`}`);
     this._line('');
   }
 

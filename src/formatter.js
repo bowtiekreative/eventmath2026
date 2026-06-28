@@ -79,6 +79,8 @@ class EventMathFormatter {
       case 'ForageStmt':   return this._formatForageStmt(stmt);
       case 'StepStmt':     return this._formatStepStmt(stmt);
       case 'WhyTrailStmt': return this._formatWhyTrailStmt(stmt);
+      case 'ColonyStmt':   return this._formatColonyStmt(stmt);
+      case 'MarchStmt':    return this._formatMarchStmt(stmt);
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
       case 'Check':        return this._formatCheck(stmt);
       case 'Use':          return this._formatUse(stmt);
@@ -608,6 +610,20 @@ class EventMathFormatter {
   _formatWhyTrailStmt(stmt) {
     const into = (stmt.intoName && stmt.intoName.length) ? ` into ${stmt.intoName}` : '';
     this._line(`why ${stmt.trail} in ${stmt.world}${into}`);
+  }
+
+  _formatColonyStmt(stmt) {
+    const fade = (stmt.fade && parseFloat(stmt.fade)) ? ` fade ${stmt.fade}` : '';
+    this._line(`colony ${stmt.name} of ${stmt.count} on ${stmt.world}${fade}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatMarchStmt(stmt) {
+    if (stmt.rounds && stmt.rounds > 1) this._line(`march ${stmt.name} ${stmt.rounds} rounds`);
+    else this._line(`march ${stmt.name}`);
   }
 
   // ── Check ─────────────────────────────────────────────────

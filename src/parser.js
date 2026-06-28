@@ -198,6 +198,9 @@ class EventMathParser {
     // v2.30 — forage block + step
     if (t.type === 'FORAGE_HEADER') return this._parseForageStmt();
     if (t.type === 'STEP_STMT')     return this._parseStepStmt();
+    // v2.32 — colony + march
+    if (t.type === 'COLONY_HEADER') return this._parseColonyStmt();
+    if (t.type === 'MARCH_STMT')    return this._parseMarchStmt();
     // v2.22 — agent layer, OS control, messaging, commerce, media
     if (t.type === 'KEYWORD' && t.value === 'agent')    return this._parseAgentStmt();
     if (t.type === 'KEYWORD' && t.value === 'remember') return this._parseRememberStmt();
@@ -2514,6 +2517,32 @@ class EventMathParser {
     const t = this.advance();
     if (!t || !t.value) return null;
     return ast('StepStmt', { name: t.value.name, times: t.value.times || 1 });
+  }
+
+  _parseColonyStmt() {
+    const header = this.advance(); // COLONY_HEADER
+    const v = header && header.value ? header.value : {};
+    const body = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 10000) {
+      const stmt = this._parseStatement();
+      if (stmt) body.push(stmt);
+      else { this.advance(); }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ColonyStmt', {
+      name:  v.name || 'colony',
+      count: v.count || '1',
+      world: v.world || '',
+      fade:  v.fade || '0',
+      body,
+    });
+  }
+
+  _parseMarchStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('MarchStmt', { name: t.value.name, rounds: t.value.rounds || 1 });
   }
 
   // ── v2.22 agent layer ─────────────────────────────────────────────────────

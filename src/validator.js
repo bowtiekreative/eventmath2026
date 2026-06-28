@@ -24,6 +24,7 @@ class EventMathValidator {
     this.actions = new Map();
     this.marks = new Map();
     this.foragers = new Map(); // v2.30 — forage block names
+    this.colonies = new Map(); // v2.32 — colony names
 
     if (!ast || !ast.statements) {
       return { errors: this.errors, warnings: this.warnings };
@@ -77,6 +78,10 @@ class EventMathValidator {
           break;
         case 'WhyTrailStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
+        case 'ColonyStmt':
+          if (stmt.name) { this.marks.set(stmt.name, true); this.colonies.set(stmt.name, true); }
+          if (stmt.body) this._collectDeclarations(stmt.body);
           break;
         case 'Mark':
           this._registerSymbol('mark', stmt.name, this.marks);
@@ -321,6 +326,25 @@ class EventMathValidator {
           this._validateStigmergy(stmt.body || [], stmt.world || '');
           continue;
 
+        case 'ColonyStmt':
+          if (!stmt.world) {
+            this.errors.push(
+              `"colony ${stmt.name}" needs a world — write "colony ${stmt.name} of N on WORLD".`
+            );
+          }
+          // A colony is a population of stateless foragers: same guarantee.
+          this._validateStigmergy(stmt.body || [], stmt.world || '');
+          continue;
+
+        case 'MarchStmt':
+          if (stmt.name && !this.colonies.has(stmt.name)) {
+            this.warnings.push(
+              `"march ${stmt.name}" refers to a colony that was not declared. ` +
+              `Declare it first with "colony ${stmt.name} of N on WORLD ... end".`
+            );
+          }
+          break;
+
         case 'RainStmt':
           if (inForage && stmt.live) {
             this.errors.push(
@@ -390,7 +414,7 @@ class EventMathValidator {
       'watchdog', 'sweep', 'quarantine', 'inoculate',
       'instruct', 'fundamental', 'buffett', 'graham', 'network', 'connect', 'offline',
       'fetch', 'socket', 'serial', 'spawn', 'bytes', 'port', 'baud', 'udp', 'body', 'get', 'post',
-      'world', 'animal', 'trail', 'sense', 'fade', 'forage', 'step']);
+      'world', 'animal', 'trail', 'sense', 'fade', 'forage', 'step', 'colony', 'march']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();
