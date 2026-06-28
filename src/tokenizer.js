@@ -2225,22 +2225,28 @@ class EventMathTokenizer {
     const isIdx   = this._indexOf(words, 'is');
     const intoIdx = this._indexOf(words, 'into');
 
-    if (isIdx < 0 || intoIdx < 0) {
-      return [new Token('KEYWORD', 'why', lineNum)];
+    // Existing form: why DESIRE is not satisfied in CHAIN into RESULT
+    if (isIdx >= 0 && intoIdx >= 0 &&
+        words[isIdx + 1] === 'not' &&
+        words[isIdx + 2] === 'satisfied' &&
+        words[isIdx + 3] === 'in') {
+      const desireName = words.slice(1, isIdx).join(' ');
+      const chainName  = words.slice(isIdx + 4, intoIdx).join(' ');
+      const intoName   = words.slice(intoIdx + 1).join(' ');
+      return [new Token('WHY_STMT', { desireName, chainName, intoName }, lineNum)];
     }
 
-    // Verify the fixed sequence: is not satisfied in
-    if (words[isIdx + 1] !== 'not' ||
-        words[isIdx + 2] !== 'satisfied' ||
-        words[isIdx + 3] !== 'in') {
-      return [new Token('KEYWORD', 'why', lineNum)];
+    // v2.31 form: why TRAIL in WORLD [into NAME] — explain a trail's strength
+    const inIdx = this._indexOf(words, 'in');
+    if (inIdx > 0) {
+      const trail    = words.slice(1, inIdx).join(' ');
+      const worldEnd = (intoIdx > inIdx) ? intoIdx : words.length;
+      const world    = words.slice(inIdx + 1, worldEnd).join(' ');
+      const intoName = (intoIdx > inIdx) ? words.slice(intoIdx + 1).join(' ') : '';
+      return [new Token('WHY_TRAIL_STMT', { trail, world, intoName }, lineNum)];
     }
 
-    const desireName = words.slice(1, isIdx).join(' ');
-    const chainName  = words.slice(isIdx + 4, intoIdx).join(' ');
-    const intoName   = words.slice(intoIdx + 1).join(' ');
-
-    return [new Token('WHY_STMT', { desireName, chainName, intoName }, lineNum)];
+    return [new Token('KEYWORD', 'why', lineNum)];
   }
 
   // ── v2.11 web layer tokenizer methods ─────────────────────────────

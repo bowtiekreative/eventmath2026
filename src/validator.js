@@ -75,6 +75,9 @@ class EventMathValidator {
           if (stmt.name) { this.marks.set(stmt.name, true); this.foragers.set(stmt.name, true); }
           if (stmt.body) this._collectDeclarations(stmt.body);
           break;
+        case 'WhyTrailStmt':
+          if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
         case 'Mark':
           this._registerSymbol('mark', stmt.name, this.marks);
           break;

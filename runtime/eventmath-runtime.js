@@ -2516,13 +2516,18 @@
     if (!(this instanceof EventMathWorld)) return new EventMathWorld(name);
     this.name   = name || 'world';
     this.trails = {}; // trail name -> strength (analog scent)
+    this.ledger = {}; // trail name -> [{ by, amount }] — who laid what
+    this.decay  = {}; // trail name -> total strength worn away by fade
   }
 
   // lay (deposit) onto a trail. Deposits accumulate — re-laying reinforces.
-  // This is memory relocating out of the agent and into the world.
-  EventMathWorld.prototype.lay = function (trail, amount) {
+  // This is memory relocating out of the agent and into the world. The third
+  // argument records who laid it, so the world can later explain itself.
+  EventMathWorld.prototype.lay = function (trail, amount, by) {
     var n = (typeof amount === 'number') ? amount : (parseFloat(amount) || 0);
     this.trails[trail] = (this.trails[trail] || 0) + n;
+    if (!this.ledger[trail]) this.ledger[trail] = [];
+    this.ledger[trail].push({ by: by || 'hand', amount: n });
     return this.trails[trail];
   };
 
@@ -2539,10 +2544,21 @@
     var n = (typeof amount === 'number') ? amount : (parseFloat(amount) || 0);
     for (var k in this.trails) {
       if (this.trails.hasOwnProperty(k)) {
-        this.trails[k] = Math.max(0, this.trails[k] - n);
+        var before = this.trails[k];
+        this.trails[k] = Math.max(0, before - n);
+        this.decay[k] = (this.decay[k] || 0) + (before - this.trails[k]);
       }
     }
     return this;
+  };
+
+  // why — trace a trail's strength back to the deposits that built it. The
+  // relocated memory explains itself: who laid what, and what decay wore away.
+  EventMathWorld.prototype.why = function (trail) {
+    return new EventMathTrailTrace(
+      this.name, trail, this.trails[trail] || 0,
+      (this.ledger[trail] || []).slice(), this.decay[trail] || 0
+    );
   };
 
   EventMathWorld.prototype.render = function () {
@@ -2574,6 +2590,61 @@
     return '── animal: ' + this.name + ' ──\n' +
       '  holds no memory of its own — it senses the world and lays trails.\n' +
       '  its memory lives in the world; when it is gone, the trail remains.';
+  };
+
+  // EventMathTrailTrace — the answer to "why is this trail strong?". Built by
+  // EventMathWorld.why(). It narrates the relocated memory in EventMath's voice:
+  // the current strength, who laid what to build it, and what decay wore away.
+  function EventMathTrailTrace(world, trail, strength, deposits, decayed) {
+    if (!(this instanceof EventMathTrailTrace)) {
+      return new EventMathTrailTrace(world, trail, strength, deposits, decayed);
+    }
+    this.world    = world;
+    this.trail    = trail;
+    this.strength = strength;
+    this.deposits = deposits || [];
+    this.decayed  = decayed || 0;
+
+    // Aggregate deposits by contributor, preserving first-seen order.
+    this.byContributor = [];
+    var index = {};
+    for (var i = 0; i < this.deposits.length; i++) {
+      var d = this.deposits[i];
+      var key = d.by;
+      if (!(key in index)) {
+        index[key] = this.byContributor.length;
+        this.byContributor.push({ by: key, total: 0, visits: 0 });
+      }
+      var c = this.byContributor[index[key]];
+      c.total += d.amount;
+      c.visits += 1;
+    }
+    this.totalDeposit = 0;
+    for (var j = 0; j < this.deposits.length; j++) this.totalDeposit += this.deposits[j].amount;
+  }
+
+  EventMathTrailTrace.prototype.render = function () {
+    var lines = ['── why is "' + this.trail + '" strong in ' + this.world + '? ──'];
+    if (this.deposits.length === 0 && this.strength === 0) {
+      lines.push('  Nothing has been laid on "' + this.trail + '" — the ' +
+        this.world + ' holds no such memory.');
+      return lines.join('\n');
+    }
+    lines.push('  ' + this.trail + ' now measures ' + this.strength + '.');
+    lines.push('  It was laid ' + this.deposits.length + ' time(s), ' +
+      this.totalDeposit + ' deposited in all:');
+    for (var i = 0; i < this.byContributor.length; i++) {
+      var c = this.byContributor[i];
+      lines.push('    ' + c.by + ' laid ' + c.total + ' over ' + c.visits + ' visit(s)');
+    }
+    if (this.decayed > 0) {
+      lines.push('  Decay has worn away ' + this.decayed +
+        ' since — what remains relocated onto this path.');
+    } else {
+      lines.push('  No decay yet.');
+    }
+    lines.push('  The memory lives in the ' + this.world + ', not in any animal.');
+    return lines.join('\n');
   };
 
   // ── Default Timeline ─────────────────────────────────────
@@ -3174,6 +3245,7 @@
     EventMathSignal:        EventMathSignal,
     EventMathWorld:         EventMathWorld,
     EventMathAnimal:        EventMathAnimal,
+    EventMathTrailTrace:    EventMathTrailTrace,
   };
 
 });

@@ -35,6 +35,7 @@ class EventMathCodeGen {
     this._varDecls = [];    // Hoisted let declarations (name, value) for top-level
     this._inAction = false; // Are we inside an action body?
     this._forageWorld = null; // World of the enclosing forage block (v2.30)
+    this._forageName = null;  // Name of the enclosing forager — trail attribution
     this._eventNames = new Set(); // Top-level event declarations
     this._layerNames = new Set();
     this._timelineNames = new Set();
@@ -554,6 +555,13 @@ class EventMathCodeGen {
           break;
         case 'StepStmt':
           break;
+        // v2.31 — why over trails (optional capture target)
+        case 'WhyTrailStmt':
+          if (stmt.intoName && !this._vars.has(stmt.intoName)) {
+            this._vars.add(stmt.intoName);
+            this._varDecls.push({ name: this._safeName(stmt.intoName), value: 'null' });
+          }
+          break;
         // v2.23 — organizational intelligence
         case 'RoleStmt':
           if (stmt.name && !this._vars.has(stmt.name)) {
@@ -801,6 +809,8 @@ class EventMathCodeGen {
       // v2.30 — forage block + step
       case 'ForageStmt':     return this._genForageStmt(stmt);
       case 'StepStmt':       return this._genStepStmt(stmt);
+      // v2.31 — why over trails
+      case 'WhyTrailStmt':   return this._genWhyTrailStmt(stmt);
       // v2.22
       case 'AgentStmt':      return this._genAgentStmt(stmt);
       case 'RememberStmt':   return this._genRememberStmt(stmt);
@@ -3921,8 +3931,9 @@ class EventMathCodeGen {
     const world = this._resolveWorld(stmt);
     const worldVar = this._safeName(world);
     const amount = this._genAmount(stmt.amount);
-    this._line(`// trail: lay "${this._escape(stmt.name)}" in ${this._escape(world)} by ${this._escape(String(stmt.amount))}`);
-    this._line(`${worldVar}.lay('${this._escape(stmt.name)}', ${amount});`);
+    const by = this._forageName || 'hand';
+    this._line(`// trail: lay "${this._escape(stmt.name)}" in ${this._escape(world)} by ${this._escape(String(stmt.amount))} (laid by ${this._escape(by)})`);
+    this._line(`${worldVar}.lay('${this._escape(stmt.name)}', ${amount}, '${this._escape(by)}');`);
     this._line('');
   }
 
@@ -3951,13 +3962,30 @@ class EventMathCodeGen {
     this._line(`function ${fnName}() {`);
     this.indent++;
     const prevWorld = this._forageWorld;
+    const prevName = this._forageName;
     this._forageWorld = stmt.world;
+    this._forageName = stmt.name;
     for (const bodyStmt of (stmt.body || [])) {
       this._genStatement(bodyStmt, true);
     }
     this._forageWorld = prevWorld;
+    this._forageName = prevName;
     this.indent--;
     this._line(`}`);
+    this._line('');
+  }
+
+  _genWhyTrailStmt(stmt) {
+    const worldVar = this._safeName(stmt.world);
+    const trailEsc = this._escape(stmt.trail);
+    if (stmt.intoName) {
+      const intoVar = this._safeName(stmt.intoName);
+      this._line(`// why: "${trailEsc}" in ${this._escape(stmt.world)} into ${this._escape(stmt.intoName)}`);
+      this._line(`${intoVar} = ${worldVar}.why('${trailEsc}');`);
+    } else {
+      this._line(`// why: "${trailEsc}" in ${this._escape(stmt.world)}`);
+      this._line(`console.log(${worldVar}.why('${trailEsc}').render());`);
+    }
     this._line('');
   }
 

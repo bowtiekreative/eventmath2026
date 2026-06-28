@@ -78,6 +78,7 @@ class EventMathFormatter {
       case 'FadeStmt':     return this._formatFadeStmt(stmt);
       case 'ForageStmt':   return this._formatForageStmt(stmt);
       case 'StepStmt':     return this._formatStepStmt(stmt);
+      case 'WhyTrailStmt': return this._formatWhyTrailStmt(stmt);
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
       case 'Check':        return this._formatCheck(stmt);
       case 'Use':          return this._formatUse(stmt);
@@ -602,6 +603,11 @@ class EventMathFormatter {
   _formatStepStmt(stmt) {
     if (stmt.times && stmt.times > 1) this._line(`step ${stmt.name} ${stmt.times} times`);
     else this._line(`step ${stmt.name}`);
+  }
+
+  _formatWhyTrailStmt(stmt) {
+    const into = (stmt.intoName && stmt.intoName.length) ? ` into ${stmt.intoName}` : '';
+    this._line(`why ${stmt.trail} in ${stmt.world}${into}`);
   }
 
   // ── Check ─────────────────────────────────────────────────

@@ -142,7 +142,7 @@ console.log('\n─ Codegen ─');
   const js = compile('world meadow\nanimal ant\ntrail food in meadow by 1\nsense food in meadow into here\nfade meadow by 1');
   assert('emits EventMathWorld', js.indexOf('new EM.EventMathWorld') >= 0);
   assert('emits EventMathAnimal', js.indexOf('new EM.EventMathAnimal') >= 0);
-  assert('emits .lay()', js.indexOf(".lay('food', 1)") >= 0);
+  assert('emits .lay()', js.indexOf(".lay('food', 1, 'hand')") >= 0);
   assert('emits .sense()', js.indexOf(".sense('food')") >= 0);
   assert('emits .fade()', js.indexOf('.fade(1)') >= 0);
   assert('hoists the sense target', js.indexOf('let here') >= 0);

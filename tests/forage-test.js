@@ -101,7 +101,7 @@ console.log('\n─ Codegen ─');
   const js = compile(FORAGER);
   assert('emits a forage function', js.indexOf('function __forage_scout()') >= 0);
   assert('resolves implicit world in body', js.indexOf("meadow.sense('food')") >= 0);
-  assert('resolves implicit world for trail', js.indexOf("meadow.lay('food', 2)") >= 0);
+  assert('resolves implicit world for trail', js.indexOf("meadow.lay('food', 2, 'scout')") >= 0);
   assert('step emits a loop', js.indexOf('__forage_scout()') >= 0 && js.indexOf('< 4;') >= 0);
 }
 

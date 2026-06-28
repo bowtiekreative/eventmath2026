@@ -121,6 +121,7 @@ class EventMathParser {
     if (t.type === 'DIMENSIONAL_STMT')      return this._parseDimensionalStmt();
     if (t.type === 'GRADE_STMT')            return this._parseGradeStmt();
     if (t.type === 'WHY_STMT')              return this._parseWhyStmt();
+    if (t.type === 'WHY_TRAIL_STMT')        return this._parseWhyTrailStmt();
     if (t.type === 'CHALLENGE_STMT')        return this._parseChallengeStmt();
     if (t.type === 'COMPARE_STMT')          return this._parseCompareStmt();
     if (t.type === 'CONFLICT_STMT')         return this._parseConflictStmt();
@@ -1333,6 +1334,16 @@ class EventMathParser {
       desireName: t.value.desireName,
       chainName:  t.value.chainName,
       intoName:   t.value.intoName,
+    });
+  }
+
+  _parseWhyTrailStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('WhyTrailStmt', {
+      trail:    t.value.trail,
+      world:    t.value.world,
+      intoName: t.value.intoName || '',
     });
   }
 
