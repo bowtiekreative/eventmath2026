@@ -76,6 +76,8 @@ class EventMathFormatter {
       case 'TrailStmt':    return this._formatTrailStmt(stmt);
       case 'SenseStmt':    return this._formatSenseStmt(stmt);
       case 'FadeStmt':     return this._formatFadeStmt(stmt);
+      case 'ForageStmt':   return this._formatForageStmt(stmt);
+      case 'StepStmt':     return this._formatStepStmt(stmt);
       case 'BrokenEvent':  return this._formatBrokenEvent(stmt);
       case 'Check':        return this._formatCheck(stmt);
       case 'Use':          return this._formatUse(stmt);
@@ -576,15 +578,30 @@ class EventMathFormatter {
   }
 
   _formatTrailStmt(stmt) {
-    this._line(`trail ${stmt.name} in ${stmt.world} by ${stmt.amount}`);
+    const where = (stmt.world && stmt.world.length) ? ` in ${stmt.world}` : '';
+    this._line(`trail ${stmt.name}${where} by ${stmt.amount}`);
   }
 
   _formatSenseStmt(stmt) {
-    this._line(`sense ${stmt.name} in ${stmt.world} into ${stmt.intoName}`);
+    const where = (stmt.world && stmt.world.length) ? ` in ${stmt.world}` : '';
+    this._line(`sense ${stmt.name}${where} into ${stmt.intoName}`);
   }
 
   _formatFadeStmt(stmt) {
     this._line(`fade ${stmt.world} by ${stmt.amount}`);
+  }
+
+  _formatForageStmt(stmt) {
+    this._line(`forage ${stmt.name} on ${stmt.world}`);
+    this.indent++;
+    for (const s of (stmt.body || [])) this._formatStatement(s);
+    this.indent--;
+    this._line('end');
+  }
+
+  _formatStepStmt(stmt) {
+    if (stmt.times && stmt.times > 1) this._line(`step ${stmt.name} ${stmt.times} times`);
+    else this._line(`step ${stmt.name}`);
   }
 
   // ── Check ─────────────────────────────────────────────────

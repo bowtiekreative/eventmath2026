@@ -23,6 +23,7 @@ class EventMathValidator {
     this.timelines = new Map();
     this.actions = new Map();
     this.marks = new Map();
+    this.foragers = new Map(); // v2.30 — forage block names
 
     if (!ast || !ast.statements) {
       return { errors: this.errors, warnings: this.warnings };
@@ -33,6 +34,9 @@ class EventMathValidator {
 
     // Pass 2: validate references
     this._validateReferences(ast.statements);
+
+    // Pass 3: stigmergy rules — statelessness guarantee + world resolution
+    this._validateStigmergy(ast.statements, null);
 
     return { errors: this.errors, warnings: this.warnings };
   }
@@ -66,6 +70,10 @@ class EventMathValidator {
           break;
         case 'SenseStmt':
           if (stmt.intoName) this.marks.set(stmt.intoName, true);
+          break;
+        case 'ForageStmt':
+          if (stmt.name) { this.marks.set(stmt.name, true); this.foragers.set(stmt.name, true); }
+          if (stmt.body) this._collectDeclarations(stmt.body);
           break;
         case 'Mark':
           this._registerSymbol('mark', stmt.name, this.marks);
@@ -290,6 +298,79 @@ class EventMathValidator {
     }
   }
 
+  // ── Pass 3: stigmergy rules ────────────────────────────────────
+  // Enforce the headline guarantee of the forage block: a forager holds no
+  // memory of its own. Durable in-agent state (`live` signals, `remember`
+  // store) is forbidden inside a forage body — persistence must go through the
+  // world as trails. Also: sense/trail need a world unless inside a forager.
+  _validateStigmergy(statements, forageWorld) {
+    for (const stmt of statements) {
+      if (!stmt) continue;
+      const inForage = forageWorld !== null;
+
+      switch (stmt.type) {
+        case 'ForageStmt':
+          if (!stmt.world) {
+            this.errors.push(
+              `"forage ${stmt.name}" needs a world to forage on — write "forage ${stmt.name} on WORLD".`
+            );
+          }
+          this._validateStigmergy(stmt.body || [], stmt.world || '');
+          continue;
+
+        case 'RainStmt':
+          if (inForage && stmt.live) {
+            this.errors.push(
+              `A forager holds no memory of its own: "live rain ${stmt.name}" is not allowed ` +
+              `inside "forage". Persist through the world with "trail ${stmt.name} by ..." instead.`
+            );
+          }
+          break;
+
+        case 'RememberStmt':
+          if (inForage) {
+            this.errors.push(
+              `A forager holds no memory of its own: "remember" is not allowed inside "forage". ` +
+              `Lay a trail in the world instead.`
+            );
+          }
+          break;
+
+        case 'SenseStmt':
+          if (!inForage && !stmt.world) {
+            this.errors.push(
+              `"sense ${stmt.name}" needs a world — write "sense ${stmt.name} in WORLD into ..." ` +
+              `or place it inside a "forage" block.`
+            );
+          }
+          break;
+
+        case 'TrailStmt':
+          if (!inForage && !stmt.world) {
+            this.errors.push(
+              `"trail ${stmt.name}" needs a world — write "trail ${stmt.name} in WORLD by ..." ` +
+              `or place it inside a "forage" block.`
+            );
+          }
+          break;
+
+        case 'StepStmt':
+          if (stmt.name && !this.foragers.has(stmt.name)) {
+            this.warnings.push(
+              `"step ${stmt.name}" refers to a forager that was not declared. ` +
+              `Declare it first with "forage ${stmt.name} on WORLD ... end".`
+            );
+          }
+          break;
+      }
+
+      // Recurse into nested bodies (when/otherwise, action, etc.), preserving
+      // whether we are inside a forage block.
+      if (stmt.body && stmt.type !== 'ForageStmt') this._validateStigmergy(stmt.body, forageWorld);
+      if (stmt.otherwise) this._validateStigmergy(stmt.otherwise, forageWorld);
+    }
+  }
+
   _registerSymbol(kind, name, map) {
     if (!name) return;
 
@@ -306,7 +387,7 @@ class EventMathValidator {
       'watchdog', 'sweep', 'quarantine', 'inoculate',
       'instruct', 'fundamental', 'buffett', 'graham', 'network', 'connect', 'offline',
       'fetch', 'socket', 'serial', 'spawn', 'bytes', 'port', 'baud', 'udp', 'body', 'get', 'post',
-      'world', 'animal', 'trail', 'sense', 'fade']);
+      'world', 'animal', 'trail', 'sense', 'fade', 'forage', 'step']);
     const words = name.split(/\s+/);
     for (const word of words) {
       const lw = word.toLowerCase();

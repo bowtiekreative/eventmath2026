@@ -94,6 +94,8 @@ const KEYWORDS = new Set([
   'fetch', 'socket', 'serial', 'spawn', 'bytes',
   // v2.29 — stigmergy layer (relocating memory)
   'world', 'animal', 'trail', 'sense', 'fade',
+  // v2.30 — forage block (stateless rule) + step
+  'forage', 'step',
 ]);
 
 class Token {
@@ -327,6 +329,9 @@ class EventMathTokenizer {
     if (lead === 'trail')    return this._tokenizeTrailStmt(words, lineNum);
     if (lead === 'sense')    return this._tokenizeSenseStmt(words, lineNum);
     if (lead === 'fade')     return this._tokenizeFadeStmt(words, lineNum);
+    // v2.30 — forage block + step
+    if (lead === 'forage')   return this._tokenizeForageStmt(words, lineNum);
+    if (lead === 'step')     return this._tokenizeStepStmt(words, lineNum);
     // v2.22 — agent layer, OS control, messaging, commerce, media
     if (lead === 'agent')    return this._tokenizeAgentStmt(words, lineNum);
     if (lead === 'remember') return this._tokenizeRememberStmt(words, lineNum);
@@ -3279,31 +3284,35 @@ class EventMathTokenizer {
   }
 
   /**
-   * trail NAME in WORLD by N — lay (deposit) onto a trail in the world
+   * trail NAME in WORLD by N — lay onto a trail in a named world
+   * trail NAME by N          — inside a forage block, the world is implicit
    */
   _tokenizeTrailStmt(words, lineNum) {
     const inIdx = this._indexOf(words, 'in');
     const byIdx = this._indexOf(words, 'by');
-    if (inIdx < 0 || byIdx < 0 || byIdx < inIdx) {
+    if (byIdx < 0) {
       return [new Token('KEYWORD', 'trail', lineNum)];
     }
-    const name   = words.slice(1, inIdx).join(' ');
-    const world  = words.slice(inIdx + 1, byIdx).join(' ');
+    const hasWorld = inIdx > 0 && inIdx < byIdx;
+    const name   = words.slice(1, hasWorld ? inIdx : byIdx).join(' ');
+    const world  = hasWorld ? words.slice(inIdx + 1, byIdx).join(' ') : '';
     const amount = words.slice(byIdx + 1).join(' ');
     return [new Token('TRAIL_STMT', { name, world, amount }, lineNum)];
   }
 
   /**
-   * sense NAME in WORLD into LOCAL — stateless read of a trail
+   * sense NAME in WORLD into LOCAL — stateless read from a named world
+   * sense NAME into LOCAL          — inside a forage block, the world is implicit
    */
   _tokenizeSenseStmt(words, lineNum) {
     const inIdx   = this._indexOf(words, 'in');
     const intoIdx = this._indexOf(words, 'into');
-    if (inIdx < 0 || intoIdx < 0 || intoIdx < inIdx) {
+    if (intoIdx < 0) {
       return [new Token('KEYWORD', 'sense', lineNum)];
     }
-    const name     = words.slice(1, inIdx).join(' ');
-    const world    = words.slice(inIdx + 1, intoIdx).join(' ');
+    const hasWorld = inIdx > 0 && inIdx < intoIdx;
+    const name     = words.slice(1, hasWorld ? inIdx : intoIdx).join(' ');
+    const world    = hasWorld ? words.slice(inIdx + 1, intoIdx).join(' ') : '';
     const intoName = words.slice(intoIdx + 1).join(' ');
     return [new Token('SENSE_STMT', { name, world, intoName }, lineNum)];
   }
@@ -3319,6 +3328,34 @@ class EventMathTokenizer {
     const world  = words.slice(1, byIdx).join(' ');
     const amount = words.slice(byIdx + 1).join(' ');
     return [new Token('FADE_STMT', { world, amount }, lineNum)];
+  }
+
+  /**
+   * forage NAME on WORLD — header of a stateless rule block (body until end)
+   */
+  _tokenizeForageStmt(words, lineNum) {
+    const onIdx = this._indexOf(words, 'on');
+    if (onIdx < 1) {
+      return [new Token('FORAGE_HEADER', { name: words.slice(1).join(' '), world: '' }, lineNum)];
+    }
+    const name  = words.slice(1, onIdx).join(' ');
+    const world = words.slice(onIdx + 1).join(' ');
+    return [new Token('FORAGE_HEADER', { name, world }, lineNum)];
+  }
+
+  /**
+   * step NAME            — run a forager once
+   * step NAME N times    — run a forager N times
+   */
+  _tokenizeStepStmt(words, lineNum) {
+    let times = 1;
+    let nameWords = words.slice(1);
+    const timesIdx = this._indexOf(words, 'times');
+    if (timesIdx > 1 && /^-?\d+$/.test(words[timesIdx - 1])) {
+      times = parseInt(words[timesIdx - 1], 10);
+      nameWords = words.slice(1, timesIdx - 1);
+    }
+    return [new Token('STEP_STMT', { name: nameWords.join(' '), times }, lineNum)];
   }
 
   // ── v2.22 agent layer tokenizers ─────────────────────────────────────────

@@ -34,6 +34,7 @@ class EventMathCodeGen {
     this._paramVars = new Set(); // Track door input parameters
     this._varDecls = [];    // Hoisted let declarations (name, value) for top-level
     this._inAction = false; // Are we inside an action body?
+    this._forageWorld = null; // World of the enclosing forage block (v2.30)
     this._eventNames = new Set(); // Top-level event declarations
     this._layerNames = new Set();
     this._timelineNames = new Set();
@@ -547,6 +548,12 @@ class EventMathCodeGen {
         case 'FadeStmt':
           // no hoist needed — world/animal emit const at point of creation
           break;
+        // v2.30 — forage block: hoist sense targets / locals from the body
+        case 'ForageStmt':
+          this._firstPass(stmt.body || []);
+          break;
+        case 'StepStmt':
+          break;
         // v2.23 — organizational intelligence
         case 'RoleStmt':
           if (stmt.name && !this._vars.has(stmt.name)) {
@@ -791,6 +798,9 @@ class EventMathCodeGen {
       case 'TrailStmt':      return this._genTrailStmt(stmt);
       case 'SenseStmt':      return this._genSenseStmt(stmt);
       case 'FadeStmt':       return this._genFadeStmt(stmt);
+      // v2.30 — forage block + step
+      case 'ForageStmt':     return this._genForageStmt(stmt);
+      case 'StepStmt':       return this._genStepStmt(stmt);
       // v2.22
       case 'AgentStmt':      return this._genAgentStmt(stmt);
       case 'RememberStmt':   return this._genRememberStmt(stmt);
@@ -3901,27 +3911,66 @@ class EventMathCodeGen {
     this._line('');
   }
 
+  // Resolve the world a stigmergy statement acts on: an explicit one, or the
+  // enclosing forage block's world when omitted.
+  _resolveWorld(stmt) {
+    return (stmt.world && stmt.world.length) ? stmt.world : (this._forageWorld || '');
+  }
+
   _genTrailStmt(stmt) {
-    const worldVar = this._safeName(stmt.world);
+    const world = this._resolveWorld(stmt);
+    const worldVar = this._safeName(world);
     const amount = this._genAmount(stmt.amount);
-    this._line(`// trail: lay "${this._escape(stmt.name)}" in ${this._escape(stmt.world)} by ${this._escape(String(stmt.amount))}`);
+    this._line(`// trail: lay "${this._escape(stmt.name)}" in ${this._escape(world)} by ${this._escape(String(stmt.amount))}`);
     this._line(`${worldVar}.lay('${this._escape(stmt.name)}', ${amount});`);
     this._line('');
   }
 
   _genSenseStmt(stmt) {
-    const worldVar = this._safeName(stmt.world);
+    const world = this._resolveWorld(stmt);
+    const worldVar = this._safeName(world);
     const intoVar = this._safeName(stmt.intoName);
-    this._line(`// sense: "${this._escape(stmt.name)}" in ${this._escape(stmt.world)} into ${this._escape(stmt.intoName)}`);
+    this._line(`// sense: "${this._escape(stmt.name)}" in ${this._escape(world)} into ${this._escape(stmt.intoName)}`);
     this._line(`${intoVar} = ${worldVar}.sense('${this._escape(stmt.name)}');`);
     this._line('');
   }
 
   _genFadeStmt(stmt) {
-    const worldVar = this._safeName(stmt.world);
+    const world = this._resolveWorld(stmt);
+    const worldVar = this._safeName(world);
     const amount = this._genAmount(stmt.amount);
-    this._line(`// fade: ${this._escape(stmt.world)} by ${this._escape(String(stmt.amount))} (analog decay — never disappears)`);
+    this._line(`// fade: ${this._escape(world)} by ${this._escape(String(stmt.amount))} (analog decay — never disappears)`);
     this._line(`${worldVar}.fade(${amount});`);
+    this._line('');
+  }
+
+  _genForageStmt(stmt) {
+    const fnName = '__forage_' + this._safeName(stmt.name);
+    this._line(`// forage: "${this._escape(stmt.name)}" on ${this._escape(stmt.world)} — a stateless rule.`);
+    this._line(`// It holds no memory of its own; its state lives in the world.`);
+    this._line(`function ${fnName}() {`);
+    this.indent++;
+    const prevWorld = this._forageWorld;
+    this._forageWorld = stmt.world;
+    for (const bodyStmt of (stmt.body || [])) {
+      this._genStatement(bodyStmt, true);
+    }
+    this._forageWorld = prevWorld;
+    this.indent--;
+    this._line(`}`);
+    this._line('');
+  }
+
+  _genStepStmt(stmt) {
+    const fnName = '__forage_' + this._safeName(stmt.name);
+    const times = parseInt(stmt.times, 10) || 1;
+    if (times === 1) {
+      this._line(`// step: ${this._escape(stmt.name)}`);
+      this._line(`${fnName}();`);
+    } else {
+      this._line(`// step: ${this._escape(stmt.name)} — ${times} time(s)`);
+      this._line(`for (let __s = 0; __s < ${times}; __s++) { ${fnName}(); }`);
+    }
     this._line('');
   }
 

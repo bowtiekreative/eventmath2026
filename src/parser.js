@@ -194,6 +194,9 @@ class EventMathParser {
     if (t.type === 'TRAIL_STMT')  return this._parseTrailStmt();
     if (t.type === 'SENSE_STMT')  return this._parseSenseStmt();
     if (t.type === 'FADE_STMT')   return this._parseFadeStmt();
+    // v2.30 — forage block + step
+    if (t.type === 'FORAGE_HEADER') return this._parseForageStmt();
+    if (t.type === 'STEP_STMT')     return this._parseStepStmt();
     // v2.22 — agent layer, OS control, messaging, commerce, media
     if (t.type === 'KEYWORD' && t.value === 'agent')    return this._parseAgentStmt();
     if (t.type === 'KEYWORD' && t.value === 'remember') return this._parseRememberStmt();
@@ -2479,6 +2482,27 @@ class EventMathParser {
       world:  t.value.world,
       amount: t.value.amount,
     });
+  }
+
+  _parseForageStmt() {
+    const header = this.advance(); // FORAGE_HEADER
+    const name  = header && header.value ? header.value.name : 'forager';
+    const world = header && header.value ? header.value.world : '';
+    const body = [];
+    let guard = 0;
+    while (this.peek() && !this.isKeyword('end') && guard++ < 10000) {
+      const stmt = this._parseStatement();
+      if (stmt) body.push(stmt);
+      else { this.advance(); }
+    }
+    this.expect('KEYWORD', 'end');
+    return ast('ForageStmt', { name, world, body });
+  }
+
+  _parseStepStmt() {
+    const t = this.advance();
+    if (!t || !t.value) return null;
+    return ast('StepStmt', { name: t.value.name, times: t.value.times || 1 });
   }
 
   // ── v2.22 agent layer ─────────────────────────────────────────────────────
